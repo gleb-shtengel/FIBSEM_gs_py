@@ -34,9 +34,14 @@ Then install the contrib version of OpenCV:
 pip install opencv-contrib-python
 ```
 
-Then use pip to install the repository directly
+Then use pip to install the repository from testpypi
 ```bash
 pip install --index-url https://test.pypi.org/simple/ FIBSEM_gs_py
+```
+
+Or install the repository from github (you will need to have Git app installed first)
+```bash
+pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
 ```
 
 ## General Help Functions

@@ -4,18 +4,18 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "FIBSEM_gs_py"
-version = "4.1.1"
+version = "4.1.2"
 description = "Python library for processing and analysis of FIB-SEM data"
 requires-python = ">=3.8"
 dependencies = [
-    "numpy>=1.24.0,<2.0.0",
-    "pandas>=2.3.0,<3.0.0",
-    "dask>=2023.5.0",
+    "numpy>=1.24.0",
+    "pandas>=2.2.0",
+    "dask>=2023.4.0",
     "matplotlib>=3.7.0",
     "scikit-image>=0.21.0",
     "scikit-learn>=1.2.0",
     "scipy>=1.10.0",
-    "tifffile>=2023.7.0",
+    "tifffile>=2022.5.0",
     "mrcfile>=1.4.0",
     "h5py>=3.8.0",
     "npy2bdv>=0.2.0",
