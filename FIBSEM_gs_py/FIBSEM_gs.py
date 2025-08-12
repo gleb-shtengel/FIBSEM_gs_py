@@ -3966,7 +3966,10 @@ def select_blobs_LoG_analyze_transitions_2D_mrc_stack(params):
         if j>0:
             frame = mrc_obj.data[frame_inds[frame_ind+j], :, :].astype(dt_mrc).astype(float)
         if invert_data:
-            frame_img[yi:ya, xi:xa] = np.negative(frame)
+            if dt_mrc==np.uint8:
+                frame_img[yi:ya, xi:xa] = 255.0 - frame
+            else:
+                frame_img[yi:ya, xi:xa] = np.negative(frame)
         else:
             frame_img[yi:ya, xi:xa]  = frame
 
@@ -6504,7 +6507,16 @@ class FIBSEM_frame:
             if self.SaveOversamples:
                 Raw = np.moveaxis(np.array(Raw).reshape(self.YResolution, self.XResolution, self.Oversampling, self.ChanNum), 2, 3)
             else:
-                Raw = np.array(Raw).reshape(self.YResolution, self.XResolution, self.ChanNum)
+                try:
+                    Raw = np.array(Raw).reshape(self.YResolution, self.XResolution, self.ChanNum)
+                except:
+                    # handling the case of incomplete data write/read
+                    Raw_imcomplete = np.array(Raw)
+                    Raw_complete = np.zeros(self.YResolution*self.XResolution*self.ChanNum, dtype=dt)
+                    Raw_complete[:len(Raw_imcomplete)] = Raw_imcomplete
+                    Raw_complete[len(Raw_imcomplete):] = Raw_imcomplete[-1]
+                    Raw = np.array(Raw_complete).reshape(self.YResolution, self.XResolution, self.ChanNum)
+
             #print(np.shape(Raw), type(Raw), type(Raw[0,0]))
 
             #data = np.asarray(datab).reshape(self.YResolution,self.XResolution,ChanNum)
