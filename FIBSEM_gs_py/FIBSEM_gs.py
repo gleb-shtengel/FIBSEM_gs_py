@@ -8193,7 +8193,7 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
         center_x.T,
         center_y.T,
         Xresolutions.T,
-        Yresolutions.T
+        Yresolutions.T,
         ScanRate.T,
         EHT.T,
         SEMSpecimenI.T,
