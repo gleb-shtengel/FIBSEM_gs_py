@@ -10312,7 +10312,7 @@ def analyze_registration_frames(DASK_client, frame_filenames, **kwargs):
 
 
 def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual, **kwargs):
-    '''frank power supply
+    '''
     Transform and save FIB-SEM data set. A new vesion, with variable zbin_factor option. ©G.Shtengel 01/2023 gleb.shtengel@gmail.com
 
     Parameters
@@ -10394,8 +10394,8 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
     if test_frame.DetB == 'None':
         ImgB_fraction=0.0
 
-    XResolution = kwargs.get("XResolution", test_frame.XResolution)
-    YResolution = kwargs.get("YResolution", test_frame.YResolution)
+    XResolutions = kwargs.get("XResolutions", numpy.full(len(fls), test_frame.XResolution))
+    YResolutions = kwargs.get("YResolutions", numpy.full(len(fls), test_frame.YResolution))
     pad_edges =  kwargs.get("pad_edges", True)
     flipY = kwargs.get("flipY", False)
     zbin_factor =  kwargs.get("zbin_factor", 1)
@@ -10417,39 +10417,6 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
     frames_new = np.arange(nfrs_zbinned-1)
     deformation_fields = kwargs.get('deformation_fields', np.zeros((nfrs, test_frame.YResolution), dtype=float))
     
-    if pad_edges and perform_transformation:
-        shape = [YResolution, XResolution]
-        if disp_res:
-            print('Determining padding offsets')
-        xi, yi, padx, pady = determine_pad_offsets(shape, tr_matr_cum_residual)
-        #xmn, xmx, ymn, ymx = determine_pad_offsets(shape, tr_matr_cum_residual)
-        #padx = int(xmx - xmn)
-        #pady = int(ymx - ymn)
-        #xi = int(np.max([xmx, 0]))
-        #yi = int(np.max([ymx, 0]))
-        # The initial transformation matrices are calculated with no padding.Padding is done prior to transformation
-        # so that the transformed images are not clipped.
-        # Such padding means shift (by xi and yi values). Therefore the new transformation matrix
-        # for padded frames will be (Shift Matrix)x(Transformation Matrix)x(Inverse Shift Matrix)
-        # those are calculated below base on the amount of padding calculated above
-        shift_matrix = np.array([[1.0, 0.0, xi],
-                                 [0.0, 1.0, yi],
-                                 [0.0, 0.0, 1.0]])
-        inv_shift_matrix = np.linalg.inv(shift_matrix)
-
-    else:
-        padx = 0
-        pady = 0
-        xi = 0
-        yi = 0
-        shift_matrix = np.eye(3,3)
-        inv_shift_matrix = np.eye(3,3)
- 
-    fpath_reg = os.path.join(data_dir, fnm_reg)
-    xsz = XResolution + padx
-    xa = xi + XResolution
-    ysz = YResolution + pady
-    ya = yi + YResolution
 
     '''
     transform_and_save_chunk_of_frames(save_filename, frame_filenames, tr_matrices, tr_args):
@@ -10459,17 +10426,55 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
     chunk_of_frame_parametrs_dataset.append([save_filename, process_frames, np.array(tr_matr_cum_residual)[process_frames], tr_args])
     
     '''
-    tr_args = [ImgB_fraction, xsz, ysz, xi, xa, yi, ya, int_order, invert_data, flipY, flatten_image, image_correction_file, perform_transformation, shift_matrix, inv_shift_matrix, perform_deformation, deformation_type, ftype, dtp, fill_value]
+    
     chunk_of_frame_parametrs_dataset = []
 
     for j, st_frame in enumerate(tqdm(st_frames, desc='Setting up parameter sets', display=disp_res)):
+
+        if pad_edges and perform_transformation:
+            shape = [YResolutions[st_frame], XResolutions[st_frame]]
+            if disp_res:
+                print('Determining padding offsets')
+            xi, yi, padx, pady = determine_pad_offsets(shape, tr_matr_cum_residual)
+            #xmn, xmx, ymn, ymx = determine_pad_offsets(shape, tr_matr_cum_residual)
+            #padx = int(xmx - xmn)
+            #pady = int(ymx - ymn)
+            #xi = int(np.max([xmx, 0]))
+            #yi = int(np.max([ymx, 0]))
+            # The initial transformation matrices are calculated with no padding.Padding is done prior to transformation
+            # so that the transformed images are not clipped.
+            # Such padding means shift (by xi and yi values). Therefore the new transformation matrix
+            # for padded frames will be (Shift Matrix)x(Transformation Matrix)x(Inverse Shift Matrix)
+            # those are calculated below base on the amount of padding calculated above
+            shift_matrix = np.array([[1.0, 0.0, xi],
+                                     [0.0, 1.0, yi],
+                                     [0.0, 0.0, 1.0]])
+            inv_shift_matrix = np.linalg.inv(shift_matrix)
+
+        else:
+            padx = 0
+            pady = 0
+            xi = 0
+            yi = 0
+            shift_matrix = np.eye(3,3)
+            inv_shift_matrix = np.eye(3,3)
+     
+        fpath_reg = os.path.join(data_dir, fnm_reg)
+        xsz = XResolutions[st_frame] + padx
+        xa = xi + XResolutions[st_frame]
+        ysz = YResolutions[st_frame] + pady
+        ya = yi + YResolutions[st_frame]
+        tr_args = [ImgB_fraction, xsz, ysz, xi, xa, yi, ya, int_order, invert_data, flipY, flatten_image, image_correction_file, perform_transformation, shift_matrix, inv_shift_matrix, perform_deformation, deformation_type, ftype, dtp, fill_value]
+
+
         #save_filename = os.path.join(os.path.split(fls[st_frame])[0],'Registered_Frame_{:d}.tif'.format(j))
         save_filename = os.path.splitext(fls[st_frame])[0]+'_transformed.tif'
         process_frames = np.arange(st_frame, min(st_frame+zbin_factor, (frame_inds[-1]+1)))
         if perform_deformation:
             chunk_of_frame_parametrs_dataset.append([save_filename, np.array(fls)[process_frames], np.array(tr_matr_cum_residual)[process_frames], np.array(deformation_fields)[process_frames], np.array(image_scales)[process_frames], np.array(image_offsets)[process_frames], tr_args])
         else:
-            chunk_of_frame_parametrs_dataset.append([save_filename, np.array(fls)[process_frames], np.array(tr_matr_cum_residual)[process_frames], np.zeros((len(process_frames), YResolution), dtype=float), np.array(image_scales)[process_frames], np.array(image_offsets)[process_frames], tr_args])
+            chunk_of_frame_parametrs_dataset.append([save_filename, np.array(fls)[process_frames], np.array(tr_matr_cum_residual)[process_frames], np.zeros((len(process_frames), YResolutions[st_frame]), dtype=float), np.array(image_scales)[process_frames], np.array(image_offsets)[process_frames], tr_args])
+    
     if use_DASK:
         if disp_res:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Transform and Save Chunks of Frames: Starting DASK jobs')
