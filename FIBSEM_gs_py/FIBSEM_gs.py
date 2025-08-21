@@ -10334,6 +10334,10 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
         file type (0 - Shan Xu's .dat, 1 - tif)
     data_dir : str
         data directory (path)
+    XResolutions : array
+        X-sizes of the frames
+    YResolutions : array
+        Y-sizes of the frames
     ImgB_fraction : float
         fractional ratio of Image B to be used for constructing the fused image:
         ImageFused = ImageA * (1.0-ImgB_fraction) + ImageB * ImgB_fraction
@@ -12253,6 +12257,10 @@ class FIBSEM_dataset:
             Save PNG images of the intermediate processing statistics and final registration quality check
         perform_transformation : boolean
             If True - the data is transformed using existing cumulative transformation matrix. If False - the data is not transformed.
+        XResolutions : array
+            X-sizes of the frames
+        YResolutions : array
+            Y-sizes of the frames
         pad_edges : boolean
             If True, the frame will be padded to account for frame position and/or size changes.
         invert_data : boolean
@@ -12338,16 +12346,16 @@ class FIBSEM_dataset:
             DASK_client_retries = kwargs.get("DASK_client_retries", 3)
         ftype = kwargs.get("ftype", self.ftype)
         data_dir = kwargs.get("data_dir", self.data_dir)
-        if hasattr(self, 'XResolution'):
-            XResolution_default = self.XResolution
+        if hasattr(self, 'XResolutions'):
+            XResolutions_default = self.XResolutions
         else:
-            XResolution_default = FIBSEM_frame(self.fls[len(self.fls)//2], calculate_scaled_images=False).XResolution
-        XResolution = kwargs.get("XResolution", XResolution_default)
+            XResolutions_default = np.full(len(frame_inds), FIBSEM_frame(self.fls[len(self.fls)//2], calculate_scaled_images=False).XResolution)
+        XResolutions = kwargs.get("XResolutions", XResolutions_default)
         if hasattr(self, 'YResolution'):
-            YResolution_default = self.YResolution
+            YResolutions_default = self.YResolutions
         else:
-            YResolution_default = FIBSEM_frame(self.fls[len(self.fls)//2], calculate_scaled_images=False).YResolution
-        YResolution = kwargs.get("YResolution", YResolution_default)
+            YResolutions_default = np.full(len(frame_inds), FIBSEM_frame(self.fls[len(self.fls)//2], calculate_scaled_images=False).YResolution)
+        YResolutions = kwargs.get("YResolutions", YResolutions_default)
 
         fnm_reg = kwargs.get("fnm_reg", self.fnm_reg)
         if hasattr(self, 'fnm_types'):
@@ -12442,8 +12450,8 @@ class FIBSEM_dataset:
                         'use_DASK' : use_DASK,
                         'DASK_client_retries' : DASK_client_retries,
                         'ftype' : ftype,
-                        'XResolution' : XResolution,
-                        'YResolution' : YResolution,
+                        'XResolutions' : XResolutions,
+                        'YResolutions' : YResolutions,
                         'data_dir' : data_dir,
                         'voxel_size' : voxel_size_zbinned,
                         'pad_edges' : pad_edges,
