@@ -11578,6 +11578,12 @@ class FIBSEM_dataset:
         sv_apert = np.min((51, len(self.FIBSEM_Data[7])//8*2+1))
         self.FOVtrend_x = savgol_filter(self.FIBSEM_Data[7]*1.0, sv_apert, 1) - self.FIBSEM_Data[7][0]
         self.FOVtrend_y = savgol_filter(self.FIBSEM_Data[8]*1.0, sv_apert, 1) - self.FIBSEM_Data[8][0]
+        try:
+            self.Xresolutions = self.FIBSEM_Data[12]
+            self.Yresolutions = self.FIBSEM_Data[13]
+        except:
+            self.Xresolutions = self.FIBSEM_Data[7]*0 + self.Xresolution
+            self.Yresolutions = self.FIBSEM_Data[8]*0 + self.Yresolution
 
         WD_fit_coef = np.polyfit(frame_inds, WD, 1)
         rate_WD = WD_fit_coef[0]*1.0e6
