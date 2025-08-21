@@ -10377,7 +10377,7 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
     fill_value : float
         Fill value for padding. Default is zero.
     disp_res : boolean
-        Default is False
+        Default is False.
 
     Returns:
     registered_filenames : list of filenames (one for each transformed / z-binned frame)
@@ -10437,8 +10437,7 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
 
         if pad_edges and perform_transformation:
             shape = [YResolutions[st_frame], XResolutions[st_frame]]
-            if disp_res:
-                print('Determining padding offsets')
+            #Determining padding offsets
             xi, yi, padx, pady = determine_pad_offsets(shape, tr_matr_cum_residual)
             #xmn, xmx, ymn, ymx = determine_pad_offsets(shape, tr_matr_cum_residual)
             #padx = int(xmx - xmn)
@@ -10598,10 +10597,12 @@ def save_data_stack(FIBSEMstack, **kwargs):
                     start_frames = np.arange(0, nz, chunk_length)
                     for start_frame in tqdm(start_frames, desc = 'Saving Chunks of Frames into MRC File: ', display = disp_res):
                         stop_frame = np.min((start_frame+chunk_length, nz-1))
-                        mrc.data[start_frame:stop_frame] = FIBSEMstack[start_frame:stop_frame].astype(dtp)
+                        ysa, xsa, zsa = FIBSEMstack.shape
+                        mrc.data[start_frame:stop_frame, :ysa, :xsa] = FIBSEMstack[start_frame:stop_frame, :, :].astype(dtp)
                 else:
                     for j, FIBSEMframe in enumerate(tqdm(FIBSEMstack, desc = 'Saving Frames into MRC File: ', display = disp_res)):
-                        mrc.data[j,:,:] = FIBSEMframe.astype(dtp)
+                        ysa, xsa = FIBSEMframe.shape
+                        mrc.data[j,:ysa, :xsa] = FIBSEMframe.astype(dtp)
                 mrc.close()
     else:
         print('Registered data set is NOT saved into a file')
