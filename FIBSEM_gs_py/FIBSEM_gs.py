@@ -10463,9 +10463,9 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
             inv_shift_matrix = np.eye(3,3)
      
         fpath_reg = os.path.join(data_dir, fnm_reg)
-        xsz = XResolutions[st_frame] + padx
+        xsz = XResolutions[0] + padx
         xa = xi + XResolutions[st_frame]
-        ysz = YResolutions[st_frame] + pady
+        ysz = YResolutions[0] + pady
         ya = yi + YResolutions[st_frame]
         tr_args = [ImgB_fraction, xsz, ysz, xi, xa, yi, ya, int_order, invert_data, flipY, flatten_image, image_correction_file, perform_transformation, shift_matrix, inv_shift_matrix, perform_deformation, deformation_type, ftype, dtp, fill_value]
 
@@ -10597,12 +10597,10 @@ def save_data_stack(FIBSEMstack, **kwargs):
                     start_frames = np.arange(0, nz, chunk_length)
                     for start_frame in tqdm(start_frames, desc = 'Saving Chunks of Frames into MRC File: ', display = disp_res):
                         stop_frame = np.min((start_frame+chunk_length, nz-1))
-                        ysa, xsa, zsa = FIBSEMstack.shape
-                        mrc.data[start_frame:stop_frame, :ysa, :xsa] = FIBSEMstack[start_frame:stop_frame, :, :].astype(dtp)
+                        mrc.data[start_frame:stop_frame] = FIBSEMstack[start_frame:stop_frame].astype(dtp)
                 else:
                     for j, FIBSEMframe in enumerate(tqdm(FIBSEMstack, desc = 'Saving Frames into MRC File: ', display = disp_res)):
-                        ysa, xsa = FIBSEMframe.shape
-                        mrc.data[j,:ysa, :xsa] = FIBSEMframe.astype(dtp)
+                        mrc.data[j, :, :] = FIBSEMframe.astype(dtp)
                 mrc.close()
     else:
         print('Registered data set is NOT saved into a file')
