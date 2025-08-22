@@ -10421,6 +10421,35 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
     frames_new = np.arange(nfrs_zbinned-1)
     deformation_fields = kwargs.get('deformation_fields', np.zeros((nfrs, test_frame.YResolution), dtype=float))
     
+    if pad_edges and perform_transformation:
+        shape = [np.max(YResolutions), np.max(XResolutions)]
+        #Determining padding offsets
+        xi, yi, padx, pady = determine_pad_offsets(shape, tr_matr_cum_residual)
+        #xmn, xmx, ymn, ymx = determine_pad_offsets(shape, tr_matr_cum_residual)
+        #padx = int(xmx - xmn)
+        #pady = int(ymx - ymn)
+        #xi = int(np.max([xmx, 0]))
+        #yi = int(np.max([ymx, 0]))
+        # The initial transformation matrices are calculated with no padding.Padding is done prior to transformation
+        # so that the transformed images are not clipped.
+        # Such padding means shift (by xi and yi values). Therefore the new transformation matrix
+        # for padded frames will be (Shift Matrix)x(Transformation Matrix)x(Inverse Shift Matrix)
+        # those are calculated below base on the amount of padding calculated above
+        shift_matrix = np.array([[1.0, 0.0, xi],
+                                 [0.0, 1.0, yi],
+                                 [0.0, 0.0, 1.0]])
+        inv_shift_matrix = np.linalg.inv(shift_matrix)
+    else:
+        padx = 0
+        pady = 0
+        xi = 0
+        yi = 0
+        shift_matrix = np.eye(3,3)
+        inv_shift_matrix = np.eye(3,3)
+ 
+    fpath_reg = os.path.join(data_dir, fnm_reg)
+    xsz = shape[1] + padx
+    ysz = shape[0] + pady
 
     '''
     transform_and_save_chunk_of_frames(save_filename, frame_filenames, tr_matrices, tr_args):
@@ -10435,37 +10464,7 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
 
     for j, st_frame in enumerate(tqdm(st_frames, desc='Setting up parameter sets', display=disp_res)):
 
-        if pad_edges and perform_transformation:
-            shape = [YResolutions[st_frame], XResolutions[st_frame]]
-            #Determining padding offsets
-            xi, yi, padx, pady = determine_pad_offsets(shape, tr_matr_cum_residual)
-            #xmn, xmx, ymn, ymx = determine_pad_offsets(shape, tr_matr_cum_residual)
-            #padx = int(xmx - xmn)
-            #pady = int(ymx - ymn)
-            #xi = int(np.max([xmx, 0]))
-            #yi = int(np.max([ymx, 0]))
-            # The initial transformation matrices are calculated with no padding.Padding is done prior to transformation
-            # so that the transformed images are not clipped.
-            # Such padding means shift (by xi and yi values). Therefore the new transformation matrix
-            # for padded frames will be (Shift Matrix)x(Transformation Matrix)x(Inverse Shift Matrix)
-            # those are calculated below base on the amount of padding calculated above
-            shift_matrix = np.array([[1.0, 0.0, xi],
-                                     [0.0, 1.0, yi],
-                                     [0.0, 0.0, 1.0]])
-            inv_shift_matrix = np.linalg.inv(shift_matrix)
-
-        else:
-            padx = 0
-            pady = 0
-            xi = 0
-            yi = 0
-            shift_matrix = np.eye(3,3)
-            inv_shift_matrix = np.eye(3,3)
-     
-        fpath_reg = os.path.join(data_dir, fnm_reg)
-        xsz = XResolutions[0] + padx
         xa = xi + XResolutions[st_frame]
-        ysz = YResolutions[0] + pady
         ya = yi + YResolutions[st_frame]
         tr_args = [ImgB_fraction, xsz, ysz, xi, xa, yi, ya, int_order, invert_data, flipY, flatten_image, image_correction_file, perform_transformation, shift_matrix, inv_shift_matrix, perform_deformation, deformation_type, ftype, dtp, fill_value]
 
