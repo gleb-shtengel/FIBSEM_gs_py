@@ -8176,8 +8176,8 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
             ScanRate = results_s2[:, 6]
             EHT = results_s2[:, 7]
             SEMSpecimenI = results_s2[:, 8]
-            XResolutions = results_s2[:, 9]
-            YResolutions = results_s2[:, 10]
+            XResolutions = results_s2[:, 9].astype(int)
+            YResolutions = results_s2[:, 10].astype(int)
 
     if disp_res:
         print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Saving the FIBSEM dataset statistics (Min/Max, Mill Rate, FOV Shifts into the file: ', FIBSEM_Data_xlsx_path)
@@ -10420,9 +10420,9 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
     nfrs_zbinned = len(st_frames)                                            # number of frames after z-ninning
     frames_new = np.arange(nfrs_zbinned-1)
     deformation_fields = kwargs.get('deformation_fields', np.zeros((nfrs, test_frame.YResolution), dtype=float))
+    shape = [np.max(YResolutions), np.max(XResolutions)]
     
     if pad_edges and perform_transformation:
-        shape = [np.max(YResolutions), np.max(XResolutions)]
         #Determining padding offsets
         xi, yi, padx, pady = determine_pad_offsets(shape, tr_matr_cum_residual)
         #xmn, xmx, ymn, ymx = determine_pad_offsets(shape, tr_matr_cum_residual)
@@ -10467,7 +10467,6 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
         xa = xi + XResolutions[st_frame]
         ya = yi + YResolutions[st_frame]
         tr_args = [ImgB_fraction, xsz, ysz, xi, xa, yi, ya, int_order, invert_data, flipY, flatten_image, image_correction_file, perform_transformation, shift_matrix, inv_shift_matrix, perform_deformation, deformation_type, ftype, dtp, fill_value]
-
 
         #save_filename = os.path.join(os.path.split(fls[st_frame])[0],'Registered_Frame_{:d}.tif'.format(j))
         save_filename = os.path.splitext(fls[st_frame])[0]+'_transformed.tif'
@@ -11586,11 +11585,11 @@ class FIBSEM_dataset:
         self.FOVtrend_x = savgol_filter(self.FIBSEM_Data[7]*1.0, sv_apert, 1) - self.FIBSEM_Data[7][0]
         self.FOVtrend_y = savgol_filter(self.FIBSEM_Data[8]*1.0, sv_apert, 1) - self.FIBSEM_Data[8][0]
         try:
-            self.XResolutions = self.FIBSEM_Data[12]
-            self.YResolutions = self.FIBSEM_Data[13]
+            self.XResolutions = self.FIBSEM_Data[12].astype(int)
+            self.YResolutions = self.FIBSEM_Data[13].astype(int)
         except:
-            self.XResolutions = np.full(len(WD), self.XResolution)
-            self.YResolutions = np.full(len(WD), self.YResolution)
+            self.XResolutions = np.full(len(WD), self.XResolution).astype(int)
+            self.YResolutions = np.full(len(WD), self.YResolution).astype(int)
 
         WD_fit_coef = np.polyfit(frame_inds, WD, 1)
         rate_WD = WD_fit_coef[0]*1.0e6
