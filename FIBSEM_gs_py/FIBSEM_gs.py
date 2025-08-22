@@ -5651,7 +5651,7 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
                     # those are calculated below base on the amount of padding calculated above
                     shift_matrix = np.array([[1.0, 0.0, xi],
                                              [0.0, 1.0, yi],
-                                             [0.0, 0.0, 1.0]])
+                                             [0.0, 0.0, 1.0]]).astype(float)
                     inv_shift_matrix = np.linalg.inv(shift_matrix)
                 else:
                     padx = 0
@@ -9860,7 +9860,6 @@ def check_registration(img0, img1, **kwargs):
     return error_FWHMx, error_FWHMy
 
 
-
 def save_inlens_data(fname):
     tfr = FIBSEM_frame(fname)
     tfr.save_images_tif('A')
@@ -10436,7 +10435,7 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
         # those are calculated below base on the amount of padding calculated above
         shift_matrix = np.array([[1.0, 0.0, xi],
                                  [0.0, 1.0, yi],
-                                 [0.0, 0.0, 1.0]])
+                                 [0.0, 0.0, 1.0]]).astype(float)
         inv_shift_matrix = np.linalg.inv(shift_matrix)
     else:
         padx = 0
@@ -10462,7 +10461,6 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
     chunk_of_frame_parametrs_dataset = []
 
     for j, st_frame in enumerate(tqdm(st_frames, desc='Setting up parameter sets', display=disp_res)):
-
         xa = xi + XResolutions[st_frame]
         ya = yi + YResolutions[st_frame]
         tr_args = [ImgB_fraction, xsz, ysz, xi, xa, yi, ya, int_order, invert_data, flipY, flatten_image, image_correction_file, perform_transformation, shift_matrix, inv_shift_matrix, perform_deformation, deformation_type, ftype, dtp, fill_value]
@@ -10721,7 +10719,6 @@ def select_blobs_LoG_analyze_transitions_2D_dataset(params):
     '''
     [fls, frame_ind, ftype, image_name, eval_bounds_single_frame, offsets, invert_data, flipY, zbin_factor, perform_transformation, tr_matr_cum_residual, int_order, pad_edges, min_sigma, max_sigma, threshold,  overlap, pixel_size, subset_size, bounds, bands, min_thr, transition_low_limit, transition_high_limit, nbins, verbose, disp_res, save_data] = params
 
-
     calculate_scaled_images = (image_name == 'ImageA') or (image_name == 'ImageB')
     frame = FIBSEM_frame(fls[frame_ind], ftype=ftype, calculate_scaled_images=calculate_scaled_images)
     shape = [frame.YResolution, frame.XResolution]
@@ -10729,7 +10726,7 @@ def select_blobs_LoG_analyze_transitions_2D_dataset(params):
         xi, yi, padx, pady = offsets
         shift_matrix = np.array([[1.0, 0.0, xi],
                                  [0.0, 1.0, yi],
-                                 [0.0, 0.0, 1.0]])
+                                 [0.0, 0.0, 1.0]]).astype(float)
         inv_shift_matrix = np.linalg.inv(shift_matrix)
     else:
         padx = 0
@@ -10741,8 +10738,6 @@ def select_blobs_LoG_analyze_transitions_2D_dataset(params):
     xsz = frame.XResolution + padx
     ysz = frame.YResolution + pady
 
-    xa = xi+frame.XResolution
-    ya = yi+frame.YResolution
     xi_eval, xa_eval, yi_eval, ya_eval = eval_bounds_single_frame
     
     frame_img = np.zeros((ysz, xsz), dtype=float)
@@ -10754,6 +10749,8 @@ def select_blobs_LoG_analyze_transitions_2D_dataset(params):
     for j in np.arange(zbin_factor):
         if j>0:
             frame = FIBSEM_frame(fls[frame_ind+j], ftype=ftype, calculate_scaled_images=calculate_scaled_images)
+        xa = xi+frame.XResolution
+        ya = yi+frame.YResolution
         if invert_data:
             if frame.DetB != 'None':
                 if image_name == 'RawImageB':
@@ -11147,6 +11144,8 @@ class FIBSEM_dataset:
         mid_frame = FIBSEM_frame(fls[self.nfrs//2], ftype = self.ftype, calculate_scaled_images=False)
         self.XResolution = kwargs.get("XResolution", mid_frame.XResolution)
         self.YResolution = kwargs.get("YResolution", mid_frame.YResolution)
+        self.XResolutions = kwargs.get('XResolutions', np.full(len(fls), mid_frame.XResolution))
+        self.YResolutions = kwargs.get('YResolutions', np.full(len(fls), mid_frame.YResolution))
         self.Scaling = kwargs.get("Scaling", mid_frame.Scaling)
         if hasattr(mid_frame, 'PixelSize'):
             self.PixelSize = kwargs.get("PixelSize", mid_frame.PixelSize)
@@ -11589,6 +11588,9 @@ class FIBSEM_dataset:
         except:
             self.XResolutions = np.full(len(WD), self.XResolution).astype(int)
             self.YResolutions = np.full(len(WD), self.YResolution).astype(int)
+
+        self.XResolution = np.max(self.XResolutions)
+        self.YResolution = np.max(self.YResolutions)
 
         WD_fit_coef = np.polyfit(frame_inds, WD, 1)
         rate_WD = WD_fit_coef[0]*1.0e6
@@ -12506,7 +12508,7 @@ class FIBSEM_dataset:
             # those are calculated below base on the amount of padding calculated above
             shift_matrix = np.array([[1.0, 0.0, xi],
                                      [0.0, 1.0, yi],
-                                     [0.0, 0.0, 1.0]])
+                                     [0.0, 0.0, 1.0]]).astype(float)
             inv_shift_matrix = np.linalg.inv(shift_matrix)
         else:
             padx = 0
@@ -12515,8 +12517,8 @@ class FIBSEM_dataset:
             yi = 0
             shift_matrix = np.eye(3,3)
             inv_shift_matrix = np.eye(3,3)
-        xsz = self.XResolution + padx
-        ysz = self.YResolution + pady
+        xsz = shape[1] + padx
+        ysz = shape[0] + pady
 
         local_kwargs = {'start_evaluation_box' : start_evaluation_box,
                          'stop_evaluation_box' : stop_evaluation_box,
@@ -12646,7 +12648,7 @@ class FIBSEM_dataset:
         frame_inds = kwargs.get("frame_inds", default_indices)
         verbose = kwargs.get("verbose", False)
 
-        shape = [self.YResolution, self.XResolution]        
+        shape = [self.YResolution, self.XResolution]    
         if pad_edges and perform_transformation:
             xi, yi, padx, pady = determine_pad_offsets(shape, self.tr_matr_cum_residual)
             #xmn, xmx, ymn, ymx = determine_pad_offsets(shape, self.tr_matr_cum_residual)
@@ -12661,7 +12663,7 @@ class FIBSEM_dataset:
             # those are calculated below base on the amount of padding calculated above
             shift_matrix = np.array([[1.0, 0.0, xi],
                                      [0.0, 1.0, yi],
-                                     [0.0, 0.0, 1.0]])
+                                     [0.0, 0.0, 1.0]]).astype(float)
             inv_shift_matrix = np.linalg.inv(shift_matrix)
         else:
             padx = 0
@@ -12670,8 +12672,8 @@ class FIBSEM_dataset:
             yi = 0
             shift_matrix = np.eye(3,3)
             inv_shift_matrix = np.eye(3,3)
-        xsz = self.XResolution + padx
-        ysz = self.YResolution + pady
+        xsz = shape[1] + padx
+        ysz = shape[0] + pady
 
         local_kwargs = {'start_evaluation_box' : start_evaluation_box,
                          'stop_evaluation_box' : stop_evaluation_box,
@@ -12708,7 +12710,7 @@ class FIBSEM_dataset:
             frame = FIBSEM_frame(fls[fr_ind], ftype=ftype, calculate_scaled_images=False)
             #frame_img = np.zeros((ysz, xsz), dtype=float) + fill_value
             frame_img = np.full((ysz, xsz), fill_value, dtype=float)
-            frame_img[yi:yi+self.YResolution, xi:xi+self.XResolution]  = frame.RawImageA.astype(float)
+            frame_img[yi:yi+frame.YResolution, xi:xi+frame.XResolution]  = frame.RawImageA.astype(float)
 
             if perform_transformation:
                 transf = ProjectiveTransform(matrix = shift_matrix @ (self.tr_matr_cum_residual[fr_ind] @ inv_shift_matrix))
@@ -12853,7 +12855,7 @@ class FIBSEM_dataset:
             # those are calculated below base on the amount of padding calculated above
             shift_matrix = np.array([[1.0, 0.0, xi],
                                      [0.0, 1.0, yi],
-                                     [0.0, 0.0, 1.0]])
+                                     [0.0, 0.0, 1.0]]).astype(float)
             inv_shift_matrix = np.linalg.inv(shift_matrix)
         else:
             padx = 0
@@ -13514,7 +13516,7 @@ class FIBSEM_dataset:
             xi, yi, padx, pady = determine_pad_offsets(shape, self.tr_matr_cum_residual)
             shift_matrix = np.array([[1.0, 0.0, xi],
                                  [0.0, 1.0, yi],
-                                 [0.0, 0.0, 1.0]])
+                                 [0.0, 0.0, 1.0]]).astype(float)
             inv_shift_matrix = np.linalg.inv(shift_matrix)
         else:
             padx = 0
@@ -13831,7 +13833,7 @@ def plot_2D_blob_examples(results_xlsx, **kwargs):
             xi, yi, padx, pady = offsets
             shift_matrix = np.array([[1.0, 0.0, xi],
                                      [0.0, 1.0, yi],
-                                     [0.0, 0.0, 1.0]])
+                                     [0.0, 0.0, 1.0]]).astype(float)
             inv_shift_matrix = np.linalg.inv(shift_matrix)
         else:
             padx = 0
