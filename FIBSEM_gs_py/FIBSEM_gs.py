@@ -7949,7 +7949,6 @@ def evaluate_FIBSEM_frame(params):
                 YResolution = frame.YResolution
             except:
                 YResolution = FIBSEM_frame.RawImageA.shape[1]
-
         else:
             WD = 0
             MillingYVoltage = 0
