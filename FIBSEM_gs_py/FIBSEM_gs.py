@@ -10455,9 +10455,7 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
     tr_args = [ImgB_fraction, xsz, ysz, xi, xa, yi, ya, int_order, invert_data, flipY, flatten_image, image_correction_file, perform_transformation, shift_matrix, inv_shift_matrix, perform_deformation, deformation_type, ftype, dtp, fill_value]
     process_frames = np.arange(st_frame, min(st_frame+zbin_factor, (frame_inds[-1]+1)))
     chunk_of_frame_parametrs_dataset.append([save_filename, process_frames, np.array(tr_matr_cum_residual)[process_frames], tr_args])
-    
     '''
-    
     chunk_of_frame_parametrs_dataset = []
 
     for j, st_frame in enumerate(tqdm(st_frames, desc='Setting up parameter sets', display=disp_res)):
