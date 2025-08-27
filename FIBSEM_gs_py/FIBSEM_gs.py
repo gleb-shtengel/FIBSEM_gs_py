@@ -1911,19 +1911,35 @@ def Two_Image_Analysis(params):
     results = []
     for metric in eval_metrics:
         if metric == 'NSAD':
-            results.append(np.mean(np.abs(I1c-I2c))/(np.mean(fr_mean)-np.amin(fr_mean)))
+            try:
+                nsad = np.mean(np.abs(I1c-I2c))/(np.mean(fr_mean)-np.amin(fr_mean))
+            except:
+                nsad = 0.0
+            results.append(nsad)
         if metric == 'NCC':
-            results.append(Two_Image_NCC_SNR(I1c, I2c)[0])
+            try:
+                ncc = Two_Image_NCC_SNR(I1c, I2c)[0]
+            except:
+                ncc = 0.0
+            results.append(ncc)
         if metric == 'NMI':
-            results.append(mutual_information_2d(I1c.ravel(), I2c.ravel(), sigma=1.0, bin=2048, normalized=True))
+            try:
+                nmi = mutual_information_2d(I1c.ravel(), I2c.ravel(), sigma=1.0, bin=2048, normalized=True)
+            except:
+                nmi = 0.0
+            results.append(nmi)
         if metric == 'FSC':
             #SNRt is SNR threshold for determining the resolution bandwidth
             # force square images for FSC
-            if dx != dy:
-                d=min((dx//2, dy//2))
-                results.append(Two_Image_FSC(I1c[dy//2-d:dy//2+d, dx//2-d:dx//2+d], I2c[dy//2-d:dy//2+d, dx//2-d:dx//2+d], SNRt=0.143, disp_res=False)[4])
-            else:
-                results.append(Two_Image_FSC(I1c, I2c, SNRt=0.143, disp_res=False)[4])
+            try:
+                if dx != dy:
+                    d=min((dx//2, dy//2))
+                    fsc = Two_Image_FSC(I1c[dy//2-d:dy//2+d, dx//2-d:dx//2+d], I2c[dy//2-d:dy//2+d, dx//2-d:dx//2+d], SNRt=0.143, disp_res=False)[4]
+                else:
+                    fsc = Two_Image_FSC(I1c, I2c, SNRt=0.143, disp_res=False)[4]
+            except:
+                fsc = 0.00
+            results.append(fsc)
 
     return results
 
@@ -5635,15 +5651,11 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
                 raw_dataset = FIBSEM_dataset(fls, recall_parameters=os.path.exists(dump_filename), **stack_info_dict)
                 XResolution = raw_dataset.XResolution
                 YResolution = raw_dataset.YResolution
+                shape = [YResolution, XResolution]
                 if pad_edges and perform_transformation:
-                    #shape = [test_frame.YResolution, test_frame.XResolution]
-                    shape = [YResolution, XResolution]
-                    xi, yi, padx, pady = determine_pad_offsets(shape, raw_dataset.tr_matr_cum_residual)
-                    #xmn, xmx, ymn, ymx = determine_pad_offsets(shape, raw_dataset.tr_matr_cum_residual)
-                    #padx = int(xmx - xmn)
-                    #pady = int(ymx - ymn)
-                    #xi = int(np.max([xmx, 0]))
-                    #yi = int(np.max([ymx, 0]))
+                    shapes = (raw_dataset.YResolutions, raw_dataset.XResolutions)
+                    xi, yi, xsz, ysz = determine_sizes_and_offsets(shapes, raw_dataset.tr_matr_cum_residual)
+                    # xi, yi, padx, pady = determine_pad_offsets(shape, raw_dataset.tr_matr_cum_residual)
                     # The initial transformation matrices are calculated with no padding.Padding is done prior to transformation
                     # so that the transformed images are not clipped.
                     # Such padding means shift (by xi and yi values). Therefore the new transformation matrix
@@ -5654,15 +5666,13 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
                                              [0.0, 0.0, 1.0]]).astype(float)
                     inv_shift_matrix = np.linalg.inv(shift_matrix)
                 else:
-                    padx = 0
-                    pady = 0
+                    xsz = XResolution
+                    ysz = YResolution
                     xi = 0
                     yi = 0
                     shift_matrix = np.eye(3,3)
                     inv_shift_matrix = np.eye(3,3)
-                xsz = XResolution + padx
                 xa = xi + XResolution
-                ysz = YResolution + pady
                 ya = yi + YResolution
                 use_raw_data = True
             except:
@@ -10419,15 +10429,12 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
     frames_new = np.arange(nfrs_zbinned-1)
     deformation_fields = kwargs.get('deformation_fields', np.zeros((nfrs, test_frame.YResolution), dtype=float))
     shape = [np.max(YResolutions), np.max(XResolutions)]
+    shapes = [YResolutions, XResolutions]
     
     if pad_edges and perform_transformation:
         #Determining padding offsets
-        xi, yi, padx, pady = determine_pad_offsets(shape, tr_matr_cum_residual)
-        #xmn, xmx, ymn, ymx = determine_pad_offsets(shape, tr_matr_cum_residual)
-        #padx = int(xmx - xmn)
-        #pady = int(ymx - ymn)
-        #xi = int(np.max([xmx, 0]))
-        #yi = int(np.max([ymx, 0]))
+        xi, yi, xsz, ysz = determine_sizes_and_offsets(shapes, tr_matr)
+        #xi, yi, padx, pady = determine_pad_offsets(shape, tr_matr_cum_residual)
         # The initial transformation matrices are calculated with no padding.Padding is done prior to transformation
         # so that the transformed images are not clipped.
         # Such padding means shift (by xi and yi values). Therefore the new transformation matrix
@@ -10438,16 +10445,14 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
                                  [0.0, 0.0, 1.0]]).astype(float)
         inv_shift_matrix = np.linalg.inv(shift_matrix)
     else:
-        padx = 0
-        pady = 0
         xi = 0
         yi = 0
+        xsz = shape[1]
+        ysz = shape[0]
         shift_matrix = np.eye(3,3)
         inv_shift_matrix = np.eye(3,3)
  
     fpath_reg = os.path.join(data_dir, fnm_reg)
-    xsz = shape[1] + padx
-    ysz = shape[0] + pady
 
     '''
     transform_and_save_chunk_of_frames(save_filename, frame_filenames, tr_matrices, tr_args):
@@ -10661,7 +10666,7 @@ def select_blobs_LoG_analyze_transitions_2D_dataset(params):
     Finds blobs in the given grayscale image using Laplasian of Gaussians (LoG). gleb.shtengel@gmail.com 06/2023
     
     Parameters:
-    params = list of: [fls, frame_ind, ftype, image_name, eval_bounds, offsets, invert_data, flipY, zbin_factor, perform_transformation, tr_matr_cum_residual, int_order, pad_edges,
+    params = list of: [fls, frame_ind, ftype, image_name, eval_bounds, offsets_sizes, invert_data, flipY, zbin_factor, perform_transformation, tr_matr_cum_residual, int_order, pad_edges,
         min_sigma, max_sigma, threshold,  overlap, pixel_size, subset_size, bounds, bands, min_thr, transition_low_limit, transition_high_limit, nbins, verbose, disp_res, save_data]
     fls
     frame_ind : index of frame
@@ -10715,26 +10720,24 @@ def select_blobs_LoG_analyze_transitions_2D_dataset(params):
     Returns: XY_transitions
         XY_transitions with error_flag=0
     '''
-    [fls, frame_ind, ftype, image_name, eval_bounds_single_frame, offsets, invert_data, flipY, zbin_factor, perform_transformation, tr_matr_cum_residual, int_order, pad_edges, min_sigma, max_sigma, threshold,  overlap, pixel_size, subset_size, bounds, bands, min_thr, transition_low_limit, transition_high_limit, nbins, verbose, disp_res, save_data] = params
+    [fls, frame_ind, ftype, image_name, eval_bounds_single_frame, offsets_sizes, invert_data, flipY, zbin_factor, perform_transformation, tr_matr_cum_residual, int_order, pad_edges, min_sigma, max_sigma, threshold,  overlap, pixel_size, subset_size, bounds, bands, min_thr, transition_low_limit, transition_high_limit, nbins, verbose, disp_res, save_data] = params
 
     calculate_scaled_images = (image_name == 'ImageA') or (image_name == 'ImageB')
     frame = FIBSEM_frame(fls[frame_ind], ftype=ftype, calculate_scaled_images=calculate_scaled_images)
     shape = [frame.YResolution, frame.XResolution]
     if pad_edges and perform_transformation:
-        xi, yi, padx, pady = offsets
+        xi, yi, xsz, ysz = offsets_sizes
         shift_matrix = np.array([[1.0, 0.0, xi],
                                  [0.0, 1.0, yi],
                                  [0.0, 0.0, 1.0]]).astype(float)
         inv_shift_matrix = np.linalg.inv(shift_matrix)
     else:
-        padx = 0
-        pady = 0
+        xsz = shape[1]
+        ysz = shape[0]
         xi = 0
         yi = 0
         shift_matrix = np.eye(3,3)
         inv_shift_matrix = np.eye(3,3)
-    xsz = frame.XResolution + padx
-    ysz = frame.YResolution + pady
 
     xi_eval, xa_eval, yi_eval, ya_eval = eval_bounds_single_frame
     
@@ -12490,15 +12493,11 @@ class FIBSEM_dataset:
         ny, nx = np.shape(frame0)
         if disp_res:
             print('Analyzing Registration Quality')
-        
-        shape = [self.YResolution, self.XResolution]        
+        shape = [self.YResolution, self.XResolution]
+        shapes = [self.YResolutions, self.XResolutions]
         if pad_edges and perform_transformation:
-            xi, yi, padx, pady = determine_pad_offsets(shape, self.tr_matr_cum_residual)
-            #xmn, xmx, ymn, ymx = determine_pad_offsets(shape, self.tr_matr_cum_residual)
-            #padx = int(xmx - xmn)
-            #pady = int(ymx - ymn)
-            #xi = int(np.max([xmx, 0]))
-            #yi = int(np.max([ymx, 0]))
+            xi, yi, xsz, ysz = determine_sizes_and_offsets(shapes, self.tr_matr_cum_residual)
+            #xi, yi, padx, pady = determine_pad_offsets(shape, self.tr_matr_cum_residual)
             # The initial transformation matrices are calculated with no padding.Padding is done prior to transformation
             # so that the transformed images are not clipped.
             # Such padding means shift (by xi and yi values). Therefore the new transformation matrix
@@ -12509,14 +12508,12 @@ class FIBSEM_dataset:
                                      [0.0, 0.0, 1.0]]).astype(float)
             inv_shift_matrix = np.linalg.inv(shift_matrix)
         else:
-            padx = 0
-            pady = 0
             xi = 0
             yi = 0
+            xsz = shape[1]
+            ysz = shape[0]
             shift_matrix = np.eye(3,3)
             inv_shift_matrix = np.eye(3,3)
-        xsz = shape[1] + padx
-        ysz = shape[0] + pady
 
         local_kwargs = {'start_evaluation_box' : start_evaluation_box,
                          'stop_evaluation_box' : stop_evaluation_box,
@@ -12645,15 +12642,11 @@ class FIBSEM_dataset:
         default_indices = [nfrs//10, nfrs//2, nfrs//10*9]
         frame_inds = kwargs.get("frame_inds", default_indices)
         verbose = kwargs.get("verbose", False)
-
-        shape = [self.YResolution, self.XResolution]    
+        shape = [self.YResolution, self.XResolution]
+        shapes = [self.YResolutions, self.XResolutions] 
         if pad_edges and perform_transformation:
-            xi, yi, padx, pady = determine_pad_offsets(shape, self.tr_matr_cum_residual)
-            #xmn, xmx, ymn, ymx = determine_pad_offsets(shape, self.tr_matr_cum_residual)
-            #padx = int(xmx - xmn)
-            #pady = int(ymx - ymn)
-            #xi = int(np.max([xmx, 0]))
-            #yi = int(np.max([ymx, 0]))
+            xi, yi, xsz, ysz = determine_sizes_and_offsets(shapes, self.tr_matr_cum_residual)
+            # xi, yi, padx, pady = determine_pad_offsets(shape, self.tr_matr_cum_residual)
             # The initial transformation matrices are calculated with no padding.Padding is done prior to transformation
             # so that the transformed images are not clipped.
             # Such padding means shift (by xi and yi values). Therefore the new transformation matrix
@@ -12664,14 +12657,12 @@ class FIBSEM_dataset:
                                      [0.0, 0.0, 1.0]]).astype(float)
             inv_shift_matrix = np.linalg.inv(shift_matrix)
         else:
-            padx = 0
-            pady = 0
             xi = 0
             yi = 0
+            xsz = shape[1]
+            ysz = shape[0]
             shift_matrix = np.eye(3,3)
             inv_shift_matrix = np.eye(3,3)
-        xsz = shape[1] + padx
-        ysz = shape[0] + pady
 
         local_kwargs = {'start_evaluation_box' : start_evaluation_box,
                          'stop_evaluation_box' : stop_evaluation_box,
@@ -12836,16 +12827,13 @@ class FIBSEM_dataset:
         extrapolate_signal = kwargs.get('extrapolate_signal', 'parabolic')
         edge_fraction = kwargs.get("edge_fraction", 0.10)
         shape = [self.YResolution, self.XResolution]
+        shapes = [self.YResolutions, self.XResolutions]
         nlags = kwargs.get("nlags", np.min(shape)//4)
         aperture = kwargs.get("aperture", 6)
         save_res_png  = kwargs.get("save_res_png", False )
         if pad_edges and perform_transformation:
-            xi, yi, padx, pady = determine_pad_offsets(shape, self.tr_matr_cum_residual)
-            #xmn, xmx, ymn, ymx = determine_pad_offsets(shape, self.tr_matr_cum_residual)
-            #padx = int(xmx - xmn)
-            #pady = int(ymx - ymn)
-            #xi = int(np.max([xmx, 0]))
-            #yi = int(np.max([ymx, 0]))
+            xi, yi, xsz, ysz = determine_sizes_and_offsets(shapes, self.tr_matr_cum_residual)
+            # xi, yi, padx, pady = determine_pad_offsets(shape, self.tr_matr_cum_residual)
             # The initial transformation matrices are calculated with no padding.Padding is done prior to transformation
             # so that the transformed images are not clipped.
             # Such padding means shift (by xi and yi values). Therefore the new transformation matrix
@@ -12856,14 +12844,12 @@ class FIBSEM_dataset:
                                      [0.0, 0.0, 1.0]]).astype(float)
             inv_shift_matrix = np.linalg.inv(shift_matrix)
         else:
-            padx = 0
-            pady = 0
             xi = 0
             yi = 0
+            xsz = shape[1]
+            ysz = shape[0]
             shift_matrix = np.eye(3,3)
             inv_shift_matrix = np.eye(3,3)
-        xsz = self.XResolution + padx
-        ysz = self.YResolution + pady
 
         frame_img = np.zeros((ysz, xsz))
         xSNRAs=[]
@@ -13487,6 +13473,7 @@ class FIBSEM_dataset:
         fls_df.insert(0, 'Frame', frame_inds)
 
         shape = [self.YResolution, self.XResolution]
+        shapes = [self.YResolutions, self.XResolutions]
 
         vmin = 0.05
         if image_name == 'ImageA':
@@ -13511,20 +13498,21 @@ class FIBSEM_dataset:
             frame_inds = frame_inds)
 
         if pad_edges and perform_transformation:
-            xi, yi, padx, pady = determine_pad_offsets(shape, self.tr_matr_cum_residual)
+            xi, yi, xsz, ysz = determine_sizes_and_offsets(shapes, self.tr_matr_cum_residual)
+            #xi, yi, padx, pady = determine_pad_offsets(shape, self.tr_matr_cum_residual)
             shift_matrix = np.array([[1.0, 0.0, xi],
                                  [0.0, 1.0, yi],
                                  [0.0, 0.0, 1.0]]).astype(float)
             inv_shift_matrix = np.linalg.inv(shift_matrix)
         else:
-            padx = 0
-            pady = 0
             xi = 0
             yi = 0
+            xsz = shape[1]
+            ysz = shape[0]
             shift_matrix = np.eye(3,3)
             inv_shift_matrix = np.eye(3,3)
-        offsets = [xi, yi, padx, pady]
-        kwargs['offsets'] = offsets
+        offsets_sizes = [xi, yi, xsz, ysz]
+        kwargs['offsets_sizes'] = offsets_sizes
 
         papams_blob_analysis = []
         results_2D = []
@@ -13538,7 +13526,7 @@ class FIBSEM_dataset:
         fls_info = pd.concat([fls_df, eval_bounds_df, tr_mx_df], axis=1)
 
         for j, frame_ind in enumerate(tqdm(frame_inds, desc='Building the Parameter Sets Analyzing Resolution using Blobs ', display=verbose)):
-            params_single = [fls, frame_ind, ftype, image_name, eval_bounds[j], offsets, invert_data, flipY, zbin_factor, perform_transformation, self.tr_matr_cum_residual[frame_ind], int_order, pad_edges, min_sigma, max_sigma, threshold,  overlap, pixel_size, subset_size, bounds, bands, min_thr, transition_low_limit, transition_high_limit, nbins, verbose, disp_res, False]
+            params_single = [fls, frame_ind, ftype, image_name, eval_bounds[j], offsets_sizes, invert_data, flipY, zbin_factor, perform_transformation, self.tr_matr_cum_residual[frame_ind], int_order, pad_edges, min_sigma, max_sigma, threshold,  overlap, pixel_size, subset_size, bounds, bands, min_thr, transition_low_limit, transition_high_limit, nbins, verbose, disp_res, False]
             papams_blob_analysis.append(params_single)
 
         if use_DASK:

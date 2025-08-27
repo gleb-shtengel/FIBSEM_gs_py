@@ -67,7 +67,8 @@ def check_DASK(DASK_client, **kwargs):
             #if platform.system() == 'Windows':
             #    status_update_address = 'http://localhost:{:d}/status'.format(dport)
             if disp_res:
-                print('DASK client exists. Will perform distributed computations')
+
+                print(time.strftime('%Y/%m/%d  %H:%M:%S')+ '  DASK client exists. Will perform distributed computations')
                 print('Use ' + status_update_address +' to monitor DASK progress')
             use_DASK = True
         else:
@@ -827,6 +828,34 @@ def determine_pad_offsets(shape, tr_matr):
     #return xmin, xmax, ymin, ymax
     #print(xi, yi, padx, pady)
     return xi, yi, padx, pady
+
+
+def determine_sizes_and_offsets(shapes, tr_matr):
+    '''
+    Estimates what outputs sizes and offsets will be needed given the input shapes and transformation matricis. ©G.Shtengel 08/2025 gleb.shtengel@gmail.com
+    This replaces determine_pad_offsets.
+    '''
+    yszs, xszs = shapes
+    npts = len(xszs)
+    zeros = np.zeros(npts)
+    ones = np.ones(npts)
+    initial_coorners = np.moveaxis(np.moveaxis(np.array([[zeros, zeros, ones], [zeros, yszs, ones], [xszs, zeros, ones], [xszs, yszs, ones]]), 2, 0), 2, 1)
+    #print(np.array(tr_matr).shape, all_coorners.shape)
+    transformed_corners = np.matmul(np.array(tr_matr)[:, 0:2, :], initial_coorners)
+    xc = transformed_corners[:, 0, :].ravel()
+    yc = transformed_corners[:, 1, :].ravel()
+    xmin = np.round(np.min(xc)).astype(int)
+    xmax = np.round(np.max(xc)).astype(int)
+    ymin = np.round(np.min(yc)).astype(int)
+    ymax = np.round(np.max(yc)).astype(int)
+    #print(xmin, xmax, ymin, ymax)
+    
+    xi = int(np.max((-xmin, 0)))
+    yi = int(np.max((-ymin, 0)))
+    xsz = np.max((int(xmax - xmin), np.max(xszs)))
+    ysz = np.max((int(ymax - ymin), np.max(yszs)))
+    #print(xi, yi, xsz, ysz)
+    return xi, yi, xsz, ysz
 
 
 def set_eval_bounds(shape, evaluation_box, **kwargs):
