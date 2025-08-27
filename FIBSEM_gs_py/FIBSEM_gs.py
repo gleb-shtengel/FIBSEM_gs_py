@@ -12262,6 +12262,8 @@ class FIBSEM_dataset:
             Y-sizes of the frames
         pad_edges : boolean
             If True, the frame will be padded to account for frame position and/or size changes.
+        invert_shifts : boolean
+            If True, the shifts are inverted
         invert_data : boolean
             If True - the data is inverted.
         perform_deformation : boolean
@@ -12338,7 +12340,7 @@ class FIBSEM_dataset:
         save_transformed_dataset = kwargs.get('save_transformed_dataset', True)
         save_registration_summary = kwargs.get('save_registration_summary', True)
         frame_inds = kwargs.get('frame_inds', np.arange(len(self.fls)))
-    
+        invert_shifts = kwargs.get('invert_shifts', False)
         if hasattr(self, "DASK_client_retries"):
             DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
         else:
@@ -12503,7 +12505,12 @@ class FIBSEM_dataset:
             # Such padding means shift (by xi and yi values). Therefore the new transformation matrix
             # for padded frames will be (Shift Matrix)x(Transformation Matrix)x(Inverse Shift Matrix)
             # those are calculated below base on the amount of padding calculated above
-            shift_matrix = np.array([[1.0, 0.0, xi],
+            if invert_shifts:
+                shift_matrix = np.array([[1.0, 0.0, -xi],
+                                     [0.0, 1.0, -yi],
+                                     [0.0, 0.0, 1.0]]).astype(float)
+            else:
+                shift_matrix = np.array([[1.0, 0.0, xi],
                                      [0.0, 1.0, yi],
                                      [0.0, 0.0, 1.0]]).astype(float)
             inv_shift_matrix = np.linalg.inv(shift_matrix)
