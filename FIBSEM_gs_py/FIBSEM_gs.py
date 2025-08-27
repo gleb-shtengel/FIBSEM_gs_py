@@ -10351,6 +10351,8 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
         ImageFused = ImageA * (1.0-ImgB_fraction) + ImageB * ImgB_fraction
     pad_edges : boolean
         If True, the data will be padded before transformation to avoid clipping.
+    invert_shifts : boolean
+        If True, the shifts are inverted
     flipY : boolean
         If True, the data will be flipped along Y-axis. Default is False.
     zbin_factor : int
@@ -10412,6 +10414,7 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
     flipY = kwargs.get("flipY", False)
     zbin_factor =  kwargs.get("zbin_factor", 1)
     perform_transformation =  kwargs.get("perform_transformation", True)
+    invert_shifts = kwargs.get('invert_shifts', False)
     int_order = kwargs.get("int_order", 1)                  # The order of interpolation. 1: Bi-linear
     flatten_image = kwargs.get("flatten_image", False)
     image_correction_file = kwargs.get("image_correction_file", '')
@@ -10440,7 +10443,12 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
         # Such padding means shift (by xi and yi values). Therefore the new transformation matrix
         # for padded frames will be (Shift Matrix)x(Transformation Matrix)x(Inverse Shift Matrix)
         # those are calculated below base on the amount of padding calculated above
-        shift_matrix = np.array([[1.0, 0.0, xi],
+        if invert_shifts:
+            shift_matrix = np.array([[1.0, 0.0, -xi],
+                                 [0.0, 1.0, -yi],
+                                 [0.0, 0.0, 1.0]]).astype(float)
+        else:
+            shift_matrix = np.array([[1.0, 0.0, xi],
                                  [0.0, 1.0, yi],
                                  [0.0, 0.0, 1.0]]).astype(float)
         inv_shift_matrix = np.linalg.inv(shift_matrix)
@@ -12456,6 +12464,7 @@ class FIBSEM_dataset:
                         'data_dir' : data_dir,
                         'voxel_size' : voxel_size_zbinned,
                         'pad_edges' : pad_edges,
+                        'invert_shifts' : invert_shifts,
                         'ImgB_fraction' : ImgB_fraction,
                         'save_res_png ' : save_res_png ,
                         'dump_filename' : dump_filename,
