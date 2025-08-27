@@ -10433,7 +10433,7 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
     
     if pad_edges and perform_transformation:
         #Determining padding offsets
-        xi, yi, xsz, ysz = determine_sizes_and_offsets(shapes, tr_matr)
+        xi, yi, xsz, ysz = determine_sizes_and_offsets(shapes, tr_matr_cum_residual)
         #xi, yi, padx, pady = determine_pad_offsets(shape, tr_matr_cum_residual)
         # The initial transformation matrices are calculated with no padding.Padding is done prior to transformation
         # so that the transformed images are not clipped.
@@ -12663,6 +12663,9 @@ class FIBSEM_dataset:
             ysz = shape[0]
             shift_matrix = np.eye(3,3)
             inv_shift_matrix = np.eye(3,3)
+        if verbose:
+            print('Results of determine_sizes_and_offsets:')
+            print('xi, yi, xsz, ysz: ', xi, yi, xsz, ysz)
 
         local_kwargs = {'start_evaluation_box' : start_evaluation_box,
                          'stop_evaluation_box' : stop_evaluation_box,

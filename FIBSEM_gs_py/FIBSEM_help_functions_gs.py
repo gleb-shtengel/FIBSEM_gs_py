@@ -896,6 +896,7 @@ def set_eval_bounds(shape, evaluation_box, **kwargs):
     perform_transformation = kwargs.get('perform_transformation', False)
     tr_matr = np.array(kwargs.get('tr_matr', []))
     ntr = len(tr_matr)
+    shapes = (np.full(ntr, ny), np.full(ntr,nx))
     if ntr>0:
         frame_inds = np.array(kwargs.get("frame_inds", np.arange(ntr)))
         nz = len(frame_inds)
@@ -916,7 +917,8 @@ def set_eval_bounds(shape, evaluation_box, **kwargs):
         top_left_corners = np.array([[evaluation_box[2],evaluation_box[0]]]*nz)
     
     if pad_edges and perform_transformation and nz>0:
-        xi, yi, padx, pady = determine_pad_offsets([ny, nx], tr_matr)
+        #xi, yi, padx, pady = determine_pad_offsets([ny, nx], tr_matr)
+        xi, yi, xsz, ysz = determine_sizes_and_offsets(shapes, tr_matr)
 
         shift_matrix = np.array([[1.0, 0.0, xi],
                          [0.0, 1.0, yi],
@@ -928,25 +930,25 @@ def set_eval_bounds(shape, evaluation_box, **kwargs):
         arr2 = top_left_corners_ext.T
         eval_starts = np.round(np.einsum('ijk,ik->ij',arr1, arr2))
     else:
-        padx = 0
-        pady = 0
         eval_starts = top_left_corners
+        xsz = nx
+        ysz = ny
 
     if sliding_evaluation_box:
-        xa_evals = np.clip(eval_starts[:, 0] + start_evaluation_box[3], 0, (nx+padx))
-        ya_evals = np.clip(eval_starts[:, 1] + start_evaluation_box[1], 0, (ny+pady))
+        xa_evals = np.clip(eval_starts[:, 0] + start_evaluation_box[3], 0, xsz)
+        ya_evals = np.clip(eval_starts[:, 1] + start_evaluation_box[1], 0, ysz)
         xi_evals = xa_evals - start_evaluation_box[3]
         yi_evals = ya_evals - start_evaluation_box[1]
     else:
         sv_apert = np.min(((nz//8)*2+1, 2001))
         if sv_apert <2:
             # no smoothing if the set is too short
-            xa_evals = np.clip(eval_starts[:, 0] + evaluation_box[3], 0, (nx+padx))
-            ya_evals = np.clip(eval_starts[:, 1] + evaluation_box[1], 0, (ny+pady))
+            xa_evals = np.clip(eval_starts[:, 0] + evaluation_box[3], 0, xsz)
+            ya_evals = np.clip(eval_starts[:, 1] + evaluation_box[1], 0, ysz)
         else:
             filter_order = np.min([5, sv_apert-1])
-            xa_evals = savgol_filter(np.clip(eval_starts[:, 0] + evaluation_box[3], 0, (nx+padx)), sv_apert, filter_order)
-            ya_evals = savgol_filter(np.clip(eval_starts[:, 1] + evaluation_box[1], 0, (ny+pady)), sv_apert, filter_order)
+            xa_evals = savgol_filter(np.clip(eval_starts[:, 0] + evaluation_box[3], 0, xsz), sv_apert, filter_order)
+            ya_evals = savgol_filter(np.clip(eval_starts[:, 1] + evaluation_box[1], 0, ysz), sv_apert, filter_order)
         xi_evals = xa_evals - evaluation_box[3]
         yi_evals = ya_evals - evaluation_box[1]
 
