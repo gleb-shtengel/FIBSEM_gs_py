@@ -7861,8 +7861,8 @@ class FIBSEM_frame:
         # Calcularte new FirstPixels
         FirstPixelX = frame.FirstPixelX
         FirstPixelY = frame.FirstPixelY
-        FirstPixelX_new = FirstPixelX - left_pad
-        FirstPixelY_new = FirstPixelY - top_pad
+        FirstPixelX_new = FirstPixelX - left_pad//2
+        FirstPixelY_new = FirstPixelY - top_pad//2
         
         if verbose:
             print('Input Frame Size: {:d} x {:d} pixels'.format(XResolution, YResolution))
