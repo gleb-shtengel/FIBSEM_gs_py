@@ -7858,6 +7858,11 @@ class FIBSEM_frame:
         YResolution = self.YResolution
         XResolution_new = XResolution + left_pad + right_pad
         YResolution_new = YResolution + top_pad + bottom_pad
+        # Calcularte new FirstPixels
+        FirstPixelX = frame.FirstPixelX
+        FirstPixelY = frame.FirstPixelY
+        FirstPixelX_new = FirstPixelX - left_pad
+        FirstPixelY_new = FirstPixelY - top_pad
         
         if verbose:
             print('Input Frame Size: {:d} x {:d} pixels'.format(XResolution, YResolution))
@@ -7873,6 +7878,10 @@ class FIBSEM_frame:
         header_new[100:104] = XResolution_new_string
         YResolution_new_string =  pack('>L', YResolution_new)
         header_new[104:108] = YResolution_new_string
+        FirstPixelX_new_string =  pack('>l', FirstPixelX_new)
+        header_new[70:74] = FirstPixelX_new_string
+        FirstPixelY_new_string =  pack('>l', FirstPixelY_new)
+        header_new[74:78] = FirstPixelY_new_string
 
         # Create new Raw data array
         dt = np.dtype(np.int16).newbyteorder('>')
@@ -10131,7 +10140,7 @@ def transform_and_save_chunk_of_frames(chunk_of_frame_parametrs):
     num_frames = len(frame_filenames)
     transformed_img = np.zeros((ysz, xsz), dtype=float)
     verbose = False
-    save_debug_data = True
+    save_debug_data = False
     
     for frame_filename, tr_matrix, deformation_field, image_scale, image_offset in zip(frame_filenames, tr_matrices, deformation_fields, image_scales, image_offsets):
         #frame_img = np.zeros((ysz, xsz), dtype=float) + fill_value
@@ -10208,10 +10217,12 @@ def transform_and_save_chunk_of_frames(chunk_of_frame_parametrs):
                     pass
                 if deformation_type == 'post_2D':
                     pass
-                frame_img_reg = cv2.remap(frame_img, df[:, :, 0].astype(np.float32), df[:, :, 1].astype(np.float32), interpolation=interpolation, borderValue=fill_value )
+                frame_img_reg = cv2.remap(frame_img, df[:, :, 0].astype(np.float32), df[:, :, 1].astype(np.float32), interpolation=interpolation, borderValue=fill_value)
             else:
-                transf = ProjectiveTransform(matrix = shift_matrix @ (tr_matrix @ inv_shift_matrix))
-                frame_img_reg = warp(frame_img, transf, order = int_order, preserve_range=True, mode='constant', cval=fill_value)
+                #transf = ProjectiveTransform(matrix = shift_matrix @ (tr_matrix @ inv_shift_matrix))
+                #frame_img_reg = warp(frame_img, transf, order = int_order, preserve_range=True, mode='constant', cval=fill_value)
+                df = convert_tr_matr_into_deformation_field(shift_matrix @ (tr_matrix @ inv_shift_matrix), frame_img.shape).astype(np.float32)
+                frame_img_reg = cv2.remap(frame_img, df[:, :, 0].astype(np.float32), df[:, :, 1].astype(np.float32), interpolation=interpolation, borderValue=fill_value)
         else:
             frame_img_reg = frame_img.copy()
 
