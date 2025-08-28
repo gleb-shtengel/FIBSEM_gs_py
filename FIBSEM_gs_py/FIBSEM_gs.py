@@ -10190,10 +10190,9 @@ def transform_and_save_chunk_of_frames(chunk_of_frame_parametrs):
                              #    - 4: Bi-quartic
                              #    - 5: Bi-quintic
                 '''
+                interpolation = cv2.INTER_LINEAR
                 if int_order == 0:
                     interpolation = cv2.INTER_NEAREST
-                if int_order == 1:
-                    interpolation = cv2.INTER_LINEAR
                 if int_order == 3:
                     interpolation = cv2.INTER_CUBIC
 
@@ -10222,6 +10221,11 @@ def transform_and_save_chunk_of_frames(chunk_of_frame_parametrs):
                 #transf = ProjectiveTransform(matrix = shift_matrix @ (tr_matrix @ inv_shift_matrix))
                 #frame_img_reg = warp(frame_img, transf, order = int_order, preserve_range=True, mode='constant', cval=fill_value)
                 df = convert_tr_matr_into_deformation_field(shift_matrix @ (tr_matrix @ inv_shift_matrix), frame_img.shape).astype(np.float32)
+                interpolation = cv2.INTER_LINEAR
+                if int_order == 0:
+                    interpolation = cv2.INTER_NEAREST
+                if int_order == 3:
+                    interpolation = cv2.INTER_CUBIC
                 frame_img_reg = cv2.remap(frame_img, df[:, :, 0].astype(np.float32), df[:, :, 1].astype(np.float32), interpolation=interpolation, borderValue=fill_value)
         else:
             frame_img_reg = frame_img.copy()
