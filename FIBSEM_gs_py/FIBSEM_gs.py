@@ -6166,6 +6166,9 @@ class FIBSEM_frame:
 
     flatten_image(**kwargs):
         Flatten the image(s). Image flattening parameters must be pre-determined (determine_field_fattening_parameters).
+
+    pad_and_save(**kwargs):
+        Pad existing frame (increase image size) and save into a new .dat file. Only works on .dat files at the moment.
     """
 
     def __init__(self, fname, **kwargs):
@@ -7828,6 +7831,61 @@ class FIBSEM_frame:
             flattened_images.append(flattened_image)
 
         return flattened_images
+
+
+    def pad_and_save(self, **kwargs):
+        '''
+        Pad existing frame (increase image size) and save into a new .dat file. Only works on .dat files at the moment. ©G.Shtengel 08/2025 gleb.shtengel@gmail.com
+         kwargs:
+            ----------
+            padding_offsets : list of 4 ints
+                padding_offsets = [top_pad, bottom_pad, left_pad, right_pad]. Deafault is [0, 0, 0, 0] (no padding).
+            save_filename : string
+                Filename for saving the padded frame. Default is self.fname.replace('.dat', '_padded.dat').
+            fill_value : int
+                Fill value for padding. Default is 0.
+            verbose : boolean
+                Display intermediate comments / results. Default is False.
+        '''
+        padding_offsets = kwargs.get('padding_offsets', [0, 0, 0, 0])
+        top_pad, bottom_pad, left_pad, right_pad = padding_offsets
+        save_filename = kwargs.get('save_filename', self.fname.replace('.dat', '_padded.dat'))
+        fill_value = kwargs.get('fill_value', 0)
+        verbose = kwargs.get('verbose', False)
+
+        # Calculate new frame sizes
+        XResolution = self.XResolution
+        YResolution = self.YResolution
+        XResolution_new = XResolution + left_pad + right_pad
+        YResolution_new = YResolution + top_pad + bottom_pad
+        
+        if verbose:
+            print('Input Frame Size: {:d} x {:d} pixels'.format(XResolution, YResolution))
+            print('Using Frame Paddigs: top={:d}, bottom={:d}, left={:d}, right={:d} pixels'.format(top_pad, bottom_pad, left_pad, right_pad))
+            print('Output Frame Size: {:d} x {:d} pixels'.format(XResolution_new, YResolution_new))
+            print('Data will be saved into the file: ', save_filename)
+            print('Will use fill value = {:d}'.format(fill_value))
+
+        # Update the header with new frame size information
+        header = self.header
+        header_new = bytearray(header)
+        XResolution_new_string =  pack('>L', XResolution_new)
+        header_new[100:104] = XResolution_new_string
+        YResolution_new_string =  pack('>L', YResolution_new)
+        header_new[104:108] = YResolution_new_string
+
+        # Create new Raw data array
+        dt = np.dtype(np.int16).newbyteorder('>')
+        Raw_new = np.full((YResolution_new, XResolution_new, 2), fill_value, dtype=dt)
+        Raw_new [top_pad : top_pad + YResolution, left_pad : left_pad + XResolution, 0] = self.RawImageA
+        Raw_new [top_pad : top_pad + YResolution, left_pad : left_pad + XResolution, 1] = self.RawImageB
+
+        # Save new frame
+        with open(save_filename, 'wb') as f:
+            f.write(header_new)
+            Raw_new.reshape(-1).astype(dt).tofile(f)
+
+        return save_filename
 
 
 ###################################################
