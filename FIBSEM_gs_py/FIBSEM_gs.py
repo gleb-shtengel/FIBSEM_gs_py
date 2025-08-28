@@ -10131,6 +10131,7 @@ def transform_and_save_chunk_of_frames(chunk_of_frame_parametrs):
     num_frames = len(frame_filenames)
     transformed_img = np.zeros((ysz, xsz), dtype=float)
     verbose = False
+    save_debug_data = True
     
     for frame_filename, tr_matrix, deformation_field, image_scale, image_offset in zip(frame_filenames, tr_matrices, deformation_fields, image_scales, image_offsets):
         #frame_img = np.zeros((ysz, xsz), dtype=float) + fill_value
@@ -10226,6 +10227,10 @@ def transform_and_save_chunk_of_frames(chunk_of_frame_parametrs):
         tiff.imsave(save_filename, transformed_img.astype(dtp))
     except:
         tiff.imwrite(save_filename, transformed_img.astype(dtp))
+
+    if save_debug_data:
+        save_debug_filename = save_filename.replace('.tif', '_debug_data.bin')
+        pickle.dump([perform_transformation, perform_deformation, shift_matrix, tr_matrices, inv_shift_matrix, xsz, ysz, xi, xa, yi, ya], open(save_debug_filename, 'wb'))
 
     return save_filename
 
@@ -12418,7 +12423,7 @@ class FIBSEM_dataset:
         else:
             XResolutions_default = np.full(len(frame_inds), FIBSEM_frame(self.fls[len(self.fls)//2], calculate_scaled_images=False).XResolution)
         XResolutions = kwargs.get("XResolutions", XResolutions_default)
-        if hasattr(self, 'YResolution'):
+        if hasattr(self, 'YResolutions'):
             YResolutions_default = self.YResolutions
         else:
             YResolutions_default = np.full(len(frame_inds), FIBSEM_frame(self.fls[len(self.fls)//2], calculate_scaled_images=False).YResolution)
