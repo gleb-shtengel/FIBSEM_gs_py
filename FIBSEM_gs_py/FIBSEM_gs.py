@@ -5921,40 +5921,41 @@ def plot_registrtion_quality_xlsx(data_files, labels, **kwargs):
     ax_nsad.text(-0.05, 1.05, data_dir, transform=ax_nsad.transAxes, fontsize=10)
     if save_res_png:
         fig1.savefig(save_filename, dpi=300)
-        
+
     # Generate the Cell Text
     cell_text = []
     fig2_data = []
     limits = []
     rows = labels
-    fst=9
+    columns = ['NSAD Mean', 'NSAD Spread', 'NCC Mean', 'NCC Spread', 'Mean SNR', 'NMI Mean', 'NMI Spread']
+    n_cols = len(columns)
+    n_rows = len(rows)
+    fst = 9
+    fs_cells = 7
 
     for j, (mean, spread) in enumerate(zip(means, spreads)):
         cell_text.append(['{:.4f}'.format(mean[0]), '{:.4f}'.format(spread[0]),
                           '{:.4f}'.format(mean[1]), '{:.4f}'.format(spread[1]), '{:.4f}'.format(mean[2]),
                           '{:.4f}'.format(mean[3]), '{:.4f}'.format(spread[3])])
         fig2_data.append([mean[0], spread[0], mean[1], spread[1], mean[2], mean[3], spread[3]])
-        
-    # Generate the table
-    fig2, ax = plt.subplots(1, 1, figsize=(9.5,1.3))
+    
+     # Create Table Only
+    tszx = 8.0
+    tszy = n_cols/3.0
+    fig2, ax = plt.subplots(1, 1, figsize=(tszx,tszy))
     fig2.subplots_adjust(left=0.32, bottom=0.01, right=0.98, top=0.86, wspace=0.05, hspace=0.05)
     ax.axis(False)
     ax.text(-0.30, 1.07, 'SIFT Registration Comparisons:  ' + data_dir, fontsize=fst)
-    llw1=0.3
+    llw1 = 0.3
     clw = [llw1, llw1]
-
-    columns = ['NSAD Mean', 'NSAD Spread', 'NCC Mean', 'NCC Spread', 'Mean SNR', 'NMI Mean', 'NMI Spread']
-
-    n_cols = len(columns)
-    n_rows = len(rows)
 
     tbl = ax.table(cellText = cell_text,
                    rowLabels = rows,
                    colLabels = columns,
                    cellLoc = 'center',
                    colLoc = 'center',
-                   bbox = [0.01, 0, 0.995, 1.0],
-                  fontsize=16)
+                   bbox = [0.10, 0, 0.895, 1.0],
+                  fontsize = fs_cells)
     tbl.auto_set_column_width(col=3)
 
     table_props = tbl.properties()
@@ -5966,21 +5967,22 @@ def plot_registrtion_quality_xlsx(data_files, labels, **kwargs):
     tbl.auto_set_font_size(False)
     for j, cell in enumerate(table_cells[0:n_cols*n_rows]):
         cell.get_text().set_color(my_cols[j//n_cols])
-        cell.get_text().set_fontsize(fst)
+        cell.get_text().set_fontsize(fs_cells)
     for j, cell in enumerate(table_cells[n_cols*(n_rows+1):]):
         cell.get_text().set_color(my_cols[j])
     for cell in table_cells[n_cols*n_rows:]:
     #    cell.get_text().set_fontweight('bold')
-        cell.get_text().set_fontsize(fst)
+        cell.get_text().set_fontsize(fs_cells)
     save_filename2 = save_filename.replace('.png', '_table.png')
     if save_res_png:
         fig2.savefig(save_filename2, dpi=300)   
-        
+
+    # Create Figure and Table (NCC, SNR only)
     ysize_fig = 4
     ysize_tbl = 0.25 * nfls
-    fst3 = 6
+    fst3 = 7
     fig3, axs3 = plt.subplots(2, 1, figsize=(7, ysize_fig+ysize_tbl),  gridspec_kw={"height_ratios" : [ysize_tbl, ysize_fig]})
-    fig3.subplots_adjust(left=0.10, bottom=0.10, right=0.98, top=0.96, wspace=0.05, hspace=0.05)
+    fig3.subplots_adjust(left=0.10, bottom=0.08, right=0.98, top=0.96, wspace=0.05, hspace=0.05)
 
     for j, reg_data in enumerate(reg_datas):
         my_col = my_cols[j]
@@ -6029,7 +6031,7 @@ def plot_registrtion_quality_xlsx(data_files, labels, **kwargs):
                    colLabels = columns2,
                    cellLoc = 'center',
                    colLoc = 'center',
-                   bbox = [0.45, 0, 0.55, 1.0],  # (left, bottom, width, height)
+                   bbox = [0.45, 0, 0.45, 1.0],  # (left, bottom, width, height)
                   fontsize=16)
     rl = max([len(pf) for pf in labels])
     #tbl2.auto_set_column_width(col=[rl+5, len(columns2[0]), len(columns2[1]), len(columns2[2]), len(columns2[3])])
@@ -10218,8 +10220,9 @@ def transform_and_save_chunk_of_frames(chunk_of_frame_parametrs):
                     pass
                 frame_img_reg = cv2.remap(frame_img, df[:, :, 0].astype(np.float32), df[:, :, 1].astype(np.float32), interpolation=interpolation, borderValue=fill_value)
             else:
-                #transf = ProjectiveTransform(matrix = shift_matrix @ (tr_matrix @ inv_shift_matrix))
-                #frame_img_reg = warp(frame_img, transf, order = int_order, preserve_range=True, mode='constant', cval=fill_value)
+                transf = ProjectiveTransform(matrix = shift_matrix @ (tr_matrix @ inv_shift_matrix))
+                frame_img_reg = warp(frame_img, transf, order = int_order, preserve_range=True, mode='constant', cval=fill_value)
+                '''
                 df = convert_tr_matr_into_deformation_field(shift_matrix @ (tr_matrix @ inv_shift_matrix), frame_img.shape).astype(np.float32)
                 interpolation = cv2.INTER_LINEAR
                 if int_order == 0:
@@ -10227,6 +10230,7 @@ def transform_and_save_chunk_of_frames(chunk_of_frame_parametrs):
                 if int_order == 3:
                     interpolation = cv2.INTER_CUBIC
                 frame_img_reg = cv2.remap(frame_img, df[:, :, 0].astype(np.float32), df[:, :, 1].astype(np.float32), interpolation=interpolation, borderValue=fill_value)
+                '''
         else:
             frame_img_reg = frame_img.copy()
 
