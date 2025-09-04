@@ -8043,14 +8043,14 @@ def evaluate_FIBSEM_frame(params):
         dmax = 0
         WD = 0
         MillingYVoltage = 0
-        center_x = 0
-        center_y = 0
+        center_x = frame.XResolution//2
+        center_y = frame.YResolution//2
         ScanRate = 0
         EHT = 0
         SEMSpecimenI = 0
         ex_error = err
-        XResolution = 0
-        YResolution = 0
+        XResolution = frame.XResolution
+        YResolution = frame.YResolution
 
     return dmin, dmax, WD, MillingYVoltage, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolution, YResolution, ex_error
 
@@ -11232,24 +11232,18 @@ class FIBSEM_dataset:
         self.nfrs = len(fls)
         self.data_dir = kwargs.get('data_dir', os.getcwd())
         self.ftype = kwargs.get("ftype", 0) # ftype=0 - Shan Xu's binary format  ftype=1 - tif files
-        mid_frame = FIBSEM_frame(fls[self.nfrs//2], ftype = self.ftype, calculate_scaled_images=False)
-        self.XResolution = kwargs.get("XResolution", mid_frame.XResolution)
-        self.YResolution = kwargs.get("YResolution", mid_frame.YResolution)
-        self.XResolutions = kwargs.get('XResolutions', np.full(len(fls), mid_frame.XResolution))
-        self.YResolutions = kwargs.get('YResolutions', np.full(len(fls), mid_frame.YResolution))
-        self.Scaling = kwargs.get("Scaling", mid_frame.Scaling)
-        if hasattr(mid_frame, 'PixelSize'):
-            self.PixelSize = kwargs.get("PixelSize", mid_frame.PixelSize)
+        test_frame = FIBSEM_frame(fls[self.nfrs//2], ftype = self.ftype, calculate_scaled_images=False)
+        self.XResolution = kwargs.get("XResolution", test_frame.XResolution)
+        self.YResolution = kwargs.get("YResolution", test_frame.YResolution)
+        self.XResolutions = kwargs.get('XResolutions', np.full(len(fls), test_frame.XResolution))
+        self.YResolutions = kwargs.get('YResolutions', np.full(len(fls), test_frame.YResolution))
+        self.Scaling = kwargs.get("Scaling", test_frame.Scaling)
+        if hasattr(test_frame, 'PixelSize'):
+            self.PixelSize = kwargs.get("PixelSize", test_frame.PixelSize)
         else:
             self.PixelSize = kwargs.get("PixelSize", 8.0)
         self.voxel_size = np.rec.array((self.PixelSize,  self.PixelSize,  self.PixelSize), dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4')])
-        if hasattr(self, 'YResolution'):
-            YResolution_default = self.YResolution
-        else:
-            YResolution_default = FIBSEM_frame(self.fls[len(self.fls)//2], calculate_scaled_images=False).YResolution
-        YResolution = kwargs.get("YResolution", YResolution_default)
 
-        test_frame = FIBSEM_frame(fls[0], ftype=self.ftype, calculate_scaled_images=False)
         self.DetA = test_frame.DetA
         self.DetB = test_frame.DetB
         self.ImgB_fraction = kwargs.get("ImgB_fraction", 0.0)
