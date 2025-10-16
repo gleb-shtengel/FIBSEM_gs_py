@@ -14146,7 +14146,7 @@ def plot_2D_blob_examples_single(img, results_xlsx, **kwargs):
         fig.savefig(save_fname, dpi=300)
 
 
-    def plot_3D_blob_results(results_xlsx, **kwargs):
+def plot_3D_blob_results(results_xlsx, **kwargs):
     '''
     Generates the summary plot based on xlsx file created by select_blobs_LoG_analyze_transitions_3D
     select_blobs_LoG_analyze_transitions_3D analyzes the transitions in the volume, uses blobs_LoG. gleb.shtengel@gmail.com  10/2025 
