@@ -10181,7 +10181,6 @@ def transform_and_save_chunk_of_frames(chunk_of_frame_parametrs):
 
         if perform_transformation:
             if perform_deformation:
-                #df = convert_tr_matr_into_deformation_field(tr_matrix, image.shape).astype(np.float32)
                 df = convert_tr_matr_into_deformation_field(shift_matrix @ (tr_matrix @ inv_shift_matrix), frame_img.shape).astype(np.float32)
                 '''
                 int_order:   #  The order of interpolation. The order has to be in the range 0-5:
@@ -10544,13 +10543,6 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
  
     fpath_reg = os.path.join(data_dir, fnm_reg)
 
-    '''
-    transform_and_save_chunk_of_frames(save_filename, frame_filenames, tr_matrices, tr_args):
-    chunk_of_frame_parametrs = save_filename, frame_filenames, tr_matrices_cum_residual, deformation_fields, image_scales, image_offsets, tr_args
-    tr_args = [ImgB_fraction, xsz, ysz, xi, xa, yi, ya, int_order, invert_data, flipY, flatten_image, image_correction_file, perform_transformation, shift_matrix, inv_shift_matrix, perform_deformation, deformation_type, ftype, dtp, fill_value]
-    process_frames = np.arange(st_frame, min(st_frame+zbin_factor, (frame_inds[-1]+1)))
-    chunk_of_frame_parametrs_dataset.append([save_filename, process_frames, np.array(tr_matr_cum_residual)[process_frames], tr_args])
-    '''
     chunk_of_frame_parametrs_dataset = []
 
     for j, st_frame in enumerate(tqdm(st_frames, desc='Setting up parameter sets', display=disp_res)):
@@ -14024,7 +14016,6 @@ def plot_2D_blob_examples(results_xlsx, **kwargs):
         fig.savefig(save_fname, dpi=300)
 
 
-
 def plot_2D_blob_examples_single(img, results_xlsx, **kwargs):
     '''
     Generates a figure with blob examples based on xlsx file created by estimate_resolution_blobs_2D.
@@ -14153,3 +14144,322 @@ def plot_2D_blob_examples_single(img, results_xlsx, **kwargs):
     if save_png:
         axs[3,0].text(0.00, -0.15, save_fname, transform=axs[3,0].transAxes, fontsize=caption_fs)
         fig.savefig(save_fname, dpi=300)
+
+
+    def plot_3D_blob_results(results_xlsx, **kwargs):
+    '''
+    Generates the summary plot based on xlsx file created by select_blobs_LoG_analyze_transitions_3D
+    select_blobs_LoG_analyze_transitions_3D analyzes the transitions in the volume, uses blobs_LoG. gleb.shtengel@gmail.com  10/2025 
+
+    Parameters:
+    ---------
+    results_file_xlsx : file name of Excel workbook of the results created by estimate_resolution_blobs_2D
+    
+    kwargs:
+    ---------
+    save_png : boolean
+        Save the image into PNG file. Default is False.
+    dpi : int
+        Resolution (DPI). Default is 300.
+    analysis : str
+        'points' (default) or 'slopes'
+    save_fname : string
+        File name for to save the image. Default is created by replace('.xlsx', '_3D_blob_analysis_results.png').
+    nbins : int
+        Number of bins for histogram. Default is 64.
+    verbose : boolean
+        Print the outputs. Default is False.
+    title : str
+        Title. Default is 'Blobs determined by Laplasian of Gaussians'.
+    verbose : boolean
+        Display intermediate results. Default is False.
+    '''
+    save_png = kwargs.get('save_png', False)
+    save_fname = kwargs.get('save_fname', results_xlsx.replace('.xlsx', '_3D_blob_analysis_results.png'))
+    nbins = kwargs.get('nbins', 64)
+    title = kwargs.get('title', 'Blobs determined by Laplasian of Gaussians')
+    dpi = kwargs.get('dpi', 300)
+    analysis = kwargs.get('analysis', 'points')
+    verbose = kwargs.get ('verbose', False)
+
+    saved_kwargs = read_kwargs_xlsx(results_xlsx, 'kwargs Info')
+    pixel_size = saved_kwargs.get("pixel_size", 0.0)
+    top_text = saved_kwargs.get("top_text", '')
+    bounds = saved_kwargs.get("bounds", [0.0, 0.0])
+    perform_transformation =  saved_kwargs.get("perform_transformation", False)
+    transition_low_limit = saved_kwargs.get("transition_low_limit", 0.0)
+    transition_high_limit = saved_kwargs.get("transition_high_limit", 10.0)
+        
+    xs=7.0
+    ys = xs*0.75
+    text_col = 'brown'
+    text_fs = 12
+    axis_label_fs = 10
+    table_fs = 12
+    caption_fs = 7
+    
+    trans_str = '{:.2f} to {:.2f} transition (nm)'.format(bounds[0], bounds[1])
+    if verbose:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'  Reading XLSX File: ' + results_xlsx)
+    int_results = pd.read_excel(results_xlsx, sheet_name='Transition analysis results')
+    
+    error_flags = int_results['error_flag']
+    
+    if analysis == 'points':
+        X1 = np.array(int_results[trans_str + ' X-pt1'])[error_flags==0]
+        X2 = np.array(int_results[trans_str + ' X-pt2'])[error_flags==0]
+        Y1 = np.array(int_results[trans_str + ' Y-pt1'])[error_flags==0]
+        Y2 = np.array(int_results[trans_str + ' Y-pt2'])[error_flags==0]
+        Z1 = np.array(int_results[trans_str + ' Z-pt1'])[error_flags==0]
+        Z2 = np.array(int_results[trans_str + ' Z-pt2'])[error_flags==0]
+        fext = '_{:.0f}{:.0f}pts'.format(bounds[0]*100, bounds[1]*100)
+        xaxis_label = '{:.0f}%-{:.0f}% Transition (pts) (nm)'.format(bounds[0]*100, bounds[1]*100)
+    else:
+        X1 = np.array(int_results[trans_str + ' X-slp1'])[error_flags==0]
+        X2 = np.array(int_results[trans_str + ' X-slp2'])[error_flags==0]
+        Y1 = np.array(int_results[trans_str + ' Y-slp1'])[error_flags==0]
+        Y2 = np.array(int_results[trans_str + ' Y-slp2'])[error_flags==0]
+        Z1 = np.array(int_results[trans_str + ' Z-slp1'])[error_flags==0]
+        Z2 = np.array(int_results[trans_str + ' Z-slp2'])[error_flags==0]
+        fext = '_{:.0f}{:.0f}slp'.format(bounds[0]*100, bounds[1]*100)
+        xaxis_label = '{:.0f}%-{:.0f}% Transition (slope) (nm)'.format(bounds[0]*100, bounds[1]*100)
+    
+    if verbose:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'  Analyzing Results')
+    Xpt_selected = [X1, X2]
+    Ypt_selected = [Y1, Y2]
+    Zpt_selected = [Z1, Z2]
+    All_selected = [X1, X2, Y1, Y2, Z1, Z2]
+    
+    tr_median = np.median(All_selected)
+    tr_mean = np.mean(All_selected)
+    tr_std = np.std(All_selected)
+    
+    if verbose:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'  Generating Plot')
+    fig, ax = plt.subplots(1, 1, figsize=(xs,ys))
+    fig.subplots_adjust(left=0.1, bottom=0.08, right=0.98, top=0.97, wspace=0.02, hspace=0.12)
+    ax.set_title(title, fontsize=text_fs)
+    ax.text(0.6, 0.55, '# of blobs: {:d}'.format(len(X1)), transform=ax.transAxes, color=text_col, fontsize=text_fs)
+    ax.text(0.6, 0.50, '{:.0f}% - {:.0f}% Transitions'.format(bounds[0]*100, bounds[1]*100), transform=ax.transAxes, color=text_col, fontsize=text_fs)
+    ax.text(0.6, 0.45, 'Pixel Size (nm): {:.3f}'.format(pixel_size), transform=ax.transAxes, color=text_col, fontsize=text_fs)
+    ax.text(0.6, 0.40, 'Median value (nm): {:.3f}'.format(tr_median), transform=ax.transAxes, color=text_col, fontsize=text_fs)
+    ax.text(0.6, 0.35, 'Mean value (nm): {:.3f}'.format(tr_mean), transform=ax.transAxes, color=text_col, fontsize=text_fs)
+    ax.text(0.6, 0.30, 'STD (nm):       {:.3f}'.format(tr_std), transform=ax.transAxes, color=text_col, fontsize=text_fs)
+    
+    tr_sets = [Xpt_selected, Ypt_selected, Zpt_selected]
+    hrange = (transition_low_limit, transition_high_limit) # histogram range for the transition distance (in nm))
+    
+    tr_x = np.array(Xpt_selected).flatten()
+    tr_y = np.array(Ypt_selected).flatten()
+    tr_z = np.array(Zpt_selected).flatten()
+    dsets = [tr_x, tr_y, tr_z]
+    cols = ['blue', 'green', 'red']
+    hst_data =  np.zeros((len(dsets), 4))
+    cc_data =  np.zeros((nbins, len(dsets)+1))
+    for (j, dset), col in zip(enumerate(dsets), cols):
+        hst_res = np.array(add_hist(dset, nbins=nbins, hrange=hrange, ax=ax, col=col, label=''), dtype=object)
+        hst_data[j, :] = hst_res[2:7]
+        cc_data[:, j+1] = hst_res[1]
+    ax.grid(True)
+    ax.set_xlim(hrange)
+    ax.set_xlabel(xaxis_label, fontsize=axis_label_fs)
+    ax.set_ylabel('Count', fontsize=axis_label_fs)
+    plt.tick_params(labelsize = axis_label_fs)
+    cond_bl =  'Point Analysis, {:d} blobs'.format(len(tr_x)//2)
+    columns = ['Hist. Peak', 'Median', 'Mean', 'STD']
+    rows = ['X', 'Y', 'Z']
+    n_cols = len(columns)
+    n_rows = len(rows)
+    cell_text = [['{:.3f}'.format(d) for d in dd] for dd in hst_data]
+
+    tbl = ax.table(cellText=cell_text,
+                     rowLabels=rows,
+                     colLabels=columns,
+                     colWidths=[0.14]*n_cols,
+                     cellLoc='center',
+                     colLoc='center',
+                     loc=1,
+                     zorder=10)
+    tbl.scale(1.0, 1.5)
+    table_props = tbl.properties()
+    try:
+        table_cells = table_props['child_artists']
+    except:
+        table_cells = table_props['children']
+
+    for j, cell in enumerate(table_cells[0:n_cols*n_rows]):
+        cell.get_text().set_color(cols[j//n_cols])
+        cell.get_text().set_fontsize(table_fs)
+    for j, cell in enumerate(table_cells[n_cols*(n_rows+1):]):
+        cell.get_text().set_color(cols[j])
+    for cell in table_cells[n_cols*n_rows:]:
+    #    cell.get_text().set_fontweight('bold')
+        cell.get_text().set_fontsize(table_fs)
+    
+    if save_png:
+        ax.text(-0.1, -0.15, save_fname, transform=ax.transAxes, fontsize=caption_fs)
+        fig.savefig(save_fname, dpi=dpi)
+
+
+def plot_3D_blob_examples(volume, results_file_xlsx, **kwargs):
+    '''
+    Generates a figure with blob examples based on xlsx file created by select_blobs_LoG_analyze_transitions_3D
+    select_blobs_LoG_analyze_transitions_3D analyzes the transitions in the volume, uses blobs_LoG. gleb.shtengel@gmail.com  10/2025 
+
+    Parameters:
+    ---------
+    volume : 3D array
+    results_file_xlsx : file name of Excel workbook of the results created by estimate_resolution_blobs_2D
+    
+    kwargs:
+    ---------
+    save_png : boolean
+        save the image into PNG file. Default is False.
+    save_fname : string
+        file name for to save the image. Default is created by results_file_xlsx.replace('.xlsx', '_3D_blob_examples.png').
+    dpi : int
+        Resolution (DPI). Default is 300.
+    title : string
+        Title. Default is 'Examples of 3D blobs used for resolution  analysis'.
+    markersize : int
+        markersize for symbols. Default is 10.
+    fs_labels : int
+        fontsize for axis labels. Default is 12.
+    verbose : boolean
+        Print the outputs. Default is False.
+    '''
+    saved_kwargs = read_kwargs_xlsx(results_file_xlsx, 'kwargs Info')
+    pixel_size = kwargs.get("pixel_size", saved_kwargs['pixel_size'])
+    subset_size = kwargs.get("subset_size", saved_kwargs['subset_size'])
+    dx2 = subset_size//2
+    top_text = kwargs.get("top_text", '')
+    bounds = kwargs.get("bounds", saved_kwargs['bounds'])
+    bands = kwargs.get("bands", saved_kwargs['bands'])
+
+    invert_data = kwargs.get("invert_data", False)
+    int_order =  kwargs.get("int_order", 1)
+    offsets =  kwargs.get("offsets", [0, 0, 0, 0])
+    
+    fs_legend = kwargs.get('fs_legend', 10)
+    fs_labels = kwargs.get('fs_labels', 12)
+    save_png = kwargs.get('save_png', True)
+    save_fname = kwargs.get('save_fname', results_file_xlsx.replace('.xlsx', '_3D_blob_examples.png'))
+    title = kwargs.get('title', 'Examples of 3D blobs used for resolution  analysis')
+    dpi = kwargs.get('dpi', 300)
+
+    fst = 40
+    fs = 12
+    markersize = 10
+    fs_labels = 12
+    xt = 0.0
+    yt=1.5
+
+    trans_str = '{:.2f} to {:.2f} transition (nm)'.format(bounds[0], bounds[1])
+    int_results = pd.read_excel(results_file_xlsx, sheet_name='Transition analysis results')
+    error_flags = int_results['error_flag']
+    X = int_results['X']
+    Y = int_results['Y']
+    Z = int_results['Z']
+    X_selected = np.array(X)[error_flags==0]
+    Y_selected = np.array(Y)[error_flags==0]
+    Z_selected = np.array(Z)[error_flags==0]
+
+    Xs = np.concatenate((X_selected[0:3], X_selected[-3:]))
+    Ys = np.concatenate((Y_selected[0:3], Y_selected[-3:]))
+    Zs = np.concatenate((Z_selected[0:3], Z_selected[-3:]))
+    
+    # Step 3  plot 6 select blobs"
+
+    clr_x = 'green'
+    clr_y = 'blue'
+    clr_z = 'red'
+    fig, axs = plt.subplots(6,4, figsize=(20,30))
+    fig.subplots_adjust(left=0.01, bottom=0.02, right=0.85, top=0.98, wspace=0.1, hspace=0.15)
+
+    axr = axs.ravel()
+
+    for (j, z), y, x in zip(enumerate(Zs), Ys, Xs):
+        xx = int(x)
+        yy = int(y)
+        zz = int(z)
+        frmc = volume[zz-dx2:zz+dx2, yy-dx2:yy+dx2, xx-dx2:xx+dx2]
+        amp_x = frmc[dx2, dx2, :]
+        amp_y = frmc[dx2, :, dx2]
+        amp_z = frmc[: , dx2, dx2]
+        a0 = np.min(np.array((amp_x, amp_y, amp_z)))
+        a1 = np.max(np.array((amp_x, amp_y, amp_z)))
+        amp_scale = (a0-(a1-a0)/10.0, a1+(a1-a0)/10.0)
+
+        axr[4*j].imshow(frmc[dx2, :, :], cmap='Greys')#, vmin=0, vmax=160)
+        axr[4*j].grid(False)
+        axr[4*j].axis(False)
+        crop_x = patches.Rectangle((-0.5,dx2-0.5),subset_size,1, linewidth=1, edgecolor=clr_x , facecolor='none')
+        crop_y = patches.Rectangle((dx2-0.5, -0.5),1,subset_size, linewidth=1, edgecolor=clr_y, facecolor='none')
+        axr[4*j].add_patch(crop_x)
+        axr[4*j].add_patch(crop_y)
+        axr[4*j].text(xt,yt,'X-Y', color='black',  bbox=dict(facecolor='white', edgecolor='none'), fontsize=fst)
+
+        axr[4*j+1].imshow(frmc[:, dx2, :], cmap='Greys')#, vmin=0, vmax=160)
+        axr[4*j+1].grid(False)
+        axr[4*j+1].axis(False)
+        crop_x = patches.Rectangle((-0.5,dx2-0.5),subset_size,1, linewidth=1, edgecolor=clr_x , facecolor='none')
+        crop_z = patches.Rectangle((dx2-0.5, -0.5),1,subset_size, linewidth=1, edgecolor=clr_z, facecolor='none')
+        axr[4*j+1].add_patch(crop_x)
+        axr[4*j+1].add_patch(crop_z)
+        axr[4*j+1].text(xt,yt,'X-Z', color='black',  bbox=dict(facecolor='white', edgecolor='none'), fontsize=fst)
+
+        axr[4*j+2].imshow(frmc[:, :, dx2], cmap='Greys')#, vmin=0, vmax=160)
+        axr[4*j+2].grid(False)
+        axr[4*j+2].axis(False)
+        crop_y2 = patches.Rectangle((-0.5,dx2-0.5),subset_size,1, linewidth=1, edgecolor=clr_y , facecolor='none')
+        crop_z2 = patches.Rectangle((dx2-0.5, -0.5),1,subset_size, linewidth=1, edgecolor=clr_z, facecolor='none')
+        axr[4*j+2].add_patch(crop_y2)
+        axr[4*j+2].add_patch(crop_z2)
+        axr[4*j+2].text(xt,yt,'Y-Z', color='black',  bbox=dict(facecolor='white', edgecolor='none'), fontsize=fst)
+
+        tr_x = analyze_blob_transitions(amp_x,
+                                    pixel_size = pixel_size,
+                                    bounds = bounds,
+                                    bands = bands,
+                                    disp_res = True,
+                                    col='green',
+                                    ax=axr[4*j+3],
+                                    pref = 'X-',
+                                    set_yscale = False,
+                                    markersize = markersize,
+                                    fs_labels=fs_labels)
+        tr_y = analyze_blob_transitions(amp_y,
+                                    pixel_size = pixel_size,
+                                    bounds = bounds,
+                                    bands = bands,
+                                    disp_res = True,
+                                    col='blue',
+                                    disp_graph=True,
+                                    ax=axr[4*j+3],
+                                    pref = 'Y-',
+                                    set_yscale = False,
+                                    markersize = markersize,
+                                    fs_labels=fs_labels)
+        tr_z = analyze_blob_transitions(amp_z,
+                                    pixel_size = pixel_size,
+                                    bounds = bounds,
+                                    bands = bands,
+                                    disp_res = True,
+                                    col='red',
+                                    disp_graph=True,
+                                    ax=axr[4*j+3],
+                                    pref = 'Z-',
+                                    set_yscale = False,
+                                    markersize = markersize,
+                                    fs_labels=fs_labels)
+
+        mybbox = axr[4*j+3].get_position()
+            #print(mybbox)
+        mybbox.x0 = 0.675
+        mybbox.x1 = 0.84
+        axr[4*j+3].set_position(mybbox)
+        axr[4*j+3].legend(loc='upper center', bbox_to_anchor=(1.45,1.05), fancybox=False, edgecolor="w", fontsize = fs_labels)
+
+    fig.suptitle(title, x= 0.25, y=0.99, fontsize = fst//2)
+    fig.savefig(save_fname, dpi=dpi)

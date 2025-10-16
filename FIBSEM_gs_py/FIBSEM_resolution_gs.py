@@ -99,19 +99,19 @@ except:
 
 def analyze_blob_transitions(amp, ** kwargs):
     '''
-    determins the transition parameters and adds the data to the plot. gleb.shtengel@gmail.com 06/2023.
+    determins the transition parameters and adds the data to the plot. gleb.shtengel@gmail.com 10/2025.
     
     Parameters:
     amp : cross-section profile
     
     kwargs:
     bounds : list
-        List of lists of transition limits. Deafault is .[0.37, 0.63].
+        List of lists of transition leves for analysis. Deafault is .[0.37, 0.63].
     pixel_size : float
         pixel size. default is 4.0 nm
     bands : list of 3 ints
         list of three ints for the averaging bands for determining the left min, peak, and right min of the cross-section profile.
-        Deafault is [5 ,3, 5].
+        Deafault is [5, 3, 5].
     disp_res : boolean
         display the results. Default is False
     ax : artist
@@ -121,6 +121,8 @@ def analyze_blob_transitions(amp, ** kwargs):
         color of cross-setcion lines. Default is 'magenta'.
     label : str
         label of histogram plot. Default is empty string.
+    set_yscale : boolean
+        Default is False. If True, y_scale setting (below) is enforced.
     y_scale : (float, float)
         a pair of loats for y-axis scaling. Defaiult is (0, 100)
     xpos : float
@@ -129,8 +131,8 @@ def analyze_blob_transitions(amp, ** kwargs):
         colors for . Default is ['brown', 'green', 'red', 'black'].
     pref : str
         prefix string. Default is 'X-'.
-    fs_legend : int
-        fontsize for legends. Default is 10.
+    markersize : int
+        markersize for symbols. Default is 10.
     fs_labels : int
         fontsize for axis labels. Default is 12.
     verbose : boolean
@@ -148,21 +150,23 @@ def analyze_blob_transitions(amp, ** kwargs):
     disp_res = kwargs.get('disp_res', False)
     ax = kwargs.get('ax', False)
     col = kwargs.get('col', 'magenta')
+    set_yscale = kwargs.get('set_yscale', False)
     y_scale = kwargs.get('y_scale', (0.0, 100.0))
     xpos = kwargs.get('xpos', 1.0)
     cols = kwargs.get('cols', ['brown', 'green', 'red', 'black'])
     pref = kwargs.get('pref', 'X-')
-    fs_legend = kwargs.get('fs_legend', 10)
+    markersize = kwargs.get('markersize', 10)
     fs_labels = kwargs.get('fs_labels', 12)
     verbose = kwargs.get('verbose', False)
                         
     amp=np.array(amp)
     npts = len(amp)
-    xc = npts//2
+    xc = npts//2   # define center
      
     dxi, dxc, dxa = bands
     xnm = np.arange(npts) * pixel_size
     
+    # find the minimum of the left side of the profile
     indmin_i = np.argmin(amp[0:xc-1])
     indmin_i0 = np.max((0, indmin_i-dxi//2-1))
     xmin_i = xnm[indmin_i0:indmin_i0+dxi]
@@ -174,6 +178,7 @@ def analyze_blob_transitions(amp, ** kwargs):
         print('left min Y Pts: ', amp_i)
         print('left min: ', ampi)
     
+    # find the minimum of the right side of the profile
     indmin_a = np.argmin(amp[xc+1:])
     indmin_a1 = np.min((npts, indmin_a+xc+2+dxa//2))
     xmin_a = xnm[indmin_a1-dxa:indmin_a1]
@@ -185,10 +190,7 @@ def analyze_blob_transitions(amp, ** kwargs):
         print('right min Y Pts: ', amp_a)
         print('right min: ', ampa)
     
-    # find peak by averaging around the max value
-    # amp_max = np.mean(amp[(xc-dxc//2):(xc+dxc//2+1)])
-    # amp_subset_fit = amp_subset *0.0 + amp_max
-    # find peak by parabolic fitting around the max value
+    # find peak by performing parabolic fit around the center
     amp_subset = amp[(xc-dxc//2):(xc+dxc//2+1)]
     xnm_subset = xnm[(xc-dxc//2):(xc+dxc//2+1)]
     pcoeff = np.polyfit(xnm_subset, amp_subset, 2)    
@@ -218,22 +220,6 @@ def analyze_blob_transitions(amp, ** kwargs):
             print('xnm_mx', xnm_mx)
             print('amp_max: ', amp_max)
     
-    damp = amp_max - np.min((ampi,ampa))
-
-    if disp_res and ax:
-        ax.plot(xnm,amp, color=col, label = pref+'cross-section')
-        ax.grid(True)
-        ax.set_xlabel('Distance (nm)', fontsize=fs_labels)
-        ax.set_ylabel('Amplitude', fontsize=fs_labels)
-        ax.tick_params(axis='both', which='major', labelsize=fs_labels)
-        ax.set_ylim(y_scale)
-        #ax.plot(xnm[0:dxi], amp[0:dxi]*0+ampi, color=col, linestyle='--')
-        #ax.plot(xnm[-dxa:], amp[-dxa:]*0+ampa, color=col, linestyle='--')
-        ax.plot(xmin_i, xmin_i*0.0+ampi, color=col, linestyle='--')
-        ax.plot(xmin_a, xmin_a*0.0+ampa, color=col, linestyle='--')
-        ax.plot(xnm_subset_fit, amp_subset_fit, color=col, linestyle='--')
-        ax.plot(xnm_mx, amp_max, 'rd')
-
     #first, find half point: falling edge
     j=xc-1
     while (j<npts-1) and amp[j]>ampa+(amp_max-ampa)*0.5:
@@ -246,26 +232,22 @@ def analyze_blob_transitions(amp, ** kwargs):
     while j<npts-1 and amp[j]>yi:
         j += 1
     if (amp[j]-amp[j-1]) != 0:
-    	xi = xnm[j-1] + (yi-amp[j-1])*(xnm[j]-xnm[j-1])/(amp[j]-amp[j-1])
+        xi = xnm[j-1] + (yi-amp[j-1])*(xnm[j]-xnm[j-1])/(amp[j]-amp[j-1])
     else:
-    	xi = xnm[j-1]
+        xi = xnm[j-1]
     ja = j
     while j>0 and amp[j]<ya:
         j -= 1
     if (amp[j+1]-amp[j]) != 0:
-    	xa = xnm[j] + (ya-amp[j])*(xnm[j+1]-xnm[j])/(amp[j+1]-amp[j])
+        xa = xnm[j] + (ya-amp[j])*(xnm[j+1]-xnm[j])/(amp[j+1]-amp[j])
     else:
-    	xa = xnm[j]
+        xa = xnm[j]
     ji=j
     try: 
         [slope, offs] = np.polyfit(xnm[ji:ja+1], amp[ji:ja+1], 1)
     except:
         slope=0.0
     fall_points = [xi, xa, yi, ya, abs((yi-ya)/slope)]
-
-    if disp_res and ax:
-        ax.plot([xi, xa], [yi, ya], 'o', color = col, markersize = fs_legend,
-            label = '{:.0f}%-{:.0f}%: {:.2f}nm'.format(bounds[0]*100, bounds[1]*100, abs(xa-xi)))
             
     #second, find half point: rising edge
     j=xc+1
@@ -279,16 +261,16 @@ def analyze_blob_transitions(amp, ** kwargs):
     while j>0 and amp[j]>yi:
         j -= 1
     if (amp[j+1]-amp[j]) != 0:
-    	xi = xnm[j] + (yi-amp[j])*(xnm[j+1]-xnm[j])/(amp[j+1]-amp[j])
+        xi = xnm[j] + (yi-amp[j])*(xnm[j+1]-xnm[j])/(amp[j+1]-amp[j])
     else:
-    	xi = xnm[j]
+        xi = xnm[j]
     ji = j
     while j<npts-1 and amp[j]<ya:
         j += 1
     if (amp[j]-amp[j-1]) != 0:
-    	xa = xnm[j-1] + (xnm[j]-xnm[j-1])*(ya-amp[j-1])/(amp[j]-amp[j-1])
+        xa = xnm[j-1] + (xnm[j]-xnm[j-1])*(ya-amp[j-1])/(amp[j]-amp[j-1])
     else:
-    	xa = xnm[j-1]
+        xa = xnm[j-1]
     ja=j
     try:
         [slope, offs] = np.polyfit(xnm[ji:ja+1], amp[ji:ja+1], 1)
@@ -297,11 +279,118 @@ def analyze_blob_transitions(amp, ** kwargs):
     rise_points = [xi, xa, yi, ya, abs((yi-ya)/slope)]
 
     if disp_res and ax:
-        ax.plot([xi, xa], [yi, ya], 's', markersize = fs_legend, color = col,
+        ax.plot(xnm,amp, color=col, label = pref+'cross-section')
+        ax.grid(True)
+        ax.set_xlabel('Distance (nm)', fontsize=fs_labels)
+        ax.set_ylabel('Amplitude', fontsize=fs_labels)
+        ax.tick_params(axis='both', which='major', labelsize=fs_labels)
+        if set_yscale:
+            ax.set_ylim(y_scale)
+        ax.plot(xmin_i, xmin_i*0.0+ampi, color=col, linestyle='--')
+        ax.plot(xmin_a, xmin_a*0.0+ampa, color=col, linestyle='--')
+        ax.plot(xnm_subset_fit, amp_subset_fit, color=col, linestyle='--')
+        ax.plot(xnm_mx, amp_max, 'rd')
+        ax.plot([rise_points[0], rise_points[1]], [rise_points[2], rise_points[3]], 'o', color = col, markersize = markersize,
+            label = '{:.0f}%-{:.0f}%: {:.2f}nm'.format(bounds[0]*100, bounds[1]*100, abs(xa-xi)))
+        ax.plot([fall_points[0], fall_points[1]], [fall_points[2], fall_points[3]], 's', markersize = markersize, color = col,
                 label = '{:.0f}%-{:.0f}%: {:.2f}nm'.format(bounds[0]*100, bounds[1]*100, abs(xa-xi)))
-           
     return rise_points, fall_points, [ampi, ampa, amp_max]
 
+
+def analyze_blob(blob_volume, **kwargs):
+    '''
+    Evaluate if blob is appropriate to be used for analysis. gleb.shtengel@gmail.com 10/2025.
+    
+    Parameters:
+    -------------
+    blob_volume : 3D array
+        blob voluime
+    
+    kwargs:
+    -------------
+    pixel_size : float
+        Pixel size in nm. Default is 4.0. 
+    subset_size : int
+        Subset size (pixels) for blob / transition analysis. Default is 16.
+    bounds : lists
+        List of transition limits Default is [0.37, 0.63].
+        Example of multiple lists: [[0.33, 0.67], [0.20, 0.80]].
+    bands : list of 3 ints
+        List of three ints for the averaging bands for determining the left min, peak, and right min of the cross-section profile.
+        Default is [5, 3, 5].
+    min_thr : float
+        Threshold for identifying a 'good' transition (bottom < min_thr* top).
+    transition_low_limit : float
+        Error flag is incremented by 4 if the determined transition distance is below this value. Default is 0.0.
+    transition_high_limit : float
+        Error flag is incremented by 8 if the determined transition distance is above this value. Default is 10.0.
+        
+    Returns:
+    tr_result, error_flag
+
+    '''
+    pixel_size = kwargs.get('pixel_size', 4.0)
+    bounds = kwargs.get('bounds', [0.37, 0.63])
+    bands = kwargs.get('bands', [5, 3, 5])
+    min_thr = kwargs.get('min_thr', 0.4)
+    transition_low_limit = kwargs.get('transition_low_limit', 0.0)
+    transition_high_limit = kwargs.get('transition_high_limit', 10.0)
+    sz, sy, sx = np.shape(blob_volume)
+    error_flag = 0
+    if sz==sy and sz==sx:
+        dx2 = sx//2
+        tr_x = analyze_blob_transitions(blob_volume[dx2, dx2, :],
+                                pixel_size = pixel_size,
+                                bounds = bounds,
+                                bands = bands,
+                                disp_res = False)
+
+        tr_y = analyze_blob_transitions(blob_volume[dx2, :, dx2],
+                                pixel_size = pixel_size,
+                                bounds = bounds,
+                                bands = bands,
+                                disp_res=False)
+
+        tr_z = analyze_blob_transitions(blob_volume[:, dx2, dx2],
+                                pixel_size = pixel_size,
+                                bounds = bounds,
+                                bands = bands,
+                                disp_res=False)
+        # analyze_blob_transitions returns rise_points, fall_points, [ampi, ampa, amp_max]
+
+        trx1 = abs(tr_x[0][1]- tr_x[0][0])
+        trx2 = abs(tr_x[1][1]- tr_x[1][0])
+        try1 = abs(tr_y[0][1]- tr_y[0][0])
+        try2 = abs(tr_y[1][1]- tr_y[1][0])
+        trz1 = abs(tr_z[0][1]- tr_z[0][0])
+        trz2 = abs(tr_z[1][1]- tr_z[1][0])
+        blob_volume_min = np.min(blob_volume)
+
+        if ((tr_x[2][0]-blob_volume_min) > min_thr*(tr_x[2][2]-blob_volume_min)) or ((tr_x[2][1]-blob_volume_min) >  min_thr*(tr_x[2][2]-blob_volume_min)):
+            # ampi > amp_max * min_thr or ampi > amp_max * min_thr for X-transition
+            error_flag += 1
+        if ((tr_y[2][0]-blob_volume_min) > min_thr*(tr_y[2][2]-blob_volume_min)) or ((tr_y[2][1]-blob_volume_min )> min_thr*(tr_y[2][2]-blob_volume_min)):
+            # ampi > amp_max * min_thr or ampi > amp_max * min_thr for Y-transition
+            error_flag += 2
+        if ((tr_z[2][0]-blob_volume_min) > min_thr*(tr_z[2][2]-blob_volume_min)) or ((tr_z[2][1]-blob_volume_min )> min_thr*(tr_z[2][2]-blob_volume_min)):
+            # ampi > amp_max * min_thr or ampi > amp_max * min_thr for Z-transition
+            error_flag += 4
+
+        if (trx1 > transition_high_limit) or (trx2 > transition_high_limit) or (abs(tr_x[0][4]) > transition_high_limit) or (abs(tr_x[1][4]) > transition_high_limit):
+            error_flag += 8
+        if (try1 > transition_high_limit) or (try2 > transition_high_limit) or (abs(tr_y[0][4]) > transition_high_limit) or (abs(tr_y[1][4]) > transition_high_limit):
+            error_flag += 16
+        if (trz1 > transition_high_limit) or (trz2 > transition_high_limit) or (abs(tr_z[0][4]) > transition_high_limit) or (abs(tr_z[1][4]) > transition_high_limit):
+            error_flag += 32
+        try:              
+            tr_result = [(tr_x[2][2]+tr_y[2][2] + tr_z[2][2])/3.0, trx1, trx2, try1, try2, trz1, trz2, abs(tr_x[0][4]), abs(tr_x[1][4]), abs(tr_y[0][4]), abs(tr_y[1][4]), abs(tr_z[0][4]), abs(tr_z[1][4])]
+        except:
+            error_flag += 64
+            tr_result = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    else:
+        error_flag += 128
+        tr_result = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    return tr_result, error_flag
 
 
 def select_blobs_LoG_analyze_transitions(image, **kwargs):
@@ -613,6 +702,301 @@ def select_blobs_LoG_analyze_transitions(image, **kwargs):
         ax.text(0.02,0.95, 'o  Good Blobs', color = 'lime', fontsize = 12, transform=ax.transAxes)
     return results_file_xlsx, blobs_LoG, error_flags, tr_results, hst_datas
 
+
+def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
+    '''
+    Finds blobs in the given grayscale image using Laplasian of Gaussians (LoG). gleb.shtengel@gmail.com 10/2025
+    
+    Parameters:
+    ---------
+    volume : 3D array
+    
+    kwargs:
+    ---------
+    min_sigma : float
+        Min sigma (in pixel units) for Gaussian kernel in LoG search. Default is 1.0.
+    max_sigma : float
+        Max sigma (in pixel units) for Gaussian kernel in LoG search. Default is 1.5.
+    threshold : float
+        Threshold for LoG search. Default is 0.005. The absolute lower bound for scale space maxima.
+        Local maxima smaller than threshold are ignored. Reduce this to detect blobs with less intensities. 
+    overlap : float
+        A value between 0 and 1. Defaults is 0.1. If the area of two blobs overlaps by a
+        fraction greater than 'overlap', the smaller blob is eliminated.
+    pixel_size : float
+        Pixel size in nm. Default is 4.0. 
+    subset_size : int
+        Subset size (pixels) for blob / transition analysis. Default is 16.
+    bounds : lists
+        List of transition limits Default is [0.37, 0.63].
+        Example of multiple lists: [[0.33, 0.67], [0.20, 0.80]].
+    bands : list of 3 ints
+        List of three ints for the averaging bands for determining the left min, peak, and right min of the cross-section profile.
+        Default is [5, 3, 5].
+    min_thr : float
+        Threshold for identifying a 'good' transition (bottom < min_thr* top).
+    transition_low_limit : float
+        Error flag is incremented by 4 if the determined transition distance is below this value. Default is 0.0.
+    transition_high_limit : float
+        Error flag is incremented by 8 if the determined transition distance is above this value. Default is 10.0.
+    chunk_size : int
+        chunk size for splitting the image. Default is 64.
+    border_depth : int
+        Size of chunk overlap. Default is int(4*max_sigma)
+    verbose : boolean
+        Print intermediate outputs. Default is False.
+    nbins : int
+        Number of bins for histogram. Default is 64.
+    save_data_xlsx : boolean
+        save the data into Excel workbook. Default is True.
+    results_file_xlsx : file name for Excel workbook to save the results
+        
+    Returns: results_file_xlsx, blobs_LoG, error_flags, tr_results, hst_datas
+        results_file_xlsx : name of the Excel workbook with the results
+        blobs_LoG : list of lists - all blobs from Step 1
+            [y, x, r] for each blob
+        error_flags : list of error flags
+            error_flag : int
+            0 - no error
+            1 - x-transition failed min_thr check
+            2 - y-transition failed min_thr check
+            4 - x-transition is above transition_high_limit
+            8 - y-transition is above transition_high_limit
+            16 - if failed to add transition
+            32 - if selected subset is not a right size (blob too close to edge)
+        tr_results : list of lists
+            [tr_xs_pts, tr_ys_pts, tr_xs_slp, tr_ys_slp]
+        hst_datas : list of arrays of stats results
+            rows: X- and Y- transitions, X-transitions, Y-transitions
+            columns: Hist.Peak, Median, Mean, STD.
+            For example, X-Y hist median is hst_data[0,1]
+    '''
+    min_sigma = kwargs.get('min_sigma', 1.0)
+    max_sigma = kwargs.get('max_sigma', 1.5)
+    threshold = kwargs.get('threshold', 0.005)
+    overlap = kwargs.get('overlap', 0.1)
+    subset_size = kwargs.get('subset_size', 16)     # blob analysis window size in pixels
+    dx2=subset_size//2
+    pixel_size = kwargs.get('pixel_size', 4.0)
+    bounds = kwargs.get('bounds', [0.37, 0.63])
+    bands = kwargs.get('bands', [5, 3, 5])        # bands for finding left minimum, mid (peak), and right minimum
+    min_thr = kwargs.get('min_thr', 0.4)        #threshold for identifying 'good' transition (bottom < min_thr* top)
+    transition_low_limit = kwargs.get('transition_low_limit', 0.0)
+    transition_high_limit = kwargs.get('transition_high_limit', 10.0)
+    verbose = kwargs.get('verbose', True)
+    nbins = kwargs.get('nbins', 64)
+    save_data_xlsx = kwargs.get('save_data_xlsx', True)
+    results_file_xlsx = kwargs.get('results_file_xlsx', 'results.xlsx')
+    if not save_data_xlsx:
+        results_file_xlsx = 'Data not saved'
+    border_depth = kwargs.get('border_depth', int(4*max_sigma))
+    chunk_size = kwargs.get('chunk_size', 64)
+    depth = {0: border_depth, 1: border_depth, 2: border_depth}
+    
+    kwargs['min_sigma'] = min_sigma
+    kwargs['max_sigma'] = max_sigma
+    kwargs['threshold'] = threshold
+    kwargs['overlap'] = overlap
+    kwargs['subset_size'] = subset_size
+    kwargs['pixel_size'] = pixel_size
+    kwargs['bounds'] = bounds
+    kwargs['bands'] = bands
+    kwargs['min_thr'] = min_thr
+    kwargs['transition_low_limit'] = transition_low_limit
+    kwargs['transition_high_limit'] = transition_high_limit
+    kwargs['border_depth'] = border_depth
+    kwargs['chunk_size'] = chunk_size
+    kwargs['verbose'] = verbose
+    kwargs['nbins'] = nbins
+    kwargs['results_file_xlsx'] = results_file_xlsx
+    if verbose:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step1: Searching for Blobs using Laplasian of Gaussians with following kwargs:')
+        print(kwargs)
+        print('Using DASK delayed')
+    #blobs_LoG = blob_log(image, min_sigma = min_sigma, max_sigma=max_sigma, threshold=threshold, overlap=overlap)
+    
+    volume_dask0 = da.from_array(volume, chunks=chunk_size)
+    volume_dask = da.overlap.overlap(volume_dask0, depth=depth,
+                      boundary={0: 'nearest', 1: 'nearest', 2: 'nearest'})
+    @delayed
+    def process_chunk(chunk, chunk_id, depth, min_sigma, max_sigma, threshold):
+        z_offset = (chunk_id[0]) * (chunk.shape[0] - 2*depth[0]) - depth[0]
+        y_offset = (chunk_id[1]) * (chunk.shape[1] - 2*depth[1]) - depth[1]
+        x_offset = (chunk_id[2]) * (chunk.shape[2] - 2*depth[2]) - depth[2]
+        chunk_np = np.array(chunk)
+        blobs = blob_log(chunk_np, min_sigma=min_sigma, max_sigma=max_sigma, threshold=threshold, overlap=overlap, exclude_border=(depth[0], depth[1], depth[2]))
+        # Adjust coordinates based on chunk position
+        if blobs.size > 0:
+            blobs[:, 0] += z_offset
+            blobs[:, 1] += y_offset
+            blobs[:, 2] += x_offset
+        return blobs
+
+    if verbose:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Setting up DASK computations: blob detection')
+    blob_futures = []
+    for z, chunk_z in enumerate(volume_dask.to_delayed()):
+        for y, chunk_y in enumerate(chunk_z):
+            for x, chunk in enumerate(chunk_y):
+                blob_futures.append(process_chunk(chunk, (z, y, x), depth, min_sigma, max_sigma, threshold))
+    if verbose:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Starting DASK computations: blob detection')
+    with ProgressBar():
+        results = compute(*blob_futures)
+    # Concatenate results
+    blobs_LoG = np.vstack([r for r in results if r.size > 0])
+    if verbose:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step1: Search Blobs using Laplasian of Gaussians, found {:d} blobs'.format(len(blobs_LoG)))
+
+    error_flags = []
+    tr_results = []
+    subset_mags = []
+    hst_datas = []
+
+    for j, blob in enumerate(tqdm(blobs_LoG, desc='Step2: Sortings blobs by magnitude', display=verbose)):
+        z, y, x, r = blob
+        xc = int(x)
+        yc = int(y)
+        zc = int(z)
+        subset_mags.append(np.mean(volume[zc-1:zc+1, yc-1:yc+1, xc-1:xc+1]))
+    
+    subset_mags = np.array(subset_mags)
+    ind_sorted = np.flip(np.argsort(subset_mags))
+    blobs_LoG = np.array(blobs_LoG)[ind_sorted]
+    
+    for j, blob in enumerate(tqdm(blobs_LoG, desc='Step2: Analyzing blobs', display=verbose)):
+        z, y, x, r = blob
+        xc = int(x)
+        yc = int(y)
+        zc = int(z)
+        subset = volume[zc-dx2:zc+dx2, yc-dx2:yc+dx2, xc-dx2:xc+dx2]
+        tr_result, error_flag = analyze_blob(subset,
+                                             pixel_size = pixel_size,
+                                             bounds = bounds,
+                                             bands = bands,
+                                             min_thr = min_thr,
+                                             transition_low_limit = transition_low_limit,
+                                             transition_high_limit = transition_high_limit)
+        tr_results.append(tr_result)
+        error_flags.append(error_flag)
+        
+    error_flags = np.array(error_flags)
+    tr_results_arr = np.array(tr_results)
+    if len(error_flags[error_flags==0]) > 0:
+    #blobs_LoG = blobs_LoG[error_flags==0]
+        Xpt1 = tr_results_arr[error_flags==0, 1]
+        Xpt2 = tr_results_arr[error_flags==0, 2]
+        Ypt1 = tr_results_arr[error_flags==0, 3]
+        Ypt2 = tr_results_arr[error_flags==0, 4]
+        Zpt1 = tr_results_arr[error_flags==0, 5]
+        Zpt2 = tr_results_arr[error_flags==0, 6]
+        Xslp1 = tr_results_arr[error_flags==0, 7]
+        Xslp2 = tr_results_arr[error_flags==0, 8]
+        Yslp1 = tr_results_arr[error_flags==0, 9]
+        Yslp2 = tr_results_arr[error_flags==0, 10]
+        Zslp1 = tr_results_arr[error_flags==0, 11]
+        Zslp2 = tr_results_arr[error_flags==0, 12]
+        XYpt_selected = [Xpt1, Xpt2, Ypt1, Ypt2]
+        Xpt_selected = [Xpt1, Xpt2]
+        Ypt_selected = [Ypt1, Ypt2]
+        Zpt_selected = [Zpt1, Zpt2]
+        Xslp_selected = [Xslp1, Xslp2]
+        Yslp_selected = [Yslp1, Yslp2]
+        Zslp_selected = [Zslp1, Zslp2]
+        tr_mean = np.mean(XYpt_selected)
+        tr_std = np.std(XYpt_selected)
+        tr_sets = [[Xpt_selected, Ypt_selected, Zpt_selected],
+            [Xslp_selected, Yslp_selected, Zslp_selected]]
+
+        if save_data_xlsx:
+            xlsx_writer = pd.ExcelWriter(results_file_xlsx, engine='xlsxwriter')
+            trans_str = '{:.2f} to {:.2f} transition (nm)'.format(bounds[0], bounds[1])
+            columns=['Z', 'Y', 'X', 'R', 'Amp',
+                trans_str + ' X-pt1',
+                trans_str + ' X-pt2',
+                trans_str + ' Y-pt1',
+                trans_str + ' Y-pt2',
+                trans_str + ' Z-pt1',
+                trans_str + ' Z-pt2',
+                trans_str + ' X-slp1',
+                trans_str + ' X-slp2',
+                trans_str + ' Y-slp1',
+                trans_str + ' Y-slp2',
+                trans_str + ' Z-slp1',
+                trans_str + ' Z-slp2',
+                'error_flag']
+            transition_results = pd.DataFrame(np.column_stack((np.array(blobs_LoG), tr_results_arr, error_flags)), columns = columns, index = None)
+            transition_results.to_excel(xlsx_writer, index=None, sheet_name='Transition analysis results')
+            kwargs_info = pd.DataFrame([kwargs]).T # prepare to be save in transposed format
+            kwargs_info.to_excel(xlsx_writer, header=False, sheet_name='kwargs Info')
+        
+        fexts =['_{:.0f}{:.0f}pts'.format(bounds[0]*100, bounds[1]*100), '_{:.0f}{:.0f}slp'.format(bounds[0]*100, bounds[1]*100)]
+        sheet_names = ['{:.0f}%-{:.0f}% summary (pts)'.format(bounds[0]*100, bounds[1]*100),
+            '{:.0f}%-{:.0f}% summary (slopes)'.format(bounds[0]*100, bounds[1]*100)]    
+
+        hranges = [(0, 10.0), 
+               (0, 10.0)]  # histogram range for the transition distance (in nm))
+        for [tr_xs, tr_ys, tr_zs], fext, sheet_name, hrange in zip(tr_sets, fexts, sheet_names, hranges):
+            tr_x = np.array(tr_xs).flatten()
+            tr_y = np.array(tr_ys).flatten()
+            tr_z = np.array(tr_zs).flatten()
+            dsets = [tr_x, tr_y, tr_z]
+            hst_data =  np.zeros((len(dsets), 4))
+            cc_data =  np.zeros((nbins, len(dsets)+1))
+            for (j, dset) in enumerate(dsets):
+                hst_res = np.array(add_hist(dset, nbins=nbins, hrange=hrange, ax=0, col='red', label=''), dtype=object)
+                hst_data[j, :] = hst_res[2:6]
+                cc_data[:, j+1] = hst_res[1]
+            hst_datas.append(hst_data)
+            cell_text = [['{:.2f}'.format(d) for d in dd] for dd in hst_data]
+            if save_data_xlsx:
+                columns = ['Hist. Peak', 'Median', 'Mean', 'STD']
+                rows = ['X', 'Y', 'Z']
+                n_cols = len(columns)
+                n_rows = len(rows)
+                transition_summary = pd.DataFrame(hst_data, columns = columns, index = None)
+                transition_summary.insert(0, '', rows)
+                transition_summary.to_excel(xlsx_writer, index=None, sheet_name=sheet_name)
+        if save_data_xlsx:
+            xlsx_writer.close()
+    else:
+        Xpt1 = []
+        Xpt2 = []
+        Ypt1 = []
+        Ypt2 = []
+        Zpt1 = []
+        Zpt2 = []
+        Xslp1 = []
+        Xslp2 = []
+        Yslp1 = []
+        Yslp2 = []
+        Zslp1 = []
+        Zslp2 = []
+        XYpt_selected = []
+        Xpt_selected = []
+        Ypt_selected = []
+        Zpt_selected = []
+        Xslp_selected = []
+        Yslp_selected = []
+        Zslp_selected = []
+        tr_mean = 0.0
+        tr_std = 0.0
+        tr_sets = [[Xpt_selected, Ypt_selected, Zpt_selected],
+            [Xslp_selected, Yslp_selected, Zslp_selected]]
+        save_data_xlsx = False
+        results_file_xlsx = 'Data not saved'
+
+    if verbose and len(error_flags[error_flags==0]) > 0:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step2: Analyzed Blobs/Transitions, selected {:d}'.format(len(blobs_LoG)))
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step2: Analyzed selected {:d} Blobs, found {:d} good ones'.format(len(error_flags), len(error_flags[error_flags==0])))
+        if save_data_xlsx:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step3: Saving the results into file:  ' + results_file_xlsx)
+        else:
+            print('Data is NOT saved')
+    return results_file_xlsx, blobs_LoG, error_flags, tr_results, hst_datas
+
+
+    
 
 ############################################
 #
