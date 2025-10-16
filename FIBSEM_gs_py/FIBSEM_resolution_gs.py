@@ -343,59 +343,61 @@ def analyze_blob(blob_volume, **kwargs):
     transition_high_limit = kwargs.get('transition_high_limit', 10.0)
     sz, sy, sx = np.shape(blob_volume)
     error_flag = 0
+    tr_result = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     if sz==sy and sz==sx:
-        dx2 = sx//2
-        tr_x = analyze_blob_transitions(blob_volume[dx2, dx2, :],
-                                pixel_size = pixel_size,
-                                bounds = bounds,
-                                bands = bands,
-                                disp_res = False)
+        try:
+            dx2 = sx//2
+            tr_x = analyze_blob_transitions(blob_volume[dx2, dx2, :],
+                                    pixel_size = pixel_size,
+                                    bounds = bounds,
+                                    bands = bands,
+                                    disp_res = False)
 
-        tr_y = analyze_blob_transitions(blob_volume[dx2, :, dx2],
-                                pixel_size = pixel_size,
-                                bounds = bounds,
-                                bands = bands,
-                                disp_res=False)
+            tr_y = analyze_blob_transitions(blob_volume[dx2, :, dx2],
+                                    pixel_size = pixel_size,
+                                    bounds = bounds,
+                                    bands = bands,
+                                    disp_res=False)
 
-        tr_z = analyze_blob_transitions(blob_volume[:, dx2, dx2],
-                                pixel_size = pixel_size,
-                                bounds = bounds,
-                                bands = bands,
-                                disp_res=False)
-        # analyze_blob_transitions returns rise_points, fall_points, [ampi, ampa, amp_max]
+            tr_z = analyze_blob_transitions(blob_volume[:, dx2, dx2],
+                                    pixel_size = pixel_size,
+                                    bounds = bounds,
+                                    bands = bands,
+                                    disp_res=False)
+            # analyze_blob_transitions returns rise_points, fall_points, [ampi, ampa, amp_max]
 
-        trx1 = abs(tr_x[0][1]- tr_x[0][0])
-        trx2 = abs(tr_x[1][1]- tr_x[1][0])
-        try1 = abs(tr_y[0][1]- tr_y[0][0])
-        try2 = abs(tr_y[1][1]- tr_y[1][0])
-        trz1 = abs(tr_z[0][1]- tr_z[0][0])
-        trz2 = abs(tr_z[1][1]- tr_z[1][0])
-        blob_volume_min = np.min(blob_volume)
+            trx1 = abs(tr_x[0][1]- tr_x[0][0])
+            trx2 = abs(tr_x[1][1]- tr_x[1][0])
+            try1 = abs(tr_y[0][1]- tr_y[0][0])
+            try2 = abs(tr_y[1][1]- tr_y[1][0])
+            trz1 = abs(tr_z[0][1]- tr_z[0][0])
+            trz2 = abs(tr_z[1][1]- tr_z[1][0])
+            blob_volume_min = np.min(blob_volume)
 
-        if ((tr_x[2][0]-blob_volume_min) > min_thr*(tr_x[2][2]-blob_volume_min)) or ((tr_x[2][1]-blob_volume_min) >  min_thr*(tr_x[2][2]-blob_volume_min)):
-            # ampi > amp_max * min_thr or ampi > amp_max * min_thr for X-transition
-            error_flag += 1
-        if ((tr_y[2][0]-blob_volume_min) > min_thr*(tr_y[2][2]-blob_volume_min)) or ((tr_y[2][1]-blob_volume_min )> min_thr*(tr_y[2][2]-blob_volume_min)):
-            # ampi > amp_max * min_thr or ampi > amp_max * min_thr for Y-transition
-            error_flag += 2
-        if ((tr_z[2][0]-blob_volume_min) > min_thr*(tr_z[2][2]-blob_volume_min)) or ((tr_z[2][1]-blob_volume_min )> min_thr*(tr_z[2][2]-blob_volume_min)):
-            # ampi > amp_max * min_thr or ampi > amp_max * min_thr for Z-transition
-            error_flag += 4
+            if ((tr_x[2][0]-blob_volume_min) > min_thr*(tr_x[2][2]-blob_volume_min)) or ((tr_x[2][1]-blob_volume_min) >  min_thr*(tr_x[2][2]-blob_volume_min)):
+                # ampi > amp_max * min_thr or ampi > amp_max * min_thr for X-transition
+                error_flag += 1
+            if ((tr_y[2][0]-blob_volume_min) > min_thr*(tr_y[2][2]-blob_volume_min)) or ((tr_y[2][1]-blob_volume_min )> min_thr*(tr_y[2][2]-blob_volume_min)):
+                # ampi > amp_max * min_thr or ampi > amp_max * min_thr for Y-transition
+                error_flag += 2
+            if ((tr_z[2][0]-blob_volume_min) > min_thr*(tr_z[2][2]-blob_volume_min)) or ((tr_z[2][1]-blob_volume_min )> min_thr*(tr_z[2][2]-blob_volume_min)):
+                # ampi > amp_max * min_thr or ampi > amp_max * min_thr for Z-transition
+                error_flag += 4
 
-        if (trx1 > transition_high_limit) or (trx2 > transition_high_limit) or (abs(tr_x[0][4]) > transition_high_limit) or (abs(tr_x[1][4]) > transition_high_limit):
-            error_flag += 8
-        if (try1 > transition_high_limit) or (try2 > transition_high_limit) or (abs(tr_y[0][4]) > transition_high_limit) or (abs(tr_y[1][4]) > transition_high_limit):
-            error_flag += 16
-        if (trz1 > transition_high_limit) or (trz2 > transition_high_limit) or (abs(tr_z[0][4]) > transition_high_limit) or (abs(tr_z[1][4]) > transition_high_limit):
-            error_flag += 32
-        try:              
-            tr_result = [(tr_x[2][2]+tr_y[2][2] + tr_z[2][2])/3.0, trx1, trx2, try1, try2, trz1, trz2, abs(tr_x[0][4]), abs(tr_x[1][4]), abs(tr_y[0][4]), abs(tr_y[1][4]), abs(tr_z[0][4]), abs(tr_z[1][4])]
+            if (trx1 > transition_high_limit) or (trx2 > transition_high_limit) or (abs(tr_x[0][4]) > transition_high_limit) or (abs(tr_x[1][4]) > transition_high_limit):
+                error_flag += 8
+            if (try1 > transition_high_limit) or (try2 > transition_high_limit) or (abs(tr_y[0][4]) > transition_high_limit) or (abs(tr_y[1][4]) > transition_high_limit):
+                error_flag += 16
+            if (trz1 > transition_high_limit) or (trz2 > transition_high_limit) or (abs(tr_z[0][4]) > transition_high_limit) or (abs(tr_z[1][4]) > transition_high_limit):
+                error_flag += 32
+            try:              
+                tr_result = [(tr_x[2][2]+tr_y[2][2] + tr_z[2][2])/3.0, trx1, trx2, try1, try2, trz1, trz2, abs(tr_x[0][4]), abs(tr_x[1][4]), abs(tr_y[0][4]), abs(tr_y[1][4]), abs(tr_z[0][4]), abs(tr_z[1][4])]
+            except:
+                error_flag += 64
         except:
-            error_flag += 64
-            tr_result = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            error_flag += 128
     else:
-        error_flag += 128
-        tr_result = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        error_flag += 256
     return tr_result, error_flag
 
 
@@ -789,7 +791,7 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
     min_thr = kwargs.get('min_thr', 0.4)        #threshold for identifying 'good' transition (bottom < min_thr* top)
     transition_low_limit = kwargs.get('transition_low_limit', 0.0)
     transition_high_limit = kwargs.get('transition_high_limit', 10.0)
-    verbose = kwargs.get('verbose', True)
+    verbose = kwargs.get('verbose', False)
     nbins = kwargs.get('nbins', 64)
     save_data_xlsx = kwargs.get('save_data_xlsx', True)
     results_file_xlsx = kwargs.get('results_file_xlsx', 'results.xlsx')
@@ -819,7 +821,6 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
         print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step1: Searching for Blobs using Laplasian of Gaussians with following kwargs:')
         print(kwargs)
         print('Using DASK delayed')
-    #blobs_LoG = blob_log(image, min_sigma = min_sigma, max_sigma=max_sigma, threshold=threshold, overlap=overlap)
     
     volume_dask0 = da.from_array(volume, chunks=chunk_size)
     volume_dask = da.overlap.overlap(volume_dask0, depth=depth,
@@ -999,8 +1000,10 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step3: Saving the results into file:  ' + results_file_xlsx)
         else:
             print('Data is NOT saved')
+    else:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step2: Analyzed selected {:d} Blobs, found {:d} good ones'.format(len(error_flags), len(error_flags[error_flags==0])))
+        print('Data is NOT saved')
     return results_file_xlsx, blobs_LoG, error_flags, tr_results, hst_datas
-
 
 
 
