@@ -16,6 +16,11 @@ from IPython.core.pylabtools import figsize, getfigs
 from PIL import Image as PILImage
 from PIL.TiffTags import TAGS
 
+from dask.distributed import Client
+from dask.distributed import as_completed
+from dask import delayed, compute
+from dask.diagnostics import ProgressBar
+
 #from tqdm import tqdm_notebook as tqdm
 from tqdm.notebook import tqdm
 
@@ -996,7 +1001,7 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
     return results_file_xlsx, blobs_LoG, error_flags, tr_results, hst_datas
 
 
-    
+
 
 ############################################
 #
