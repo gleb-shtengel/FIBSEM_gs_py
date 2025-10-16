@@ -19,6 +19,7 @@ from PIL.TiffTags import TAGS
 from dask.distributed import Client
 from dask.distributed import as_completed
 from dask import delayed, compute
+import dask.array as da
 from dask.diagnostics import ProgressBar
 
 #from tqdm import tqdm_notebook as tqdm
