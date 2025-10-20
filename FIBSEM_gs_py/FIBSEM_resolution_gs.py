@@ -215,7 +215,7 @@ def analyze_blob_transitions(amp, ** kwargs):
             print('amp_max: ', amp_max)
     else:
         # bad fit, use averaging around center point instead
-        xnm_mx = xc
+        xnm_mx = xnm[xc]
         amp_max = np.mean(amp[(xc-dxc//2):(xc+dxc//2+1)])
         xnm_subset_fit = xnm_subset
         amp_subset_fit = amp_subset *0.0 + amp_max
