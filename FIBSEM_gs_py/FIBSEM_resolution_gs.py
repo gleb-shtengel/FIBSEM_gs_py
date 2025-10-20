@@ -531,54 +531,56 @@ def select_blobs_LoG_analyze_transitions(image, **kwargs):
     blobs_LoG = np.array(blobs_LoG)[ind_sorted]
     
     for j, blob in enumerate(tqdm(blobs_LoG, desc='Analyzing blobs', display=verbose)):
-        y, x, r = blob
-        xc = int(x)
-        yc = int(y)
-        error_flag = 0
-        subset = image[yc-dx2:yc+dx2, xc-dx2:xc+dx2]
-        if np.shape(subset)==(subset_size, subset_size):
-            tr_x = analyze_blob_transitions(subset[dx2, :],
-                                    pixel_size = pixel_size,
-                                    bounds = bounds,
-                                    bands = bands,
-                                    disp_res = False)
+        try:
+            y, x, r = blob
+            xc = int(x)
+            yc = int(y)
+            error_flag = 0
+            tr_result = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            subset = image[yc-dx2:yc+dx2, xc-dx2:xc+dx2]
+            if np.shape(subset)==(subset_size, subset_size):
+                tr_x = analyze_blob_transitions(subset[dx2, :],
+                                        pixel_size = pixel_size,
+                                        bounds = bounds,
+                                        bands = bands,
+                                        disp_res = False)
 
-            tr_y = analyze_blob_transitions(subset[:, dx2],
-                                    pixel_size = pixel_size,
-                                    bounds = bounds,
-                                    bands = bands,
-                                    disp_res=False)
-            # analyze_blob_transitions returns rise_points, fall_points, [ampi, ampa, amp_max]
+                tr_y = analyze_blob_transitions(subset[:, dx2],
+                                        pixel_size = pixel_size,
+                                        bounds = bounds,
+                                        bands = bands,
+                                        disp_res=False)
+                # analyze_blob_transitions returns rise_points, fall_points, [ampi, ampa, amp_max]
 
-            trx1 = abs(tr_x[0][1]- tr_x[0][0])
-            trx2 = abs(tr_x[1][1]- tr_x[1][0])
-            try1 = abs(tr_y[0][1]- tr_y[0][0])
-            try2 = abs(tr_y[1][1]- tr_y[1][0])
-            subset_min = np.min(subset)
-            
-            if ((tr_x[2][0]-subset_min) > min_thr*(tr_x[2][2]-subset_min)) or ((tr_x[2][1]-subset_min) >  min_thr*(tr_x[2][2]-subset_min)):
-                # ampi > amp_max * min_thr or ampi > amp_max * min_thr for X-transition
-                error_flag += 1
-            if ((tr_y[2][0]-subset_min) > min_thr*(tr_y[2][2]-subset_min)) or ((tr_y[2][1]-subset_min )> min_thr*(tr_y[2][2]-subset_min)):
-                # ampi > amp_max * min_thr or ampi > amp_max * min_thr for Y-transition
-                error_flag += 2
-            if (trx1 > transition_high_limit) or (trx2 > transition_high_limit) or (abs(tr_x[0][4]) > transition_high_limit) or (abs(tr_x[1][4]) > transition_high_limit):
-                error_flag += 4
-            if (try1 > transition_high_limit) or (try2 > transition_high_limit) or (abs(tr_y[0][4]) > transition_high_limit) or (abs(tr_y[1][4]) > transition_high_limit):
-                error_flag += 8
-            try:              
-                tr_results.append([(tr_x[2][2]+tr_y[2][2])/2.0, trx1, trx2, try1, try2, abs(tr_x[0][4]), abs(tr_x[1][4]), abs(tr_y[0][4]), abs(tr_y[1][4])])
-            except:
-                error_flag += 16
-                if verbose:
-                    print('could not append blob, error_flag={:d}'.format(error_flag))
-                tr_results.append([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-                
-        else:
-            error_flag += 32
-            tr_results.append([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-            if verbose:
-                print('could not append blob, error_flag={:d}'.format(error_flag))
+                trx1 = abs(tr_x[0][1]- tr_x[0][0])
+                trx2 = abs(tr_x[1][1]- tr_x[1][0])
+                try1 = abs(tr_y[0][1]- tr_y[0][0])
+                try2 = abs(tr_y[1][1]- tr_y[1][0])
+                subset_min = np.min(subset)
+
+                if ((tr_x[2][0]-subset_min) > min_thr*(tr_x[2][2]-subset_min)) or ((tr_x[2][1]-subset_min) >  min_thr*(tr_x[2][2]-subset_min)):
+                    # ampi > amp_max * min_thr or ampi > amp_max * min_thr for X-transition
+                    error_flag += 1
+                if ((tr_y[2][0]-subset_min) > min_thr*(tr_y[2][2]-subset_min)) or ((tr_y[2][1]-subset_min )> min_thr*(tr_y[2][2]-subset_min)):
+                    # ampi > amp_max * min_thr or ampi > amp_max * min_thr for Y-transition
+                    error_flag += 2
+                if (trx1 > transition_high_limit) or (trx2 > transition_high_limit) or (abs(tr_x[0][4]) > transition_high_limit) or (abs(tr_x[1][4]) > transition_high_limit):
+                    error_flag += 4
+                if (try1 > transition_high_limit) or (try2 > transition_high_limit) or (abs(tr_y[0][4]) > transition_high_limit) or (abs(tr_y[1][4]) > transition_high_limit):
+                    error_flag += 8
+                try:              
+                    tr_result = [(tr_x[2][2]+tr_y[2][2])/2.0, trx1, trx2, try1, try2, abs(tr_x[0][4]), abs(tr_x[1][4]), abs(tr_y[0][4]), abs(tr_y[1][4])]
+                except:
+                    error_flag += 16
+                    #if verbose:
+                    #    print('could not append blob, error_flag={:d}'.format(error_flag))
+            else:
+                error_flag += 32
+                #if verbose:
+                #    print('could not append blob, error_flag={:d}'.format(error_flag))
+        except:
+            error_flag += 64
+        tr_results.append(tr_result)
         error_flags.append(error_flag)
         
     error_flags = np.array(error_flags)
