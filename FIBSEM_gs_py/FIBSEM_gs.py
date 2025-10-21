@@ -10,6 +10,7 @@ import re
 import gc
 from copy import deepcopy
 import cv2
+import itertools
 
 import psutil
 import inspect
@@ -14146,6 +14147,10 @@ def plot_3D_blob_results(results_xlsx, **kwargs):
     
     kwargs:
     ---------
+    transitions : list of strings
+        List of transitions to analyze. Defaults is ['X', 'Y', 'Z']. Allowed options are: 'X', 'Y', 'Z', 'X1', 'Y1', 'Z1', 'X2', 'Y2', 'Z2'
+    cols : list of colors
+        One color per each of the transitions above. Default is ['blue', 'green', 'red', 'magenta', 'lime', 'cyan', 'black']
     save_png : boolean
         Save the image into PNG file. Default is False.
     dpi : int
@@ -14163,6 +14168,8 @@ def plot_3D_blob_results(results_xlsx, **kwargs):
     verbose : boolean
         Display intermediate results. Default is False.
     '''
+    transitions = kwargs.get('transitions', ['X', 'Y', 'Z'])
+    cols = kwargs.get('cols', ['blue', 'green', 'red', 'magenta', 'lime', 'cyan', 'black'])
     save_png = kwargs.get('save_png', False)
     save_fname = kwargs.get('save_fname', results_xlsx.replace('.xlsx', '_3D_blob_analysis_results.png'))
     nbins = kwargs.get('nbins', 64)
@@ -14195,34 +14202,53 @@ def plot_3D_blob_results(results_xlsx, **kwargs):
     error_flags = int_results['error_flag']
     
     if analysis == 'points':
-        X1 = np.array(int_results[trans_str + ' X-pt1'])[error_flags==0]
-        X2 = np.array(int_results[trans_str + ' X-pt2'])[error_flags==0]
-        Y1 = np.array(int_results[trans_str + ' Y-pt1'])[error_flags==0]
-        Y2 = np.array(int_results[trans_str + ' Y-pt2'])[error_flags==0]
-        Z1 = np.array(int_results[trans_str + ' Z-pt1'])[error_flags==0]
-        Z2 = np.array(int_results[trans_str + ' Z-pt2'])[error_flags==0]
+        X1 = int_results[trans_str + ' X-pt1'][error_flags==0]
+        X2 = int_results[trans_str + ' X-pt2'][error_flags==0]
+        Y1 = int_results[trans_str + ' Y-pt1'][error_flags==0]
+        Y2 = int_results[trans_str + ' Y-pt2'][error_flags==0]
+        Z1 = int_results[trans_str + ' Z-pt1'][error_flags==0]
+        Z2 = int_results[trans_str + ' Z-pt2'][error_flags==0]
         fext = '_{:.0f}{:.0f}pts'.format(bounds[0]*100, bounds[1]*100)
         xaxis_label = '{:.0f}%-{:.0f}% Transition (pts) (nm)'.format(bounds[0]*100, bounds[1]*100)
     else:
-        X1 = np.array(int_results[trans_str + ' X-slp1'])[error_flags==0]
-        X2 = np.array(int_results[trans_str + ' X-slp2'])[error_flags==0]
-        Y1 = np.array(int_results[trans_str + ' Y-slp1'])[error_flags==0]
-        Y2 = np.array(int_results[trans_str + ' Y-slp2'])[error_flags==0]
-        Z1 = np.array(int_results[trans_str + ' Z-slp1'])[error_flags==0]
-        Z2 = np.array(int_results[trans_str + ' Z-slp2'])[error_flags==0]
+        X1 = int_results[trans_str + ' X-slp1'][error_flags==0]
+        X2 = int_results[trans_str + ' X-slp2'][error_flags==0]
+        Y1 = int_results[trans_str + ' Y-slp1'][error_flags==0]
+        Y2 = int_results[trans_str + ' Y-slp2'][error_flags==0]
+        Z1 = int_results[trans_str + ' Z-slp1'][error_flags==0]
+        Z2 = int_results[trans_str + ' Z-slp2'][error_flags==0]
         fext = '_{:.0f}{:.0f}slp'.format(bounds[0]*100, bounds[1]*100)
         xaxis_label = '{:.0f}%-{:.0f}% Transition (slope) (nm)'.format(bounds[0]*100, bounds[1]*100)
     
     if verbose:
         print(time.strftime('%Y/%m/%d  %H:%M:%S')+'  Analyzing Results')
-    Xpt_selected = [X1, X2]
-    Ypt_selected = [Y1, Y2]
-    Zpt_selected = [Z1, Z2]
-    All_selected = [X1, X2, Y1, Y2, Z1, Z2]
     
-    tr_median = np.median(All_selected)
-    tr_mean = np.mean(All_selected)
-    tr_std = np.std(All_selected)
+    All_selected = []
+    for transition in transitions:
+        if transition == 'X':
+            All_selected.append(np.array((X1, X2)).flatten())
+        if transition == 'X1':
+            All_selected.append(np.array(X1))
+        if transition == 'X2':
+            All_selected.append(np.array(X2))
+        if transition == 'Y':
+            All_selected.append(np.array((Y1, Y2)).flatten())
+        if transition == 'Y1':
+            All_selected.append(np.array(Y1))
+        if transition == 'Y2':
+            All_selected.append(np.array(Y2))
+        if transition == 'Z':
+            All_selected.append(np.array((Z1, Z2)).flatten())
+        if transition == 'Z1':
+            All_selected.append(np.array(Z1))
+        if transition == 'Z2':
+            All_selected.append(np.array(Z2))
+
+    All_selected_flattened = list(itertools.chain.from_iterable(All_selected))  # flatten the list of lists of all considered transitions 
+    tr_median = np.median(All_selected_flattened)
+    tr_mean = np.mean(All_selected_flattened)
+    tr_std = np.std(All_selected_flattened)
+    print(len(All_selected))
     
     if verbose:
         print(time.strftime('%Y/%m/%d  %H:%M:%S')+'  Generating Plot')
@@ -14236,18 +14262,12 @@ def plot_3D_blob_results(results_xlsx, **kwargs):
     ax.text(0.6, 0.35, 'Mean value (nm): {:.3f}'.format(tr_mean), transform=ax.transAxes, color=text_col, fontsize=text_fs)
     ax.text(0.6, 0.30, 'STD (nm):       {:.3f}'.format(tr_std), transform=ax.transAxes, color=text_col, fontsize=text_fs)
     
-    tr_sets = [Xpt_selected, Ypt_selected, Zpt_selected]
     hrange = (transition_low_limit, transition_high_limit) # histogram range for the transition distance (in nm))
-    
-    tr_x = np.array(Xpt_selected).flatten()
-    tr_y = np.array(Ypt_selected).flatten()
-    tr_z = np.array(Zpt_selected).flatten()
-    dsets = [tr_x, tr_y, tr_z]
-    cols = ['blue', 'green', 'red']
-    hst_data =  np.zeros((len(dsets), 4))
-    cc_data =  np.zeros((nbins, len(dsets)+1))
-    for (j, dset), col in zip(enumerate(dsets), cols):
-        hst_res = np.array(add_hist(dset, nbins=nbins, hrange=hrange, ax=ax, col=col, label=''), dtype=object)
+      
+    hst_data =  np.zeros((len(transitions), 4))
+    cc_data =  np.zeros((nbins, len(transitions)+1))
+    for (j, transition), col in zip(enumerate(transitions), cols):
+        hst_res = np.array(add_hist(All_selected[j], nbins=nbins, hrange=hrange, ax=ax, col=col, label=''), dtype=object)
         hst_data[j, :] = hst_res[2:7]
         cc_data[:, j+1] = hst_res[1]
     ax.grid(True)
@@ -14255,9 +14275,9 @@ def plot_3D_blob_results(results_xlsx, **kwargs):
     ax.set_xlabel(xaxis_label, fontsize=axis_label_fs)
     ax.set_ylabel('Count', fontsize=axis_label_fs)
     plt.tick_params(labelsize = axis_label_fs)
-    cond_bl =  'Point Analysis, {:d} blobs'.format(len(tr_x)//2)
+    cond_bl =  'Point Analysis, {:d} blobs'.format(len(X1)//2)
     columns = ['Hist. Peak', 'Median', 'Mean', 'STD']
-    rows = ['X', 'Y', 'Z']
+    rows = transitions
     n_cols = len(columns)
     n_rows = len(rows)
     cell_text = [['{:.3f}'.format(d) for d in dd] for dd in hst_data]
