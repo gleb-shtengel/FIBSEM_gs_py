@@ -759,6 +759,8 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
         Number of bins for histogram. Default is 64.
     save_data_xlsx : boolean
         save the data into Excel workbook. Default is True.
+    save_good_blobs_only : boolean
+        save only good blob data (useful if the dataset is too big). Default is False.
     results_file_xlsx : file name for Excel workbook to save the results
         
     Returns: results_file_xlsx, blobs_LoG, error_flags, tr_results, hst_datas
@@ -796,6 +798,7 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
     verbose = kwargs.get('verbose', False)
     nbins = kwargs.get('nbins', 64)
     save_data_xlsx = kwargs.get('save_data_xlsx', True)
+    save_good_blobs_only = kwargs.get('save_good_blobs_only', False)
     results_file_xlsx = kwargs.get('results_file_xlsx', 'results.xlsx')
     if not save_data_xlsx:
         results_file_xlsx = 'Data not saved'
@@ -934,7 +937,14 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
                 trans_str + ' Z-slp1',
                 trans_str + ' Z-slp2',
                 'error_flag']
-            transition_results = pd.DataFrame(np.column_stack((np.array(blobs_LoG), tr_results_arr, error_flags)), columns = columns, index = None)
+            if save_good_blobs_only:
+                if verbose:
+                    print('Saving only good blob data')
+                transition_results = pd.DataFrame(np.column_stack((np.array(blobs_LoG[error_flags==0]), tr_results_arr[error_flags==0, :], error_flags[error_flags==0])), columns = columns, index = None)
+            else:
+                if verbose:
+                    print('Saving all blob data')
+                transition_results = pd.DataFrame(np.column_stack((np.array(blobs_LoG), tr_results_arr, error_flags)), columns = columns, index = None)
             transition_results.to_excel(xlsx_writer, index=None, sheet_name='Transition analysis results')
             kwargs_info = pd.DataFrame([kwargs]).T # prepare to be save in transposed format
             kwargs_info.to_excel(xlsx_writer, header=False, sheet_name='kwargs Info')
