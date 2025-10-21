@@ -4070,8 +4070,6 @@ def mrc_stack_plot_2D_blob_examples(results_xlsx, **kwargs):
     bounds = saved_kwargs.get("bounds", [0.0, 0.0])
     bands = saved_kwargs.get("bands", [3, 2, 3])
     image_name = saved_kwargs.get("image_name", 'ImageA')
-    perform_transformation =  saved_kwargs.get("perform_transformation", False)
-    pad_edges =  saved_kwargs.get("pad_edges", True)
     ftype =  saved_kwargs.get("ftype", 0)
     zbin_factor =  saved_kwargs.get("zbin_factor", 1)
     flipY = saved_kwargs.get("flipY", False)
@@ -13843,7 +13841,7 @@ def plot_2D_blob_examples(results_xlsx, **kwargs):
     flipY = saved_kwargs.get("flipY", False)
     invert_data = saved_kwargs.get("invert_data", False)
     int_order =  saved_kwargs.get("int_order", 1)
-    offsets =  saved_kwargs.get("offsets", [0, 0, 0, 0])
+    offsets_sizes =  saved_kwargs.get("offsets_sizes", [0, 0, 0, 0])
     
     fls_info = pd.read_excel(results_xlsx, sheet_name='Frame Filenames')
     fls = fls_info['Frame Filename']
@@ -13903,7 +13901,7 @@ def plot_2D_blob_examples(results_xlsx, **kwargs):
         frame = FIBSEM_frame(fl, ftype=ftype, calculate_scaled_images = calculate_scaled_images)
         shape = [frame.YResolution, frame.XResolution]
         if pad_edges and perform_transformation:
-            xi, yi, padx, pady = offsets
+            xi, yi, padx, pady = offsets_sizes
             shift_matrix = np.array([[1.0, 0.0, xi],
                                      [0.0, 1.0, yi],
                                      [0.0, 0.0, 1.0]]).astype(float)
@@ -14049,15 +14047,6 @@ def plot_2D_blob_examples_single(img, results_xlsx, **kwargs):
     bounds = saved_kwargs.get("bounds", [0.0, 0.0])
     bands = saved_kwargs.get("bands", [3, 2, 3])
     image_name = saved_kwargs.get("image_name", 'ImageA')
-    calculate_scaled_images = (image_name == 'ImageA') or (image_name == 'ImageB')
-    perform_transformation =  saved_kwargs.get("perform_transformation", False)
-    pad_edges =  saved_kwargs.get("pad_edges", True)
-    ftype =  saved_kwargs.get("ftype", 0)
-    zbin_factor =  saved_kwargs.get("zbin_factor", 1)
-    flipY = saved_kwargs.get("flipY", False)
-    invert_data = saved_kwargs.get("invert_data", False)
-    int_order =  saved_kwargs.get("int_order", 1)
-    offsets =  saved_kwargs.get("offsets", [0, 0, 0, 0])
     
     xs=16.0
     ys = xs*5.0/4.0
@@ -14153,7 +14142,7 @@ def plot_3D_blob_results(results_xlsx, **kwargs):
 
     Parameters:
     ---------
-    results_file_xlsx : file name of Excel workbook of the results created by estimate_resolution_blobs_2D
+    results_file_xlsx : file name of Excel workbook of the results created by select_blobs_LoG_analyze_transitions_3D
     
     kwargs:
     ---------
@@ -14310,7 +14299,7 @@ def plot_3D_blob_examples(volume, results_file_xlsx, **kwargs):
     Parameters:
     ---------
     volume : 3D array
-    results_file_xlsx : file name of Excel workbook of the results created by estimate_resolution_blobs_2D
+    results_file_xlsx : file name of Excel workbook of the results created by select_blobs_LoG_analyze_transitions_3D
     
     kwargs:
     ---------
