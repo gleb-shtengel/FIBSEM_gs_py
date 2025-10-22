@@ -3694,6 +3694,8 @@ def mrc_stack_estimate_resolution_blobs_2D(mrc_filename, **kwargs):
         Number of bins for histogram.
     save_data_xlsx : boolean
         save the data into Excel workbook. Default is True.
+    save_good_blobs_only : boolean
+        save only good blob data (useful if the dataset is too big). Default is False.
     results_file_xlsx : file name for Excel workbook to save the results.
 
     Returns: XY_transitions ; array[len(frame_inds), 4]
@@ -3732,6 +3734,7 @@ def mrc_stack_estimate_resolution_blobs_2D(mrc_filename, **kwargs):
     transition_low_limit = kwargs.get('transition_low_limit', 0.0)
     transition_high_limit = kwargs.get('transition_high_limit', 10.0)
     save_data_xlsx = kwargs.get('save_data_xlsx', True)
+    save_good_blobs_only = kwargs.get('save_good_blobs_only', False)
 
     default_results_file_xlsx = os.path.join(data_dir, 'Dataset_2D_blob_analysis_results.xlsx')
     results_file_xlsx = kwargs.get('results_file_xlsx', default_results_file_xlsx)
@@ -3839,7 +3842,7 @@ def mrc_stack_estimate_resolution_blobs_2D(mrc_filename, **kwargs):
     eval_bounds_df.insert(0, 'Frame', frame_inds)
 
     for j, frame_ind in enumerate(tqdm(frame_inds, desc='Building the Parameter Sets Analyzing Resolution using Blobs ', display=verbose)):
-        mrc_params_single = [mrc_filename, frame_ind, eval_bounds[j], offsets, invert_data, flipY, zbin_factor, min_sigma, max_sigma, threshold,  overlap, pixel_size, subset_size, bounds, bands, min_thr, transition_low_limit, transition_high_limit, nbins, verbose, disp_res, False]
+        mrc_params_single = [mrc_filename, frame_ind, eval_bounds[j], offsets, invert_data, flipY, zbin_factor, min_sigma, max_sigma, threshold,  overlap, pixel_size, subset_size, bounds, bands, min_thr, transition_low_limit, transition_high_limit, nbins, verbose, disp_res, False, save_good_blobs_only]
         mrc_papams_blob_analysis.append(mrc_params_single)
 
     if use_DASK:
@@ -3874,8 +3877,10 @@ def mrc_stack_estimate_resolution_blobs_2D(mrc_filename, **kwargs):
 
         if verbose:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Saving the results into file:  ' + results_file_xlsx)
-
-        transition_results = pd.DataFrame(np.column_stack((frame_inds, blobs_LoG, tr_results, error_flags)), columns = columns, index = None)
+        if save_good_blobs_only:
+            transition_results = pd.DataFrame(np.column_stack((frame_inds[error_flags==0], blobs_LoG[error_flags==0], tr_results[error_flags==0], error_flags[error_flags==0])), columns = columns, index = None)
+        else:
+            transition_results = pd.DataFrame(np.column_stack((frame_inds, blobs_LoG, tr_results, error_flags)), columns = columns, index = None)
         transition_results.to_excel(xlsx_writer, index=None, sheet_name='Transition analysis results')
         kwargs_info = pd.DataFrame([kwargs]).T # prepare to be save in transposed format
         kwargs_info.to_excel(xlsx_writer, header=False, sheet_name='kwargs Info')
@@ -3897,7 +3902,7 @@ def select_blobs_LoG_analyze_transitions_2D_mrc_stack(params):
     
     Parameters:
     params = list of: [mrc_filename, frame_ind, eval_bounds_single_frame, offsets, invert_data, flipY, zbin_factor, min_sigma, max_sigma, threshold,  overlap, pixel_size, subset_size, bounds, bands,
-        min_thr, transition_low_limit, transition_high_limit, nbins, verbose, disp_res, save_data]
+        min_thr, transition_low_limit, transition_high_limit, nbins, verbose, disp_res, save_data, save_good_blobs_only]
     mrc_filename
     frame_ind : index of frame
     eval_bounds_single_frame
@@ -3937,11 +3942,13 @@ def select_blobs_LoG_analyze_transitions_2D_mrc_stack(params):
     verbose
     disp_res
     save_data
+    save_good_blobs_only : boolean
+        save only good blob data (useful if the dataset is too big). Default is False.
     
     Returns: XY_transitions
         XY_transitions with error_flag=0
     '''
-    [mrc_filename, frame_ind, eval_bounds_single_frame, offsets, invert_data, flipY, zbin_factor, min_sigma, max_sigma, threshold,  overlap, pixel_size, subset_size, bounds, bands, min_thr, transition_low_limit, transition_high_limit, nbins, verbose, disp_res, save_data] = params
+    [mrc_filename, frame_ind, eval_bounds_single_frame, offsets, invert_data, flipY, zbin_factor, min_sigma, max_sigma, threshold,  overlap, pixel_size, subset_size, bounds, bands, min_thr, transition_low_limit, transition_high_limit, nbins, verbose, disp_res, save_data, save_good_blobs_only] = params
     mrc_obj = mrcfile.mmap(mrc_filename, mode='r')
     header = mrc_obj.header
     mrc_mode = header.mode
@@ -4021,6 +4028,7 @@ def select_blobs_LoG_analyze_transitions_2D_mrc_stack(params):
     'title' : ' ',
     'nbins' : nbins,
     'save_data_xlsx' : save_data,
+    'save_good_blobs_only' : save_good_blobs_only,
     'results_file_xlsx' : results_file_xlsx}
 
     results_file_xlsx, blobs_LoG, error_flags, tr_results, hst_datas =  select_blobs_LoG_analyze_transitions(frame_eval, **kwargs)
@@ -4035,7 +4043,10 @@ def select_blobs_LoG_analyze_transitions_2D_mrc_stack(params):
     Ypt1 = tr_results_arr[error_flags==0, 3]
     Ypt2 = tr_results_arr[error_flags==0, 4]
     XY_transitions = np.array([Xpt1, Xpt2, Ypt1, Ypt2]).T
-    return  frame_ind_arr, error_flags, blobs_LoG, tr_results_arr
+    if save_good_blobs_only:
+        return  frame_ind_arr[error_flags==0], error_flags[error_flags==0], blobs_LoG[error_flags==0], tr_results_arr[error_flags==0, :]
+    else:
+        return  frame_ind_arr, error_flags, blobs_LoG, tr_results_arr
 
 
 def mrc_stack_plot_2D_blob_examples(results_xlsx, **kwargs):
@@ -10748,7 +10759,7 @@ def select_blobs_LoG_analyze_transitions_2D_dataset(params):
     
     Parameters:
     params = list of: [fls, frame_ind, ftype, image_name, eval_bounds, offsets_sizes, invert_data, flipY, zbin_factor, perform_transformation, tr_matr_cum_residual, int_order, pad_edges,
-        min_sigma, max_sigma, threshold,  overlap, pixel_size, subset_size, bounds, bands, min_thr, transition_low_limit, transition_high_limit, nbins, verbose, disp_res, save_data]
+        min_sigma, max_sigma, threshold,  overlap, pixel_size, subset_size, bounds, bands, min_thr, transition_low_limit, transition_high_limit, nbins, verbose, disp_res, save_data, save_good_blobs_only]
     fls
     frame_ind : index of frame
     ftype
@@ -10797,11 +10808,12 @@ def select_blobs_LoG_analyze_transitions_2D_dataset(params):
     verbose
     disp_res
     save_data
+    save_good_blobs_only
     
     Returns: XY_transitions
         XY_transitions with error_flag=0
     '''
-    [fls, frame_ind, ftype, image_name, eval_bounds_single_frame, offsets_sizes, invert_data, flipY, zbin_factor, perform_transformation, tr_matr_cum_residual, int_order, pad_edges, min_sigma, max_sigma, threshold,  overlap, pixel_size, subset_size, bounds, bands, min_thr, transition_low_limit, transition_high_limit, nbins, verbose, disp_res, save_data] = params
+    [fls, frame_ind, ftype, image_name, eval_bounds_single_frame, offsets_sizes, invert_data, flipY, zbin_factor, perform_transformation, tr_matr_cum_residual, int_order, pad_edges, min_sigma, max_sigma, threshold,  overlap, pixel_size, subset_size, bounds, bands, min_thr, transition_low_limit, transition_high_limit, nbins, verbose, disp_res, save_data, save_good_blobs_only] = params
 
     calculate_scaled_images = (image_name == 'ImageA') or (image_name == 'ImageB')
     frame = FIBSEM_frame(fls[frame_ind], ftype=ftype, calculate_scaled_images=calculate_scaled_images)
@@ -10891,6 +10903,7 @@ def select_blobs_LoG_analyze_transitions_2D_dataset(params):
     'title' : ' ',
     'nbins' : nbins,
     'save_data_xlsx' : save_data,
+    'save_good_blobs_only' : save_good_blobs_only,
     'results_file_xlsx' : results_file_xlsx}
 
     results_file_xlsx, blobs_LoG, error_flags, tr_results, hst_datas =  select_blobs_LoG_analyze_transitions(frame_eval, **kwargs)
@@ -10905,7 +10918,10 @@ def select_blobs_LoG_analyze_transitions_2D_dataset(params):
     Ypt1 = tr_results_arr[error_flags==0, 3]
     Ypt2 = tr_results_arr[error_flags==0, 4]
     XY_transitions = np.array([Xpt1, Xpt2, Ypt1, Ypt2]).T
-    return  frame_ind_arr, error_flags, blobs_LoG, tr_results_arr
+    if save_good_blobs_only:
+        return  frame_ind_arr[error_flags==0], error_flags[error_flags==0], blobs_LoG[error_flags==0], tr_results_arr[error_flags==0, :]
+    else:
+        return  frame_ind_arr, error_flags, blobs_LoG, tr_results_arr
 
 
 class FIBSEM_dataset: 
@@ -13468,6 +13484,8 @@ class FIBSEM_dataset:
             Number of bins for histogram. Default is 64.
         save_data_xlsx : boolean
             Save the data into Excel workbook. Default is True.
+        save_good_blobs_only : boolean
+            save only good blob data (useful if the dataset is too big). Default is False.
         results_file_xlsx : file name for Excel workbook to save the results. Default is derived from self.fnm_reg +'_2D_blob_analysis_results.xlsx'
             
         Returns: XY_transitions ; array[len(frame_inds), 4]
@@ -13531,6 +13549,7 @@ class FIBSEM_dataset:
         transition_low_limit = kwargs.get('transition_low_limit', 0.0)
         transition_high_limit = kwargs.get('transition_high_limit', 10.0)
         save_data_xlsx = kwargs.get('save_data_xlsx', True)
+        save_good_blobs_only = kwargs.get('save_good_blobs_only', False)
 
         if hasattr(self, 'fnm_reg'):
             default_results_file_xlsx = os.path.join(data_dir, os.path.splitext(self.fnm_reg)[0]+'_2D_blob_analysis_results.xlsx')
@@ -13612,7 +13631,7 @@ class FIBSEM_dataset:
         fls_info = pd.concat([fls_df, eval_bounds_df, tr_mx_df], axis=1)
 
         for j, frame_ind in enumerate(tqdm(frame_inds, desc='Building the Parameter Sets Analyzing Resolution using Blobs ', display=verbose)):
-            params_single = [fls, frame_ind, ftype, image_name, eval_bounds[j], offsets_sizes, invert_data, flipY, zbin_factor, perform_transformation, self.tr_matr_cum_residual[frame_ind], int_order, pad_edges, min_sigma, max_sigma, threshold,  overlap, pixel_size, subset_size, bounds, bands, min_thr, transition_low_limit, transition_high_limit, nbins, verbose, disp_res, False]
+            params_single = [fls, frame_ind, ftype, image_name, eval_bounds[j], offsets_sizes, invert_data, flipY, zbin_factor, perform_transformation, self.tr_matr_cum_residual[frame_ind], int_order, pad_edges, min_sigma, max_sigma, threshold,  overlap, pixel_size, subset_size, bounds, bands, min_thr, transition_low_limit, transition_high_limit, nbins, verbose, disp_res, False, save_good_blobs_only]
             papams_blob_analysis.append(params_single)
 
         if use_DASK:
@@ -13650,8 +13669,10 @@ class FIBSEM_dataset:
 
             if verbose:
                 print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Saving the results into file:  ' + results_file_xlsx)
-
-            transition_results = pd.DataFrame(np.column_stack((frame_inds, blobs_LoG, tr_results, error_flags)), columns = columns, index = None)
+            if save_good_blobs_only:
+                transition_results = pd.DataFrame(np.column_stack((frame_inds[error_flags==0], blobs_LoG[error_flags==0], tr_results[error_flags==0, :], error_flags[error_flags==0])), columns = columns, index = None)
+            else:
+                transition_results = pd.DataFrame(np.column_stack((frame_inds, blobs_LoG, tr_results, error_flags)), columns = columns, index = None)
             transition_results.to_excel(xlsx_writer, index=None, sheet_name='Transition analysis results')
             kwargs_info = pd.DataFrame([kwargs]).T # prepare to be save in transposed format
             kwargs_info.to_excel(xlsx_writer, header=False, sheet_name='kwargs Info')
@@ -13663,7 +13684,10 @@ class FIBSEM_dataset:
             xlsx_writer.close()
         
         # return results_2D
-        return results_file_xlsx, frame_inds, error_flags, blobs_LoG, tr_results
+        if save_good_blobs_only:
+            return results_file_xlsx, frame_inds[error_flags==0], error_flags[error_flags==0], blobs_LoG[error_flags==0], tr_results[error_flags==0, :]
+        else:
+            return results_file_xlsx, frame_inds, error_flags, blobs_LoG, tr_results
         
 
 def plot_2D_blob_results(results_xlsx, **kwargs):
