@@ -531,12 +531,12 @@ def select_blobs_LoG_analyze_transitions(image, **kwargs):
     blobs_LoG = np.array(blobs_LoG)[ind_sorted]
     
     for j, blob in enumerate(tqdm(blobs_LoG, desc='Analyzing blobs', display=verbose)):
+        error_flag = 0
+        tr_result = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         try:
             y, x, r = blob
             xc = int(x)
             yc = int(y)
-            error_flag = 0
-            tr_result = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
             subset = image[yc-dx2:yc+dx2, xc-dx2:xc+dx2]
             if np.shape(subset)==(subset_size, subset_size):
                 tr_x = analyze_blob_transitions(subset[dx2, :],
