@@ -13755,7 +13755,7 @@ def plot_2D_blob_results(results_xlsx, **kwargs):
     tr_std = np.std(XYpt_selected)
     
     fig, axs = plt.subplots(2, 1, figsize=(xs,ys))
-    fig.subplots_adjust(left=0.1, bottom=0.08, right=0.98, top=0.97, wspace=0.02, hspace=0.12)
+    fig.subplots_adjust(left=0.12, bottom=0.08, right=0.98, top=0.97, wspace=0.02, hspace=0.12)
     ax1, ax2 = axs
     ax1.set_title(title, fontsize=text_fs)
     ax1.text(0.6, 0.55, '# of blobs: {:d}'.format(len(Xpt1)), transform=ax1.transAxes, color=text_col, fontsize=text_fs)
@@ -14277,7 +14277,7 @@ def plot_3D_blob_results(results_xlsx, **kwargs):
     if verbose:
         print(time.strftime('%Y/%m/%d  %H:%M:%S')+'  Generating Plot')
     fig, ax = plt.subplots(1, 1, figsize=(xs,ys))
-    fig.subplots_adjust(left=0.1, bottom=0.08, right=0.98, top=0.96, wspace=0.02, hspace=0.12)
+    fig.subplots_adjust(left=0.12, bottom=0.08, right=0.98, top=0.96, wspace=0.02, hspace=0.12)
     ax.set_title(title, fontsize=text_fs)
     ax.text(0.6, 0.55, '# of blobs: {:d}'.format(len(X1)), transform=ax.transAxes, color=text_col, fontsize=text_fs)
     ax.text(0.6, 0.50, '{:.0f}% - {:.0f}% Transitions'.format(bounds[0]*100, bounds[1]*100), transform=ax.transAxes, color=text_col, fontsize=text_fs)
