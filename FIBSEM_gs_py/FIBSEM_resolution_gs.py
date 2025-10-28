@@ -495,7 +495,6 @@ def select_blobs_LoG_analyze_transitions(image, **kwargs):
     results_file_xlsx = kwargs.get('results_file_xlsx', 'results.xlsx')
     if not save_data_xlsx:
         results_file_xlsx = 'Data not saved'
-    
     kwargs['min_sigma'] = min_sigma
     kwargs['max_sigma'] = max_sigma
     kwargs['threshold'] = threshold
@@ -1020,7 +1019,11 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
     else:
         print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step2: Analyzed selected {:d} Blobs, found {:d} good ones'.format(len(error_flags), len(error_flags[error_flags==0])))
         print('Data is NOT saved')
-    return results_file_xlsx, blobs_LoG, error_flags, tr_results, hst_datas
+
+    if save_good_blobs_only:
+        return results_file_xlsx, blobs_LoG[error_flags==0], error_flags[error_flags==0], tr_results[error_flags==0], hst_datas
+    else:
+        return results_file_xlsx, blobs_LoG, error_flags, tr_results, hst_datas
 
 
 
