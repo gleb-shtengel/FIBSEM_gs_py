@@ -5503,6 +5503,7 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
         - 'SIFT kwargs' (optional) - containg the kwargs with SIFT registration parameters.
 
     Parameters:
+    ---------
     xlsx_fname : str
         full path to the XLSX spreadsheet file
     
@@ -5546,18 +5547,17 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
     xa_evals = Regisration_data['xa_eval']
     yi_evals = Regisration_data['yi_eval']
     ya_evals = Regisration_data['ya_eval']
-    
-    '''
-    image_nsad = Regisration_data['NSAD']
-    image_ncc = Regisration_data['NCC']
-    image_nmi = Regisration_data['NMI']
-    nsads = [np.mean(image_nsad), np.median(image_nsad), np.std(image_nsad)] 
-    nccs = [np.mean(image_ncc), np.median(image_ncc), np.std(image_ncc)]
-    nmis = [np.mean(image_nmi), np.median(image_nmi), np.std(image_nmi)]
-    '''
+    try:
+        image_nsad = Regisration_data['NSAD']
+        image_ncc = Regisration_data['NCC']
+        image_nmi = Regisration_data['NMI']
+        nsads = [np.mean(image_nsad), np.median(image_nsad), np.std(image_nsad)] 
+        nccs = [np.mean(image_ncc), np.median(image_ncc), np.std(image_ncc)]
+        nmis = [np.mean(image_nmi), np.median(image_nmi), np.std(image_nmi)]
+    except:
+        print('Could not load metrics')
     eval_metrics = Regisration_data.columns[5:]
     num_metrics = len(eval_metrics)
-    
     num_frames = len(frames)
     
     stack_info_dict = read_kwargs_xlsx(file_xlsx, 'Stack Info', **kwargs)
@@ -5579,6 +5579,9 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
 
     default_stack_name = file_xlsx.replace('_RegistrationQuality.xlsx','.mrc')
     stack_filename = os.path.normpath(stack_info_dict.get('Stack Filename', default_stack_name))
+    #print('stack_filename:  ', stack_filename)
+    stack_exists = os.path.exists(stack_filename)
+    #print('stack_exists:  ', stack_exists)
     data_dir = stack_info_dict.get('data_dir', '')
     ftype = stack_info_dict.get("ftype", 0)
     
@@ -5604,6 +5607,8 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
         axs = [fig.add_subplot(gss) for gss in gs]
     for ax in axs[0:3]:
         ax.axis(False)
+    for ax in axs[-3:-1]:
+        ax.sharex(axs[-4])
     
     fs=12
     lwl=1
@@ -5731,10 +5736,10 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
                     ax.imshow(frame_img, cmap='Greys', vmin=dmin, vmax=dmax)
 
                 #ax.text(0.03, 1.01, 'Frame={:d},  NSAD={:.3f},  NCC={:.3f},  NMI={:.3f}'.format(frames[eval_ind], image_nsad[eval_ind], image_ncc[eval_ind], image_nmi[eval_ind]), color='red', transform=ax.transAxes)
-                ax.text(0.02, 0.95, 'Frame={:d}'.format(frames[eval_ind]), color='red', transform=ax.transAxes, fontsize=11)
-                ax.text(0.50, 0.95, 'NSAD={:.3f}'.format(image_nsad[eval_ind]), color='red', transform=ax.transAxes, fontsize=11)
-                ax.text(0.50, 0.85, 'NCC={:.3f}'.format(image_ncc[eval_ind]), color='red', transform=ax.transAxes, fontsize=11)
-                ax.text(0.50, 0.75, 'NMI={:.3f}'.format(image_mi[eval_ind]), color='red', transform=ax.transAxes, fontsize=11)
+                ax.text(0.02, 0.95, 'Frame={:d}'.format(frames[eval_ind]), color='red', transform=ax.transAxes, fontsize=10)
+                ax.text(0.50, 0.95, 'NSAD={:.3f}'.format(image_nsad[eval_ind]), color='red', transform=ax.transAxes, fontsize=10)
+                ax.text(0.50, 0.85, 'NCC={:.3f}'.format(image_ncc[eval_ind]), color='red', transform=ax.transAxes, fontsize=10)
+                ax.text(0.50, 0.75, 'NMI={:.3f}'.format(image_nmi[eval_ind]), color='red', transform=ax.transAxes, fontsize=10)
                 rect_patch = patches.Rectangle((xi_evals[eval_ind], yi_evals[eval_ind]), np.abs(xa_evals[eval_ind]-xi_evals[eval_ind])-2, np.abs(ya_evals[eval_ind]-yi_evals[eval_ind])-2, linewidth=1.0, edgecolor='yellow',facecolor='none')
                 ax.add_patch(rect_patch)
             ax.axis('off')
@@ -5771,6 +5776,7 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
     else:
         axs[0].set_title(ttl)
     fig.savefig(png_file, dpi=300)
+    
 
 
 def plot_registrtion_quality_xlsx(data_files, labels, **kwargs):
@@ -8159,7 +8165,7 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
     Mill_Volt_Rate_um_per_V = kwargs.get("Mill_Volt_Rate_um_per_V", 31.235258870176065)
     kwargs['Mill_Volt_Rate_um_per_V'] = Mill_Volt_Rate_um_per_V
     
-    FIBSEM_Data_xlsx = kwargs.get('FIBSEM_data_xlsx', 'FIBSEM_Data.xlsx')
+    FIBSEM_Data_xlsx = kwargs.get('FIBSEM_Data_xlsx', 'FIBSEM_Data.xlsx')
     FIBSEM_Data_xlsx_path = os.path.join(data_dir, FIBSEM_Data_xlsx)
     disp_res = kwargs.get("disp_res", False)
     use_existing_data = kwargs.get('use_existing_data', False)
@@ -11112,6 +11118,8 @@ class FIBSEM_dataset:
         ---------
         ftype : int
             File type (0 - Shan Xu's .dat, 1 - tif).
+        EightBit : int
+            If 1 then the data is assumed uint8, otherwise int16
         recall_parameters : boolean
             If True and dump_filename kwarg points to a valid binary file, will recall the dataset saved into that dump_filename. Default is False.
         dump_filename : str
@@ -11724,10 +11732,6 @@ class FIBSEM_dataset:
             File type (0 - Shan Xu's .dat, 1 - tif). Default is object attribute.
         EightBit : int
             0 - 16-bit data, 1: 8-bit data. Default is object attribute.
-        data_dir : str
-            Data directory (path). Default is object attribute.
-        fnm_reg : str
-            filename for the final registered dataset
         thr_min : float
             CDF threshold for determining the minimum data value. Default is object attribute.
         thr_max : float
@@ -11785,8 +11789,6 @@ class FIBSEM_dataset:
             else:
                 DASK_client_retries = kwargs.get("DASK_client_retries", 3)
             ftype = kwargs.get("ftype", self.ftype)
-            data_dir = self.data_dir
-            fnm_reg = kwargs.get("fnm_reg", self.fnm_reg)
             thr_min = kwargs.get("thr_min", self.thr_min)
             thr_max = kwargs.get("thr_max", self.thr_max)
             nbins = kwargs.get("nbins", self.nbins)
@@ -12654,11 +12656,16 @@ class FIBSEM_dataset:
 
         if remove_intermediate_frames:
             # Remove Intermediate Registered Frame Files
-            for registered_filename in tqdm(registered_filenames, desc='Removing Intermediate Registered Frame Files: ', display = disp_res):
-                try:
-                    os.remove(registered_filename)
-                except:
-                    pass
+            if use_DASK:
+                print('Removing Intermediate Registered Frame Files using DASK')
+                futures = DASK_client.map(os.remove, registered_filenames)
+                removed_files = DASK_client.gather(futures)
+            else:
+                removed_files = []
+                for registered_filename in tqdm(registered_filenames, desc='Removing Intermediate Registered Frame Files: ', display = disp_res):
+                    removed_files.append(dask_remove_file(registered_filename))
+            if disp_res:
+                print('Removed all {:d} inermediate files successfully:  '.format(len(registered_filename)), removed_files==registered_filename)
 
         return reg_summary, reg_summary_xlsx
 

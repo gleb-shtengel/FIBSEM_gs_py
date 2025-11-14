@@ -67,7 +67,6 @@ def check_DASK(DASK_client, **kwargs):
             #if platform.system() == 'Windows':
             #    status_update_address = 'http://localhost:{:d}/status'.format(dport)
             if disp_res:
-
                 print(time.strftime('%Y/%m/%d  %H:%M:%S')+ '  DASK client exists. Will perform distributed computations')
                 print('Use ' + status_update_address +' to monitor DASK progress')
             use_DASK = True
@@ -80,6 +79,14 @@ def check_DASK(DASK_client, **kwargs):
             
     return use_DASK, status_update_address
 
+def dask_remove_file(fl):
+    try:
+        os.remove(fl)
+        flr = fl
+    except:
+        pass
+        flr = ''
+    return flr
 
 ######################################################
 #    General Help Functions
