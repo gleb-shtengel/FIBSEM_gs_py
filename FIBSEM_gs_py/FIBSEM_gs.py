@@ -6106,6 +6106,8 @@ class FIBSEM_frame:
     Initialization kwargs:
         ftype : int
             0 - Shan Xu's binary format (default).  1 - tif files
+        read_header_only : boolean
+            If True, rteads only 1024 bit header. Default is False.
         calculate_scaled_images : boolean
             Calculate Scaled Images from raw images using scalinfg data. Defauult is False
         use_dask_arrays : boolean
@@ -6201,6 +6203,8 @@ class FIBSEM_frame:
         ----------
         ftype : int
             0 - Shan Xu's binary format (default).  1 - tif files
+        read_header_only : boolean
+            If True, rteads only 1024 bit header. Default is False.
         memory_profiling : boolean
             Perform memory profiling during the data load and output it. Default is False.
         calculate_scaled_images : boolean
@@ -6210,6 +6214,7 @@ class FIBSEM_frame:
 
         '''
         memory_profiling = kwargs.get('memory_profiling', False)
+        read_header_only = kwargs.get('read_header_only', False)
         if memory_profiling:
             rss_before, vms_before, shared_before = get_process_memory()
             start_time = time.time()
@@ -6505,156 +6510,157 @@ class FIBSEM_frame:
 #                fid.close()
 #                finish reading raw data
 
-            n_elements = self.ChanNum * self.XResolution * self.YResolution
-            if self.SaveOversamples:
-                n_elements *= self.Oversampling
-            fid.seek(1024, 0)
-            if self.EightBit==1:
-                dt = np.dtype(np.uint8)
-                dt = dt.newbyteorder('>')
-                if self.use_dask_arrays:
-                    Raw = da.from_array(np.frombuffer(fid.read(n_elements), dtype=dt))
+            if not read_header_only:
+                n_elements = self.ChanNum * self.XResolution * self.YResolution
+                if self.SaveOversamples:
+                    n_elements *= self.Oversampling
+                fid.seek(1024, 0)
+                if self.EightBit==1:
+                    dt = np.dtype(np.uint8)
+                    dt = dt.newbyteorder('>')
+                    if self.use_dask_arrays:
+                        Raw = da.from_array(np.frombuffer(fid.read(n_elements), dtype=dt))
+                    else:
+                        Raw = np.frombuffer(fid.read(n_elements), dtype=dt)
                 else:
-                    Raw = np.frombuffer(fid.read(n_elements), dtype=dt)
-            else:
-                dt = np.dtype(np.int16)
-                dt = dt.newbyteorder('>')
-                if self.use_dask_arrays:
-                    Raw = da.from_array(np.frombuffer(fid.read(2*n_elements),dtype=dt))
+                    dt = np.dtype(np.int16)
+                    dt = dt.newbyteorder('>')
+                    if self.use_dask_arrays:
+                        Raw = da.from_array(np.frombuffer(fid.read(2*n_elements),dtype=dt))
+                    else:
+                        Raw = np.frombuffer(fid.read(2*n_elements),dtype=dt)
+                fid.close()
+                if memory_profiling:
+                    elapsed_time = elapsed_since(start_time)
+                    rss_after, vms_after, shared_after = get_process_memory()
+                    print("Profiling: Finished File Read: RSS: {:>8} | VMS: {:>8} | SHR {"
+                          ":>8} | time: {:>8}"
+                        .format(format_bytes(rss_after - rss_before),
+                                format_bytes(vms_after - vms_before),
+                                format_bytes(shared_after - shared_before),
+                                elapsed_time))   
+                # finish reading raw data
+         
+                if self.SaveOversamples:
+                    Raw = np.moveaxis(np.array(Raw).reshape(self.YResolution, self.XResolution, self.Oversampling, self.ChanNum), 2, 3)
                 else:
-                    Raw = np.frombuffer(fid.read(2*n_elements),dtype=dt)
-            fid.close()
-            if memory_profiling:
-                elapsed_time = elapsed_since(start_time)
-                rss_after, vms_after, shared_after = get_process_memory()
-                print("Profiling: Finished File Read: RSS: {:>8} | VMS: {:>8} | SHR {"
-                      ":>8} | time: {:>8}"
-                    .format(format_bytes(rss_after - rss_before),
-                            format_bytes(vms_after - vms_before),
-                            format_bytes(shared_after - shared_before),
-                            elapsed_time))   
-            # finish reading raw data
-     
-            if self.SaveOversamples:
-                Raw = np.moveaxis(np.array(Raw).reshape(self.YResolution, self.XResolution, self.Oversampling, self.ChanNum), 2, 3)
-            else:
-                try:
-                    Raw = np.array(Raw).reshape(self.YResolution, self.XResolution, self.ChanNum)
-                except:
-                    # handling the case of incomplete data write/read
-                    Raw_imcomplete = np.array(Raw)
-                    Raw_complete = np.zeros(self.YResolution*self.XResolution*self.ChanNum, dtype=dt)
-                    Raw_complete[:len(Raw_imcomplete)] = Raw_imcomplete
-                    Raw_complete[len(Raw_imcomplete):] = Raw_imcomplete[-1]
-                    Raw = np.array(Raw_complete).reshape(self.YResolution, self.XResolution, self.ChanNum)
+                    try:
+                        Raw = np.array(Raw).reshape(self.YResolution, self.XResolution, self.ChanNum)
+                    except:
+                        # handling the case of incomplete data write/read
+                        Raw_imcomplete = np.array(Raw)
+                        Raw_complete = np.zeros(self.YResolution*self.XResolution*self.ChanNum, dtype=dt)
+                        Raw_complete[:len(Raw_imcomplete)] = Raw_imcomplete
+                        Raw_complete[len(Raw_imcomplete):] = Raw_imcomplete[-1]
+                        Raw = np.array(Raw_complete).reshape(self.YResolution, self.XResolution, self.ChanNum)
 
-            #print(np.shape(Raw), type(Raw), type(Raw[0,0]))
+                #print(np.shape(Raw), type(Raw), type(Raw[0,0]))
 
-            #data = np.asarray(datab).reshape(self.YResolution,self.XResolution,ChanNum)
-            if self.EightBit == 1:
-                if self.AI1 == 1:
-                    self.RawImageA = Raw[:,:,0]
-                    #self.ImageA = (Raw[:,:,0].astype(np.float32)*self.ScanRate/self.Scaling[0,0]/self.Scaling[2,0]/self.Scaling[3,0]+self.Scaling[1,0]).astype(np.int32)
-                    if self.AI2 == 1:
-                        self.RawImageB = Raw[:,:,1]
-                        #self.ImageB = (Raw[:,:,1].astype(np.float32)*self.ScanRate/self.Scaling[0,1]/self.Scaling[2,1]/self.Scaling[3,1]+self.Scaling[1,1]).astype(np.int32)
-                elif self.AI2 == 1:
-                    self.RawImageB = Raw[:,:,0]
-                    #self.ImageB = (Raw[:,:,0].astype(np.float32)*self.ScanRate/self.Scaling[0,0]/self.Scaling[2,0]/self.Scaling[3,0]+self.Scaling[1,0]).astype(np.int32)
-            else:
-                if self.FileVersion == 1 or self.FileVersion == 2 or self.FileVersion == 3 or self.FileVersion == 4 or self.FileVersion == 5 or self.FileVersion == 6:
+                #data = np.asarray(datab).reshape(self.YResolution,self.XResolution,ChanNum)
+                if self.EightBit == 1:
                     if self.AI1 == 1:
                         self.RawImageA = Raw[:,:,0]
-                        #self.ImageA = self.Scaling[0,0] + self.RawImageA * self.Scaling[1,0]  # Converts raw I16 data to voltage based on self.Scaling factors
+                        #self.ImageA = (Raw[:,:,0].astype(np.float32)*self.ScanRate/self.Scaling[0,0]/self.Scaling[2,0]/self.Scaling[3,0]+self.Scaling[1,0]).astype(np.int32)
                         if self.AI2 == 1:
                             self.RawImageB = Raw[:,:,1]
-                            #self.ImageB = self.Scaling[0,1] + self.RawImageB * self.Scaling[1,1]
-                            if self.AI3 == 1:
-                                self.RawImageC = (Raw[:,:,2]).reshape(self.YResolution,self.XResolution)
-                                #self.ImageC = self.Scaling[0,2] + self.RawImageC * self.Scaling[1,2]
+                            #self.ImageB = (Raw[:,:,1].astype(np.float32)*self.ScanRate/self.Scaling[0,1]/self.Scaling[2,1]/self.Scaling[3,1]+self.Scaling[1,1]).astype(np.int32)
+                    elif self.AI2 == 1:
+                        self.RawImageB = Raw[:,:,0]
+                        #self.ImageB = (Raw[:,:,0].astype(np.float32)*self.ScanRate/self.Scaling[0,0]/self.Scaling[2,0]/self.Scaling[3,0]+self.Scaling[1,0]).astype(np.int32)
+                else:
+                    if self.FileVersion == 1 or self.FileVersion == 2 or self.FileVersion == 3 or self.FileVersion == 4 or self.FileVersion == 5 or self.FileVersion == 6:
+                        if self.AI1 == 1:
+                            self.RawImageA = Raw[:,:,0]
+                            #self.ImageA = self.Scaling[0,0] + self.RawImageA * self.Scaling[1,0]  # Converts raw I16 data to voltage based on self.Scaling factors
+                            if self.AI2 == 1:
+                                self.RawImageB = Raw[:,:,1]
+                                #self.ImageB = self.Scaling[0,1] + self.RawImageB * self.Scaling[1,1]
+                                if self.AI3 == 1:
+                                    self.RawImageC = (Raw[:,:,2]).reshape(self.YResolution,self.XResolution)
+                                    #self.ImageC = self.Scaling[0,2] + self.RawImageC * self.Scaling[1,2]
+                                    if self.AI4 == 1:
+                                        self.RawImageD = (Raw[:,:,3]).reshape(self.YResolution,self.XResolution)
+                                        #self.ImageD = self.Scaling[0,3] + self.RawImageD * self.Scaling[1,3]
+                                elif self.AI4 == 1:
+                                    self.RawImageD = (Raw[:,:,2]).reshape(self.YResolution,self.XResolution)
+                                    #self.ImageD = self.Scaling[0,2] + self.RawImageD * self.Scaling[1,2]
+                            elif self.AI3 == 1:
+                                self.RawImageC = Raw[:,:,1]
+                                #self.ImageC = self.Scaling[0,1] + self.RawImageC * self.Scaling[1,1]
                                 if self.AI4 == 1:
-                                    self.RawImageD = (Raw[:,:,3]).reshape(self.YResolution,self.XResolution)
-                                    #self.ImageD = self.Scaling[0,3] + self.RawImageD * self.Scaling[1,3]
+                                    self.RawImageD = (Raw[:,:,2]).reshape(self.YResolution,self.XResolution)
+                                    #self.ImageD = self.Scaling[0,2] + self.RawImageD * self.Scaling[1,2]
                             elif self.AI4 == 1:
-                                self.RawImageD = (Raw[:,:,2]).reshape(self.YResolution,self.XResolution)
-                                #self.ImageD = self.Scaling[0,2] + self.RawImageD * self.Scaling[1,2]
+                                self.RawImageD = Raw[:,:,1]
+                                #self.ImageD = self.Scaling[0,1] + self.RawImageD * self.Scaling[1,1]
+                        elif self.AI2 == 1:
+                            self.RawImageB = Raw[:,:,0]
+                            #self.ImageB = self.Scaling[0,0] + self.RawImageB * self.Scaling[1,0]
+                            if self.AI3 == 1:
+                                self.RawImageC = Raw[:,:,1]
+                                #self.ImageC = self.Scaling[0,1] + self.RawImageC * self.Scaling[1,1]
+                                if self.AI4 == 1:
+                                    self.RawImageD = (Raw[:,:,2]).reshape(self.YResolution,self.XResolution)
+                                    #self.ImageD = self.Scaling[0,2] + self.RawImageD * self.Scaling[1,2]
+                            elif self.AI4 == 1:
+                                self.RawImageD = Raw[:,:,1]
+                                #self.ImageD = self.Scaling[0,1] + self.RawImageD * self.Scaling[1,1]
                         elif self.AI3 == 1:
-                            self.RawImageC = Raw[:,:,1]
-                            #self.ImageC = self.Scaling[0,1] + self.RawImageC * self.Scaling[1,1]
+                            self.RawImageC = Raw[:,:,0]
+                            #self.ImageC = self.Scaling[0,0] + self.RawImageC * self.Scaling[1,0]
                             if self.AI4 == 1:
-                                self.RawImageD = (Raw[:,:,2]).reshape(self.YResolution,self.XResolution)
-                                #self.ImageD = self.Scaling[0,2] + self.RawImageD * self.Scaling[1,2]
+                                self.RawImageD = Raw[:,:,1]
+                                #self.ImageD = self.Scaling[0,1] + self.RawImageD * self.Scaling[1,1]
                         elif self.AI4 == 1:
-                            self.RawImageD = Raw[:,:,1]
-                            #self.ImageD = self.Scaling[0,1] + self.RawImageD * self.Scaling[1,1]
-                    elif self.AI2 == 1:
-                        self.RawImageB = Raw[:,:,0]
-                        #self.ImageB = self.Scaling[0,0] + self.RawImageB * self.Scaling[1,0]
-                        if self.AI3 == 1:
-                            self.RawImageC = Raw[:,:,1]
-                            #self.ImageC = self.Scaling[0,1] + self.RawImageC * self.Scaling[1,1]
-                            if self.AI4 == 1:
-                                self.RawImageD = (Raw[:,:,2]).reshape(self.YResolution,self.XResolution)
-                                #self.ImageD = self.Scaling[0,2] + self.RawImageD * self.Scaling[1,2]
-                        elif self.AI4 == 1:
-                            self.RawImageD = Raw[:,:,1]
-                            #self.ImageD = self.Scaling[0,1] + self.RawImageD * self.Scaling[1,1]
-                    elif self.AI3 == 1:
-                        self.RawImageC = Raw[:,:,0]
-                        #self.ImageC = self.Scaling[0,0] + self.RawImageC * self.Scaling[1,0]
-                        if self.AI4 == 1:
-                            self.RawImageD = Raw[:,:,1]
-                            #self.ImageD = self.Scaling[0,1] + self.RawImageD * self.Scaling[1,1]
-                    elif self.AI4 == 1:
-                        self.RawImageD = Raw[:,:,0]
-                        #self.ImageD = self.Scaling[0,0] + self.RawImageD * self.Scaling[1,0]
-                        
-                elif self.FileVersion == 7:
-                    if self.AI1 == 1:
-                        self.RawImageA = Raw[:,:,0]
-                        #self.ImageA = (self.RawImageA - self.Scaling[1,0])*self.Scaling[2,0]
-                        if self.AI2 == 1:
-                            self.RawImageB = Raw[:,:,1]
+                            self.RawImageD = Raw[:,:,0]
+                            #self.ImageD = self.Scaling[0,0] + self.RawImageD * self.Scaling[1,0]
+                            
+                    elif self.FileVersion == 7:
+                        if self.AI1 == 1:
+                            self.RawImageA = Raw[:,:,0]
+                            #self.ImageA = (self.RawImageA - self.Scaling[1,0])*self.Scaling[2,0]
+                            if self.AI2 == 1:
+                                self.RawImageB = Raw[:,:,1]
+                                #self.ImageB = (self.RawImageB - self.Scaling[1,1])*self.Scaling[2,1]
+                        elif self.AI2 == 1:
+                            self.RawImageB = Raw[:,:,0]
                             #self.ImageB = (self.RawImageB - self.Scaling[1,1])*self.Scaling[2,1]
-                    elif self.AI2 == 1:
-                        self.RawImageB = Raw[:,:,0]
-                        #self.ImageB = (self.RawImageB - self.Scaling[1,1])*self.Scaling[2,1]
-                        
-                elif  self.FileVersion == 8 or self.FileVersion == 9:
-                    self.ElectronFactor1 = 0.1;             # 16-bit intensity is 10x electron counts
-                    self.Scaling[3,0] = self.ElectronFactor1
-                    self.ElectronFactor2 = 0.1;             # 16-bit intensity is 10x electron counts
-                    self.Scaling[3,1] = self.ElectronFactor2
-                    if self.AI1 == 1:
-                        self.RawImageA = Raw[:,:,0]
-                        #self.ImageA = (self.RawImageA - self.Scaling[1,0]) * self.Scaling[2,0] / self.ScanRate * self.Scaling[0,0] / self.ElectronFactor1                        
-                        # Converts raw I16 data to voltage based on self.Scaling factors
-                        if self.AI2 == 1:
-                            self.RawImageB = Raw[:,:,1]
+                            
+                    elif  self.FileVersion == 8 or self.FileVersion == 9:
+                        self.ElectronFactor1 = 0.1;             # 16-bit intensity is 10x electron counts
+                        self.Scaling[3,0] = self.ElectronFactor1
+                        self.ElectronFactor2 = 0.1;             # 16-bit intensity is 10x electron counts
+                        self.Scaling[3,1] = self.ElectronFactor2
+                        if self.AI1 == 1:
+                            self.RawImageA = Raw[:,:,0]
+                            #self.ImageA = (self.RawImageA - self.Scaling[1,0]) * self.Scaling[2,0] / self.ScanRate * self.Scaling[0,0] / self.ElectronFactor1                        
+                            # Converts raw I16 data to voltage based on self.Scaling factors
+                            if self.AI2 == 1:
+                                self.RawImageB = Raw[:,:,1]
+                                #self.ImageB = (self.RawImageB - self.Scaling[1,1]) * self.Scaling[2,1] / self.ScanRate * self.Scaling[0,1] / self.ElectronFactor2
+                        elif self.AI2 == 1:
+                            self.RawImageB = Raw[:,:,0]
                             #self.ImageB = (self.RawImageB - self.Scaling[1,1]) * self.Scaling[2,1] / self.ScanRate * self.Scaling[0,1] / self.ElectronFactor2
-                    elif self.AI2 == 1:
-                        self.RawImageB = Raw[:,:,0]
-                        #self.ImageB = (self.RawImageB - self.Scaling[1,1]) * self.Scaling[2,1] / self.ScanRate * self.Scaling[0,1] / self.ElectronFactor2
 
-            if self.SaveOversamples:
-                self.RawSamplesA = self.RawImageA.copy()
-                self.RawSamplesB = self.RawImageB.copy()
-                #self.SamplesA = self.ImageA.copy()
-                #self.SamplesB = self.ImageB.copy()
-                self.RawImageA = np.mean(self.RawSamplesA, axis=2)
-                self.RawImageB = np.mean(self.RawSamplesB, axis=2)
-                #self.ImageA = np.mean(self.SamplesA, axis=2)
-                #self.ImageB = np.mean(self.SamplesB, axis=2)
-            del Raw
-            if memory_profiling:
-                elapsed_time = elapsed_since(start_time)
-                rss_after, vms_after, shared_after = get_process_memory()
-                print("Profiling: Finished Raw Conv.: RSS: {:>8} | VMS: {:>8} | SHR {"
-                      ":>8} | time: {:>8}"
-                    .format(format_bytes(rss_after - rss_before),
-                            format_bytes(vms_after - vms_before),
-                            format_bytes(shared_after - shared_before),
-                            elapsed_time))   
+                if self.SaveOversamples:
+                    self.RawSamplesA = self.RawImageA.copy()
+                    self.RawSamplesB = self.RawImageB.copy()
+                    #self.SamplesA = self.ImageA.copy()
+                    #self.SamplesB = self.ImageB.copy()
+                    self.RawImageA = np.mean(self.RawSamplesA, axis=2)
+                    self.RawImageB = np.mean(self.RawSamplesB, axis=2)
+                    #self.ImageA = np.mean(self.SamplesA, axis=2)
+                    #self.ImageB = np.mean(self.SamplesB, axis=2)
+                del Raw
+                if memory_profiling:
+                    elapsed_time = elapsed_since(start_time)
+                    rss_after, vms_after, shared_after = get_process_memory()
+                    print("Profiling: Finished Raw Conv.: RSS: {:>8} | VMS: {:>8} | SHR {"
+                          ":>8} | time: {:>8}"
+                        .format(format_bytes(rss_after - rss_before),
+                                format_bytes(vms_after - vms_before),
+                                format_bytes(shared_after - shared_before),
+                                elapsed_time))   
 
             if calculate_scaled_images_kw:
                 self.calculate_scaled_images()
