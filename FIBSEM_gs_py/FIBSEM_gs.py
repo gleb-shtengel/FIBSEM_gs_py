@@ -5503,7 +5503,6 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
         - 'SIFT kwargs' (optional) - containg the kwargs with SIFT registration parameters.
 
     Parameters:
-    ---------
     xlsx_fname : str
         full path to the XLSX spreadsheet file
     
@@ -5521,6 +5520,8 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
         Default is True. If False, only the filename, no path is printed in the title
     dump_filename : str
         Filename of a binary dump of the FIBSEM_dataset object.
+    dpi : int
+        dpi. Default is 300.
 
     '''
     xlsx_name = os.path.basename(os.path.abspath(file_xlsx))
@@ -5539,6 +5540,7 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
     dump_filename = kwargs.get("dump_filename", '')
     sample_frames_layout = kwargs.get('sample_frames_layout', 'vertical')
     full_filename_path = kwargs.get('full_filename_path', True)
+    dpi = kwargs.get('dpi', 300)
     
     Regisration_data = pd.read_excel(file_xlsx, sheet_name='Registration Quality Statistics')
     # columns=['Frame', 'xi_eval', 'xa_eval', 'yi_eval', 'ya_eval', 'Npts', 'Mean Abs Error', 'NSAD', 'NCC', 'NMI']
@@ -5600,15 +5602,13 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
             axs.append(fig.add_subplot(gs[j+1, :]))
     else:
         fig_ysize = fig_xsize/3.0*(num_metrics+2)
-        heights = [0.8]*3 + [1.5]*num_metrics        
+        heights = [0.8]*3 + [1.5]*num_metrics
         fig = plt.figure(figsize=(fig_xsize, fig_ysize))
         fig.subplots_adjust(left=0.14, bottom=0.04, right=0.99, top=0.98, wspace=0.18, hspace=0.04)
         gs = GridSpec(num_metrics+3, 1, figure=fig, height_ratios=heights)
         axs = [fig.add_subplot(gss) for gss in gs]
     for ax in axs[0:3]:
         ax.axis(False)
-    for ax in axs[-3:-1]:
-        ax.sharex(axs[-4])
     
     fs=12
     lwl=1
@@ -5764,9 +5764,18 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
             axs[j+3].set_ylabel(metric, fontsize=fs-2)
         axs[j+3].text(0.02, 0.04, (metric+' mean = {:.3f}   ' + metric + ' median = {:.3f}  ' + metric + ' STD = {:.3f}').format(np.mean(metric_data), np.median(metric_data), np.std(metric_data)), transform=axs[j+3].transAxes, fontsize = fs-4)
         
-    axs[-1].set_xlabel('Binned Frame #')
-    for ax in axs[2:]:
+    for ax in axs[3:]:
         ax.grid(True)
+        #ax.set_xlabel('')
+    xticks = axs[-1].get_xticks()
+    xticklabels = axs[-1].get_xticklabels()
+    empty_xticklabels = ['' for t in xticklabels]
+    xlim = axs[-1].get_xlim()
+    for ax in axs[-num_metrics:-1]:
+        ax.set_xlim(xlim)
+        ax.set_xticks(xticks)
+        ax.set_xticklabels(empty_xticklabels)
+    axs[-1].set_xlabel('Frame #')
     if full_filename_path:
         ttl = stack_filename
     else:
@@ -5775,7 +5784,7 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
         axs[0].text(-0.15, 1.05, ttl, transform=axs[0].transAxes)
     else:
         axs[0].set_title(ttl)
-    fig.savefig(png_file, dpi=300)
+    fig.savefig(png_file, dpi=dpi)
     
 
 
