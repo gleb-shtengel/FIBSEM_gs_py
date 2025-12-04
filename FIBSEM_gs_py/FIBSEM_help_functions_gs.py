@@ -902,7 +902,7 @@ def set_eval_bounds(shape, evaluation_box, **kwargs):
 
     pad_edges = kwargs.get('pad_edges', False)
     perform_transformation = kwargs.get('perform_transformation', False)
-    tr_matr = np.array(kwargs.get('tr_matr', []))
+    tr_matr = np.array(kwargs.get('tr_matr', [np.eye(3,3)]))
     ntr = len(tr_matr)
     shapes = (np.full(ntr, ny), np.full(ntr,nx))
     if ntr>0:
