@@ -5767,14 +5767,13 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
     for ax in axs[3:]:
         ax.grid(True)
         #ax.set_xlabel('')
-    xticks = axs[-1].get_xticks()
-    xticklabels = axs[-1].get_xticklabels()
-    empty_xticklabels = ['' for t in xticklabels]
-    xlim = axs[-1].get_xlim()
-    for ax in axs[-num_metrics:-1]:
+
+    xlim = (np.min(frames), np.max(frames))
+    xlim = kwargs.get('xlim', xlim)
+    for ax in axs[3:]:
         ax.set_xlim(xlim)
-        ax.set_xticks(xticks)
-        ax.set_xticklabels(empty_xticklabels)
+    for ax in axs[3:-1]:
+        ax.set_xticklabels([])
     axs[-1].set_xlabel('Frame #')
     if full_filename_path:
         ttl = stack_filename
@@ -5785,7 +5784,6 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
     else:
         axs[0].set_title(ttl)
     fig.savefig(png_file, dpi=dpi)
-    
 
 
 def plot_registrtion_quality_xlsx(data_files, labels, **kwargs):
