@@ -586,17 +586,17 @@ def select_blobs_LoG_analyze_transitions(image, **kwargs):
         error_flags.append(error_flag)
         
     error_flags = np.array(error_flags)
-    tr_results_arr = np.array(tr_results)
+    tr_results = np.array(tr_results)
     if len(error_flags[error_flags==0]) > 0:
     #blobs_LoG = blobs_LoG[error_flags==0]
-        Xpt1 = tr_results_arr[error_flags==0, 1]
-        Xpt2 = tr_results_arr[error_flags==0, 2]
-        Ypt1 = tr_results_arr[error_flags==0, 3]
-        Ypt2 = tr_results_arr[error_flags==0, 4]
-        Xslp1 = tr_results_arr[error_flags==0, 5]
-        Xslp2 = tr_results_arr[error_flags==0, 6]
-        Yslp1 = tr_results_arr[error_flags==0, 7]
-        Yslp2 = tr_results_arr[error_flags==0, 8]
+        Xpt1 = tr_results[error_flags==0, 1]
+        Xpt2 = tr_results[error_flags==0, 2]
+        Ypt1 = tr_results[error_flags==0, 3]
+        Ypt2 = tr_results[error_flags==0, 4]
+        Xslp1 = tr_results[error_flags==0, 5]
+        Xslp2 = tr_results[error_flags==0, 6]
+        Yslp1 = tr_results[error_flags==0, 7]
+        Yslp2 = tr_results[error_flags==0, 8]
         XYpt_selected = [Xpt1, Xpt2, Ypt1, Ypt2]
         Xpt_selected = [Xpt1, Xpt2]
         Ypt_selected = [Ypt1, Ypt2]
@@ -622,9 +622,9 @@ def select_blobs_LoG_analyze_transitions(image, **kwargs):
                 'error_flag']
             blobs_LoG_arr = np.array(blobs_LoG)
             if save_good_blobs_only:
-                transition_results = pd.DataFrame(np.column_stack((blobs_LoG_arr[error_flags==0], tr_results_arr[error_flags==0, :], np.array(error_flags[error_flags==0]))), columns = columns, index = None)
+                transition_results = pd.DataFrame(np.column_stack((blobs_LoG_arr[error_flags==0], tr_results[error_flags==0, :], error_flags[error_flags==0])), columns = columns, index = None)
             else:
-                transition_results = pd.DataFrame(np.column_stack((blobs_LoG_arr, tr_results_arr, np.array(error_flags))), columns = columns, index = None)                
+                transition_results = pd.DataFrame(np.column_stack((blobs_LoG_arr, tr_results, error_flags)), columns = columns, index = None)                
             transition_results.to_excel(xlsx_writer, index=None, sheet_name='Transition analysis results')
             kwargs_info = pd.DataFrame([kwargs]).T # prepare to be save in transposed format
             kwargs_info.to_excel(xlsx_writer, header=False, sheet_name='kwargs Info')
@@ -897,21 +897,21 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
         error_flags.append(error_flag)
         
     error_flags = np.array(error_flags)
-    tr_results_arr = np.array(tr_results)
+    tr_results = np.array(tr_results)
     if len(error_flags[error_flags==0]) > 0:
     #blobs_LoG = blobs_LoG[error_flags==0]
-        Xpt1 = tr_results_arr[error_flags==0, 1]
-        Xpt2 = tr_results_arr[error_flags==0, 2]
-        Ypt1 = tr_results_arr[error_flags==0, 3]
-        Ypt2 = tr_results_arr[error_flags==0, 4]
-        Zpt1 = tr_results_arr[error_flags==0, 5]
-        Zpt2 = tr_results_arr[error_flags==0, 6]
-        Xslp1 = tr_results_arr[error_flags==0, 7]
-        Xslp2 = tr_results_arr[error_flags==0, 8]
-        Yslp1 = tr_results_arr[error_flags==0, 9]
-        Yslp2 = tr_results_arr[error_flags==0, 10]
-        Zslp1 = tr_results_arr[error_flags==0, 11]
-        Zslp2 = tr_results_arr[error_flags==0, 12]
+        Xpt1 = tr_results[error_flags==0, 1]
+        Xpt2 = tr_results[error_flags==0, 2]
+        Ypt1 = tr_results[error_flags==0, 3]
+        Ypt2 = tr_results[error_flags==0, 4]
+        Zpt1 = tr_results[error_flags==0, 5]
+        Zpt2 = tr_results[error_flags==0, 6]
+        Xslp1 = tr_results[error_flags==0, 7]
+        Xslp2 = tr_results[error_flags==0, 8]
+        Yslp1 = tr_results[error_flags==0, 9]
+        Yslp2 = tr_results[error_flags==0, 10]
+        Zslp1 = tr_results[error_flags==0, 11]
+        Zslp2 = tr_results[error_flags==0, 12]
         XYpt_selected = [Xpt1, Xpt2, Ypt1, Ypt2]
         Xpt_selected = [Xpt1, Xpt2]
         Ypt_selected = [Ypt1, Ypt2]
@@ -944,11 +944,11 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
             if save_good_blobs_only:
                 if verbose:
                     print('Saving only good blob data')
-                transition_results = pd.DataFrame(np.column_stack((np.array(blobs_LoG[error_flags==0]), tr_results_arr[error_flags==0, :], error_flags[error_flags==0])), columns = columns, index = None)
+                transition_results = pd.DataFrame(np.column_stack((np.array(blobs_LoG[error_flags==0]), tr_results[error_flags==0, :], error_flags[error_flags==0])), columns = columns, index = None)
             else:
                 if verbose:
                     print('Saving all blob data')
-                transition_results = pd.DataFrame(np.column_stack((np.array(blobs_LoG), tr_results_arr, error_flags)), columns = columns, index = None)
+                transition_results = pd.DataFrame(np.column_stack((np.array(blobs_LoG), tr_results, error_flags)), columns = columns, index = None)
             transition_results.to_excel(xlsx_writer, index=None, sheet_name='Transition analysis results')
             kwargs_info = pd.DataFrame([kwargs]).T # prepare to be save in transposed format
             kwargs_info.to_excel(xlsx_writer, header=False, sheet_name='kwargs Info')
