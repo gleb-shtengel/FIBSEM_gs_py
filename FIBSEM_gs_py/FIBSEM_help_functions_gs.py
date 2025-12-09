@@ -1531,7 +1531,7 @@ def profile(func, *args, **kwargs):
 
 
 ######################################################
-Data conversion Functions
+#   Data conversion Functions
 ######################################################
 
 def convert_frames_I8(parameters):
@@ -1563,6 +1563,8 @@ def convert_frames_I8(parameters):
     if flipY:
         converted_fr = np.flip(converted_fr, axis = 0)
     return target_frame_ID, converted_fr
+
+
 
 def save_i8_mrc_stack(mrc_filename, **kwargs):
     '''

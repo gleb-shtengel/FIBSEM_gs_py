@@ -8558,7 +8558,8 @@ def determine_transformation_matrix(src_pts, dst_pts, **kwargs):
             #print('Iteration {:d}, max_error={:.2f} '.format(iteration, max_error), (iteration <= max_iter), (max_error > drmax))
         iteration +=1
     kpts = [src_pts, dst_pts]
-    error_abs_mean = np.mean(np.abs(np.delete(errs, ind, axis=0)))
+    #error_abs_mean = np.mean(np.abs(np.delete(errs, ind, axis=0)))
+    error_abs_mean = np.mean(np.abs(errs))
     xcounts, xbins = np.histogram(xshifts, bins=64)
     error_FWHMx, indxi, indxa, mxx, mxx_ind = find_FWHM(xbins, xcounts[:-1], verbose=False, estimation=estimation, start=start)
     ycounts, ybins = np.histogram(yshifts, bins=64)
