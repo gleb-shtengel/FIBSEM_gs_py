@@ -1529,3 +1529,213 @@ def profile(func, *args, **kwargs):
         return wrapper(*args,**kwargs)
 
 
+
+######################################################
+Data conversion Functions
+######################################################
+
+def convert_frames_I8(parameters):
+    '''
+    Read frames from MRC, convert to I8 and return to be saved.
+    ©G.Shtengel, 10/2025. gleb.shtengel@gmail.com
+    
+    Parameters:
+    ---------
+    params : list
+        mrc_filename : filename for the MRC source file
+        dtp : data type
+        start_frame_ID : int
+            start frame to read
+        stop_frame_ID : int
+            stop frame to read
+        target_frame_ID : int
+            frame to save
+        xbin_factor, ybin_factor, zbin_factor,
+        mode, flipY
+        xi, xa, yi, ya
+    Returns : target_frame_ID, transformed_frame
+    '''
+    mrc_filename, dtp, start_frame_ID, stop_frame_ID, target_frame_ID, vmin, vmax, invert_data, flipY = parameters
+    mrc_filename  = os.path.normpath(mrc_filename)
+    mrc_obj = mrcfile.mmap(mrc_filename, mode='r', permissive=True)
+    converted_fr = np.clip((mrc_obj.data[start_frame_ID:stop_frame_ID, yi:ya, xi:xa].astype(np.float32) - vmin) * 255.0 / (vmax-vmin), 0, 255).astype(np.uint8)
+    mrc_obj.close()
+    if flipY:
+        converted_fr = np.flip(converted_fr, axis = 0)
+    return target_frame_ID, converted_fr
+
+def save_i8_mrc_stack(mrc_filename, **kwargs):
+    '''
+    Saves a 3D mrc stack into I8 format. ©G.Shtengel 08/2022 gleb.shtengel@gmail.com
+
+    Parameters:
+    ---------
+        mrc_filename : str
+            name (full path) of the mrc file to be binned.
+    kwargs:
+    ---------
+        DASK_client : DASK client. If set to empty string '' (default), local computations are performed.
+        DASK_client_retries : int
+            Number of allowed automatic retries if a task fails. Default is 3.
+        max_futures : int
+            max number of running futures. Default is 5000.
+        save_filename : str
+            name (full path) of the mrc file to save the results into. If not present, the new file name is constructed from the original by adding "_I8" at the end.
+        flipY : boolean
+            If Trye, the data will be flipped along Y axis (0 index) AFTER cropping.
+        invert_data : boolean
+            If True, invert the data.
+        voxel_size_new : rec array.
+            new voxel size in nm. Will be converted into Angstroms for MRC header.
+    Returns:
+        fnms_saved : list of str
+            Names of the new (binned and cropped) data files.
+    '''    
+    mrc_filename  = os.path.normpath(mrc_filename)
+    mode = kwargs.get('mode', 'mean')                   # binning mode. Default is 'mean', other option is 'sum'
+    flipY = kwargs.get('flipY', False)
+    invert_data = kwargs.get('invert_data', False)
+    mrc_obj = mrcfile.mmap(mrc_filename, mode='r', permissive=True)
+    header = mrc_obj.header
+    '''
+        mode 0 -> uint8
+        mode 1 -> int16
+        mode 2 -> float32
+        mode 4 -> complex64
+        mode 6 -> uint16
+    '''
+    mrc_mode =  kwargs.get('mrc_mode', mrc_obj.header.mode)
+    dtp = np.int16
+    if mrc_mode == 0:
+        dtp = np.int8
+    if mrc_mode == 2:
+        dtp = np.float32
+    if mrc_mode == 4:
+        dtp = np.complex64
+    if mrc_mode == 6:
+        dtp = np.uint16
+
+    voxel_size_angstr = mrc_obj.voxel_size
+    voxel_size_angstr_new = voxel_size_angstr.copy()
+    voxel_size_angstr_new.x = voxel_size_angstr.x * xbin_factor
+    voxel_size_angstr_new.y = voxel_size_angstr.y * ybin_factor
+    voxel_size_angstr_new.z = voxel_size_angstr.z * zbin_factor
+    voxel_size_new = voxel_size_angstr.copy()
+    voxel_size_new.x = voxel_size_angstr_new.x / 10.0
+    voxel_size_new.y = voxel_size_angstr_new.y / 10.0
+    voxel_size_new.z = voxel_size_angstr_new.z / 10.0
+    try:
+        voxel_size_new = kwargs.get('voxel_size_new', voxel_size_new)
+        voxel_size_angstr_new.x = voxel_size_new.x * 10.0
+        voxel_size_angstr_new.y = voxel_size_new.y * 10.0
+        voxel_size_angstr_new.z = voxel_size_new.z * 10.0
+    except:
+        print('Incorrect voxel size entry')
+        print('will use : ', voxel_size_new)
+    nx, ny, nz = np.int32(header['nx']), np.int32(header['ny']), np.int32(header['nz'])
+    xi = kwargs.get('xi', 0)
+    xa = kwargs.get('xa', nx)
+    yi = kwargs.get('yi', 0)
+    ya = kwargs.get('ya', ny)
+    fri = kwargs.get('fri', 0)
+    fra = kwargs.get('fra', nz)
+    nx_binned = (xa-xi)//xbin_factor
+    ny_binned = (ya-yi)//ybin_factor
+    xa = xi + nx_binned * xbin_factor
+    ya = yi + ny_binned * ybin_factor
+    save_filename_default = os.path.splitext(mrc_filename)[0] + '_I8.mrc'
+    save_filename = kwargs.get('save_filename', save_filename_default)
+    dt = type(mrc_obj.data[0,0,0])
+    print('Source mrc_mode: {:d}, source data type:'.format(mrc_mode), dt)
+    print('Source Voxel Size (Angstroms): {:2f} x {:2f} x {:2f}'.format(voxel_size_angstr.x, voxel_size_angstr.y, voxel_size_angstr.z))
+    mrc_mode = 0
+    dtp = np.uint8
+    print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Result mrc_mode: {:d}, source data type:'.format(mrc_mode), dtp)
+    st_frames = np.arange(fri, fra, zbin_factor)
+    mrc_obj.close()
+    
+    desc = 'Building Parameters Sets'
+    params_mult = []
+    for j, st_frame in enumerate(tqdm(st_frames, desc=desc)):
+        params = [mrc_filename, dt, st_frame, (min(st_frame+zbin_factor, nz-1)), j, invert_data, flipY]
+        params_mult.append(params)
+    
+    print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   New Data Set Shape:  {:d} x {:d} x {:d}'.format(nx_binned, ny_binned, len(st_frames)))
+    
+    fnms_saved = []
+    if 'mrc' in fnm_types:
+        fnms_saved.append(binned_mrc_filename)
+        mrc_new = mrcfile.new_mmap(binned_mrc_filename, shape=(len(st_frames), ny_binned, nx_binned), mrc_mode=mrc_mode, overwrite=True)
+        mrc_new.voxel_size = voxel_size_angstr_new
+        #mrc_new.header.cella = voxel_size_angstr_new
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Result Voxel Size (Angstroms): {:2f} x {:2f} x {:2f}'.format(voxel_size_angstr_new.x, voxel_size_angstr_new.y, voxel_size_angstr_new.z))
+        desc = 'Saving the data stack into MRC file'
+    
+    if use_DASK:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Using DASK distributed')
+        #futures = DASK_client.map(bin_crop_frames, params_mult, retries = DASK_client_retries)
+        # In case of a large source file, need to stadge the DASK jobs - cannot start all at once.
+        DASK_batch = 0
+        while len(params_mult) > max_futures:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Starting DASK batch {:d} with {:d} jobs, {:d} jobs remaining'.format(DASK_batch, max_futures, (len(params_mult)-max_futures)))
+            futures = [DASK_client.submit(bin_crop_frames, params) for params in params_mult[0:max_futures]]
+            params_mult = params_mult[max_futures:]
+            DASK_batch += 1
+        
+            for future in as_completed(futures):
+                j, binned_cropped_fr = future.result()
+                if 'mrc' in fnm_types:
+                    if invert_data:
+                        if mrc_mode == 0:  # uint8
+                            binned_cropped_fr = 255 - binned_cropped_fr
+                        if mrc_mode == 6:  # uint16
+                            binned_cropped_fr = 65535 - binned_cropped_fr
+                        if mrc_mode != 0 and mrc_mode != 6:
+                            binned_cropped_fr = np.invert(binned_cropped_fr)
+                    mrc_new.data[j,:,:] = binned_cropped_fr.astype(dtp)
+                if 'h5' in fnm_types:
+                    bdv_writer.append_plane(plane=binned_cropped_fr.astype(dtp), z=j, time=0, channel=0)
+                future.cancel()
+
+        if len(params_mult) > 0:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Starting DASK batch {:d} with {:d} jobs'.format(DASK_batch, len(params_mult)))
+            futures = [DASK_client.submit(bin_crop_frames, params) for params in params_mult]
+            for future in as_completed(futures):
+                j, binned_cropped_fr = future.result()
+                if 'mrc' in fnm_types:
+                    if invert_data:
+                        if mrc_mode == 0:  # uint8
+                            binned_cropped_fr = 255 - binned_cropped_fr
+                        if mrc_mode == 6:  # uint16
+                            binned_cropped_fr = 65535 - binned_cropped_fr
+                        if mrc_mode != 0 and mrc_mode != 6:
+                            binned_cropped_fr = np.invert(binned_cropped_fr)
+                    mrc_new.data[j,:,:] = binned_cropped_fr.astype(dtp)
+                if 'h5' in fnm_types:
+                    bdv_writer.append_plane(plane=binned_cropped_fr.astype(dtp), z=j, time=0, channel=0)
+                future.cancel()
+
+    else:
+        desc = 'Performing local computations'
+        for params in tqdm(params_mult, desc = desc):
+            j, binned_cropped_fr = bin_crop_frames(params)
+            if 'mrc' in fnm_types:
+                if invert_data:
+                    if mrc_mode == 0:  # uint8
+                        binned_cropped_fr = 255 - binned_cropped_fr
+                    if mrc_mode == 6:  # uint16
+                        binned_cropped_fr = 65535 - binned_cropped_fr
+                    if mrc_mode != 0 and mrc_mode != 6:
+                        binned_cropped_fr = np.invert(binned_cropped_fr)
+                mrc_new.data[j,:,:] = binned_cropped_fr.astype(dtp)
+            if 'h5' in fnm_types:
+                bdv_writer.append_plane(plane=binned_cropped_fr.astype(dtp), z=j, time=0, channel=0)
+
+    if 'mrc' in fnm_types:
+        mrc_new.close()
+
+    if 'h5' in fnm_types:
+        bdv_writer.write_xml()
+        bdv_writer.close()
+
+    return fnms_saved
