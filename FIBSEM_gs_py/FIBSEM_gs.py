@@ -9826,30 +9826,29 @@ def check_registration(img0, img1, **kwargs):
     d0, d1 = get_min_max_thresholds(img1, thr_min=thr_min, thr_max=thr_max, disp_res=False)
     img1_uint8 = np.clip(255*(img1-d0)/(d1-d0), 0, 255).astype(np.uint8)
     if verbose:
-        print('thr_min={:.0e}, thr_max={:.0e}'.format(thr_min, thr_max))
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   thr_min={:.0e}, thr_max={:.0e}'.format(thr_min, thr_max))
         print(TransformType.__name__)
         print('SIFT_nfeatures={:d}'.format(SIFT_nfeatures))
         print('SIFT_nOctaveLayers={:d},  SIFT_edgeThreshold={:.3f}'.format(SIFT_nOctaveLayers, SIFT_edgeThreshold))
         print('SIFT_contrastThreshold={:.3f},  SIFT_sigma={:.3f}'.format(SIFT_contrastThreshold, SIFT_sigma))
         print('RANSAC_initial_fraction={:.3f}'.format(RANSAC_initial_fraction))
         print('drmax={:.3f}'.format(drmax))
-        
         print('')
     if verbose:
-        print('Extracting KeyPoints (SIFT) on the first image')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Extracting KeyPoints (SIFT) on the first image')
     sift1 = cv2.SIFT_create(nfeatures=SIFT_nfeatures, nOctaveLayers=SIFT_nOctaveLayers, edgeThreshold=SIFT_edgeThreshold, contrastThreshold=SIFT_contrastThreshold, sigma=SIFT_sigma)
     kp1, des1 = sift1.detectAndCompute(img0_uint8, None)
     n_kpts=len(kp1)
     if verbose:
-        print('Extracted {:d} keypoints'.format(n_kpts))
-    print('Extracting KeyPoints (SIFT) on the second image')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Extracted {:d} keypoints'.format(n_kpts))
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Extracting KeyPoints (SIFT) on the second image')
     sift2 = cv2.SIFT_create(nfeatures=SIFT_nfeatures, nOctaveLayers=SIFT_nOctaveLayers, edgeThreshold=SIFT_edgeThreshold, contrastThreshold=SIFT_contrastThreshold, sigma=SIFT_sigma)
     kp2, des2 = sift2.detectAndCompute(img1_uint8, None)
     if verbose:
-        print('Extracted {:d} keypoints'.format(len(kp2)))
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Extracted {:d} keypoints'.format(len(kp2)))
 
     if verbose:
-        print('Finding Matches')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Finding Matches')
     if TransformType == RegularizedAffineTransform:
         def estimate(self, src, dst):
             self.params = determine_regularized_affine_transform(src, dst, l2_matrix, targ_vector)
@@ -9870,7 +9869,7 @@ def check_registration(img0, img1, **kwargs):
     dst_pts = np.float32([ kp2[m.trainIdx].pt for m in good ]).reshape(-1, 2)
 
     if verbose:
-        print('Finding Transformation Matrix')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Finding Transformation Matrix')
     min_samples = np.int32(len(src_pts)*RANSAC_initial_fraction)
     model, inliers = ransac((src_pts, dst_pts),
         TransformType, min_samples = min_samples,
@@ -9925,7 +9924,7 @@ def check_registration(img0, img1, **kwargs):
         ax0.text(0.75, 1.00 - 0.023*XResolution/YResolution, 'Sxx={:.5f},  Sxy={:.5f},  Tx={:.3e}'.format(transform_matrix[0,0], transform_matrix[0,1], transform_matrix[0,2]), fontsize=fsize_text, transform=ax0.transAxes)
         ax0.text(0.75, 1.00 - 0.036*XResolution/YResolution, 'Syx={:.5f},  Syy={:.5f},  Ty={:.3e}'.format(transform_matrix[1,0], transform_matrix[1,1], transform_matrix[1,2]), fontsize=fsize_text, transform=ax0.transAxes)
     if verbose:
-        print('RANSAC_initial_fraction = {:.4f}, max_iter={:d}'.format(RANSAC_initial_fraction, max_iter))
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   RANSAC_initial_fraction = {:.4f}, max_iter={:d}'.format(RANSAC_initial_fraction, max_iter))
         print('# of keypoints = {:d}, # of matches ={:d}'.format(n_kpts, n_matches))
 
     axx = fig.add_subplot(gs[2, 0])
@@ -9967,9 +9966,9 @@ def check_registration(img0, img1, **kwargs):
         
     if save_res_png:
         axx.text(-0.07, -0.13, save_filename, transform=axx.transAxes, fontsize=fontsize-2)
-        if verbose:
-            print('Figure is saved into the filr: ', save_filename) 
         fig.savefig(save_filename, dpi=dpi)
+        if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Save the results into file: ', save_filename)
     return error_FWHMx, error_FWHMy
 
 
