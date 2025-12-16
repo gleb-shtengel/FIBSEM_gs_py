@@ -8122,7 +8122,7 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
         Milling Voltage to Z conversion (µm/V). Default is 31.235258870176065.
     FIBSEM_Data_xlsx : str
         Filepath of the Excell file for the FIBSEM data set data to be saved (Data Min/Max, Working Distance, Milling Y Voltage, FOV center positions)
-    disp_res : boolean
+    verbose : boolean
         If True (default), intermediate messages and results will be displayed.
     use_existing_data : boolean
         Default is False. If True and the data exists (saved into XLSX), use that.   
@@ -8180,7 +8180,7 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
     
     FIBSEM_Data_xlsx = kwargs.get('FIBSEM_Data_xlsx', 'FIBSEM_Data.xlsx')
     FIBSEM_Data_xlsx_path = os.path.join(data_dir, FIBSEM_Data_xlsx)
-    disp_res = kwargs.get("disp_res", False)
+    verbose = kwargs.get("verbose", False)
     use_existing_data = kwargs.get('use_existing_data', False)
 
     if use_existing_data and os.path.exists(FIBSEM_Data_xlsx_path):
@@ -8215,17 +8215,19 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
         trash, data_max_glob = get_min_max_thresholds(data_minmax_glob[:, 1], thr_min = thr_min, thr_max = thr_max, nbins = nbins, disp_res=False)
         if fit_params[0] != 'None':
             sv_apert = min([fit_params[1], len(frame_inds)//8*2+1])
-            print('Using fit_params: ', 'SG', sv_apert, fit_params[2])
+            if verbose:
+                print('Using fit_params: ', 'SG', sv_apert, fit_params[2])
             data_min_sliding = savgol_filter(data_minmax_glob[:, 0].astype(np.double), sv_apert, fit_params[2])
             data_max_sliding = savgol_filter(data_minmax_glob[:, 1].astype(np.double), sv_apert, fit_params[2])
         else:
-            print('Not smoothing the Min/Max data')
+            if verbose:
+                print('Not smoothing the Min/Max data')
             data_min_sliding = data_minmax_glob[:, 0].astype(np.double)
             data_max_sliding = data_minmax_glob[:, 1].astype(np.double)
     else:
         frame = FIBSEM_frame(fls[0], ftype=ftype, calculate_scaled_images=calculate_scaled_images)
         if frame.EightBit == 1 and ftype == 1:
-            if disp_res:
+            if verbose:
                 print('Original data is 8-bit, no need to find Min and Max for 8-bit conversion')
             data_min_glob = np.uint8(0)
             data_max_glob =  np.uint8(255)
@@ -8249,17 +8251,17 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
             results_s2 = np.zeros((len(frame_inds), 11))
             errors_s2 = []
             if use_DASK:
-                if disp_res:
+                if verbose:
                     print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Using DASK distributed')
                 futures = DASK_client.map(evaluate_FIBSEM_frame, params_s2, retries = DASK_client_retries)
                 results_temp = np.array(DASK_client.gather(futures))
-                for j, res_temp in enumerate(tqdm(results_temp, desc='Converting the Results', display = disp_res)):
+                for j, res_temp in enumerate(tqdm(results_temp, desc='Converting the Results', display = verbose)):
                     results_s2[j, :] = res_temp[0:11]
                     errors_s2.append(res_temp[11])
             else:
-                if disp_res:
+                if verbose:
                     print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Using Local Computation')
-                for j, param_s2 in enumerate(tqdm(params_s2, desc='Evaluating FIB-SEM frames (data min/max, mill rate, FOV shifts): ', display = disp_res)):
+                for j, param_s2 in enumerate(tqdm(params_s2, desc='Evaluating FIB-SEM frames (data min/max, mill rate, FOV shifts): ', display = verbose)):
                     res_temp = evaluate_FIBSEM_frame(param_s2)
                     results_s2[j, :] = res_temp[0:11]
                     errors_s2.append(res_temp[11])
@@ -8269,11 +8271,13 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
             trash, data_max_glob = get_min_max_thresholds(data_minmax_glob[:, 1], thr_min = thr_min, thr_max = thr_max, nbins = nbins, disp_res=False)
             if fit_params[0] != 'None':
                 sv_apert = min([fit_params[1], len(frame_inds)//8*2+1])
-                print('Using fit_params: ', 'SG', sv_apert, fit_params[2])
+                if verbose:
+                    print('Using fit_params: ', 'SG', sv_apert, fit_params[2])
                 data_min_sliding = savgol_filter(data_minmax_glob[:, 0].astype(np.double), sv_apert, fit_params[2])
                 data_max_sliding = savgol_filter(data_minmax_glob[:, 1].astype(np.double), sv_apert, fit_params[2])
             else:
-                print('Not smoothing the Min/Max data')
+                if verbose:
+                    print('Not smoothing the Min/Max data')
                 data_min_sliding = data_minmax_glob[:, 0].astype(np.double)
                 data_max_sliding = data_minmax_glob[:, 1].astype(np.double)
             mill_rate_WD = results_s2[:, 2]
@@ -8286,7 +8290,7 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
             XResolutions = results_s2[:, 9].astype(int)
             YResolutions = results_s2[:, 10].astype(int)
 
-    if disp_res:
+    if verbose:
         print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Saving the FIBSEM dataset statistics (Min/Max, Mill Rate, FOV Shifts into the file: ', FIBSEM_Data_xlsx_path)
         # Create a Pandas Excel writer using XlsxWriter as the engine.
     xlsx_writer = pd.ExcelWriter(FIBSEM_Data_xlsx_path, engine='xlsxwriter')
