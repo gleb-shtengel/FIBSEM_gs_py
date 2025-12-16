@@ -70,7 +70,7 @@ def check_DASK(DASK_client, **kwargs):
             #if platform.system() == 'Windows':
             #    status_update_address = 'http://localhost:{:d}/status'.format(dport)
             if verbose:
-                print(time.strftime('%Y/%m/%d  %H:%M:%S')+ prefix +':  DASK client exists. Will perform distributed computations')
+                print(time.strftime('%Y/%m/%d  %H:%M:%S  ')+ prefix +':  DASK client exists. Will perform distributed computations')
                 print('Use ' + status_update_address +' to monitor DASK progress')
             use_DASK = True
         else:
