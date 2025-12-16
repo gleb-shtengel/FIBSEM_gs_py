@@ -47,11 +47,14 @@ def check_DASK(DASK_client, **kwargs):
     
     
     kwargs:
-    disp_res : bolean
-        If True (default), intermediate messages and results will be displayed
+    verbose : bolean
+        If True (default), intermediate messages and results will be displayed.
+    prefix : str
+        String to add to the front of the output (a name of the calling script etc.). Default is '   '
     
     '''
-    disp_res  = kwargs.get("disp_res", True )
+    verbose  = kwargs.get("verbose", True )
+    prefix = kwargs.get("prefix", '   ' )
     use_DASK = False
     status_update_address = ''
     try:
@@ -66,15 +69,15 @@ def check_DASK(DASK_client, **kwargs):
             status_update_address = 'http://' + hostname + ':{:d}/status'.format(dport)
             #if platform.system() == 'Windows':
             #    status_update_address = 'http://localhost:{:d}/status'.format(dport)
-            if disp_res:
-                print(time.strftime('%Y/%m/%d  %H:%M:%S')+ '  DASK client exists. Will perform distributed computations')
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S')+ prefix +':  DASK client exists. Will perform distributed computations')
                 print('Use ' + status_update_address +' to monitor DASK progress')
             use_DASK = True
         else:
-            if disp_res:
+            if verbose:
                 print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   DASK client does not exist. Will perform local computations')
     except:
-        if disp_res:
+        if verbose:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   DASK client does not exist. Will perform local computations')
             
     return use_DASK, status_update_address

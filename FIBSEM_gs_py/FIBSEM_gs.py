@@ -11612,7 +11612,7 @@ class FIBSEM_dataset:
             File path of the Excell file for the FIBSEM data set data to be saved (Data Min/Max, Working Distance, Milling Y Voltage, FOV center positions).
         use_existing_data : boolean
             Default is False. If True and the data exists (saved into XLSX), use that.            
-        disp_res : boolean
+        verbose : boolean
             If True (default), intermediate messages and results will be displayed.
 
         Returns:
@@ -11647,7 +11647,7 @@ class FIBSEM_dataset:
                 Y-frame sizes
         '''
         DASK_client = kwargs.get('DASK_client', '')
-        use_DASK, status_update_address = check_DASK(DASK_client)
+        use_DASK, status_update_address = check_DASK(DASK_client, prefix='evaluate_FIBSEM_statistics')
         if hasattr(self, "DASK_client_retries"):
             DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
         else:
@@ -11668,7 +11668,7 @@ class FIBSEM_dataset:
 
         FIBSEM_Data_xlsx_default = os.path.join(data_dir, self.fnm_reg.replace('.mrc', '_FIBSEM_Data.xlsx'))
         FIBSEM_Data_xlsx = kwargs.get('FIBSEM_Data_xlsx', FIBSEM_Data_xlsx_default)
-        disp_res = kwargs.get('disp_res', True)
+        verbose = kwargs.get('verbose', True)
         use_existing_data = kwargs.get('use_existing_data', False)
 
         local_kwargs = {'use_DASK' : use_DASK,
@@ -11683,10 +11683,10 @@ class FIBSEM_dataset:
                         'fit_params' : fit_params,
                         'Mill_Volt_Rate_um_per_V' : Mill_Volt_Rate_um_per_V,
                         'FIBSEM_Data_xlsx' : FIBSEM_Data_xlsx,
-                        'disp_res' : disp_res,
+                        'verbose' : verbose,
                         'use_existing_data' : use_existing_data}
 
-        if disp_res:
+        if verbose:
             print('Evaluating the parameters of FIBSEM data set (data Min/Max, Working Distance, Milling Y Voltage, FOV center positions, Scan Rate, EHT)')
         self.FIBSEM_Data = evaluate_FIBSEM_frames_dataset(self.fls, DASK_client, **local_kwargs)
         self.data_minmax = self.FIBSEM_Data[0:5]
@@ -11716,7 +11716,7 @@ class FIBSEM_dataset:
         Z_pixel_size_MV = rate_MV
 
         if ftype == 0:
-            if disp_res:
+            if verbose:
                 if self.zbin_factor > 1:
                     print('Z pixel (after {:d}-x Z-binning) = {:.2f} nm - based on WD data'.format(self.zbin_factor, Z_pixel_size_WD*self.zbin_factor))
                     print('Z pixel (after {:d}-x Z-binning) = {:.2f} nm - based on Milling Voltage data'.format(self.zbin_factor, Z_pixel_size_MV*self.zbin_factor))
@@ -11726,7 +11726,7 @@ class FIBSEM_dataset:
 
             self.voxel_size = np.rec.array((self.PixelSize,  self.PixelSize,  Z_pixel_size_WD), dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4')])
         else:
-            if disp_res:
+            if verbose:
                 print('No milling rate data is available, isotropic voxel size is set to {:.2f} nm'.format(self.PixelSize))
             self.voxel_size = np.rec.array((self.PixelSize,  self.PixelSize,  self.PixelSize), dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4')])
 
@@ -12427,7 +12427,7 @@ class FIBSEM_dataset:
             Fill value for padding. Default is zero.
         remove_intermediate_frames : boolean
             If True (default), intermediate frames (TIFF files) will be removed
-        disp_res : boolean
+        verbose : boolean
             If True (default), intermediate messages and results will be displayed.
         chunked_mrc_write : boolean
             if True, the MRC stack is written in chunks, otherwise (False, Default) frame-by-frame.
@@ -12546,7 +12546,7 @@ class FIBSEM_dataset:
         sliding_evaluation_box = kwargs.get("sliding_evaluation_box", False)
         start_evaluation_box = kwargs.get("start_evaluation_box", [0, 0, 0, 0])
         stop_evaluation_box = kwargs.get("stop_evaluation_box", [0, 0, 0, 0])
-        disp_res  = kwargs.get("disp_res", True )
+        verbose  = kwargs.get("verbose", True )
         dtp = kwargs.get("dtp", np.int16)  # Python data type for saving. Default is int16, the other option currently is np.uint8.
         fill_value = kwargs.get('fill_value', 0.0) + offset
         remove_intermediate_frames = kwargs.get('remove_intermediate_frames', True)
@@ -12591,17 +12591,17 @@ class FIBSEM_dataset:
                         'save_registration_summary' : save_registration_summary,
                         'chunked_mrc_write' : chunked_mrc_write,
                         'chunk_length' : chunk_length,
-                        'disp_res' : disp_res}
+                        'verbose' : verbose}
 
         # first, transform, bin and save frame chunks into individual tif files
-        if disp_res:
+        if verbose:
             print('Transforming and Saving Intermediate Registered Frames')
         end_frame = ((frame_inds[0]+len(frame_inds)-1)//zbin_factor+1)*zbin_factor
         st_frames = np.arange(frame_inds[0], end_frame, zbin_factor)
         registered_filenames = transform_and_save_frames(DASK_client, frame_inds, self.fls, self.tr_matr_cum_residual, **save_kwargs)
         frame0 = tiff.imread(registered_filenames[0])
         ny, nx = np.shape(frame0)
-        if disp_res:
+        if verbose:
             print('Analyzing Registration Quality')
         shape = [self.YResolution, self.XResolution]
         shapes = [self.YResolutions, self.XResolutions]
@@ -12650,7 +12650,7 @@ class FIBSEM_dataset:
         reg_summary, reg_summary_xlsx = analyze_registration_frames(DASK_client, registered_filenames, **save_kwargs)
 
         if save_transformed_dataset:
-            if disp_res:
+            if verbose:
                 print("Creating Dask Array Stack")
             # now build dask array of the transformed dataset
             # read the first file to get the shape and dtype (ASSUMING THAT ALL FILES SHARE THE SAME SHAPE/TYPE)
@@ -12665,20 +12665,21 @@ class FIBSEM_dataset:
             #nz, ny, nx = FIBSEMstack.shape
             fnms_saved = save_data_stack(FIBSEMstack, **save_kwargs)
         else:
-            if disp_res:
+            if verbose:
                 print('Registered data set is NOT saved into a file')
 
         if remove_intermediate_frames:
             # Remove Intermediate Registered Frame Files
             if use_DASK:
-                print('Removing Intermediate Registered Frame Files using DASK')
+                if verbose:
+                    print('Removing Intermediate Registered Frame Files using DASK')
                 futures = DASK_client.map(os.remove, registered_filenames)
                 removed_files = DASK_client.gather(futures)
             else:
                 removed_files = []
-                for registered_filename in tqdm(registered_filenames, desc='Removing Intermediate Registered Frame Files: ', display = disp_res):
+                for registered_filename in tqdm(registered_filenames, desc='Removing Intermediate Registered Frame Files: ', display = verbose):
                     removed_files.append(dask_remove_file(registered_filename))
-            if disp_res:
+            if verbose:
                 print('Removed all {:d} inermediate files successfully:  '.format(len(registered_filenames)), removed_files==registered_filenames)
 
         return reg_summary, reg_summary_xlsx
