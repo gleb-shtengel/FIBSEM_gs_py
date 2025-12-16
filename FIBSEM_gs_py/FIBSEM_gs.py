@@ -11647,7 +11647,7 @@ class FIBSEM_dataset:
                 Y-frame sizes
         '''
         DASK_client = kwargs.get('DASK_client', '')
-        use_DASK, status_update_address = check_DASK(DASK_client, prefix='evaluate_FIBSEM_statistics')
+        use_DASK, status_update_address = check_DASK(DASK_client)
         if hasattr(self, "DASK_client_retries"):
             DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
         else:

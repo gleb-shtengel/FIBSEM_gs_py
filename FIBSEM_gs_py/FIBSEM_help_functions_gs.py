@@ -10,6 +10,7 @@ from pathlib import Path
 import time
 import glob
 import re
+import sys
 
 import matplotlib
 import matplotlib.image as mpimg
@@ -54,7 +55,7 @@ def check_DASK(DASK_client, **kwargs):
     
     '''
     verbose  = kwargs.get("verbose", True )
-    prefix = kwargs.get("prefix", '   ' )
+    prefix = kwargs.get("prefix", sys._getframe(1).f_code.co_name)
     use_DASK = False
     status_update_address = ''
     try:
