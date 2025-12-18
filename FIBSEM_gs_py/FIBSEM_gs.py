@@ -12676,7 +12676,7 @@ class FIBSEM_dataset:
             if use_DASK:
                 if verbose:
                     print('Removing Intermediate Registered Frame Files using DASK')
-                futures = DASK_client.map(os.remove, registered_filenames)
+                futures = DASK_client.map(dask_remove_file, registered_filenames)
                 removed_files = DASK_client.gather(futures)
             else:
                 removed_files = []
@@ -13864,6 +13864,10 @@ def plot_2D_blob_examples(results_xlsx, **kwargs):
     
     kwargs:
     ---------
+    transitions : list of strings
+        List of transitions to analyze. Defaults is ['X', 'Y']. Allowed options are: 'X', 'Y', 'X1', 'Y1', 'X2', 'Y2'
+    cols : list of colors
+        One color per each of the transitions above. Default is ['blue', 'green', 'red', 'magenta', 'lime', 'cyan']
     save_png : boolean
         save the image into PNG file. Default is False.
     save_fname : string
@@ -13871,6 +13875,8 @@ def plot_2D_blob_examples(results_xlsx, **kwargs):
     verbose : boolean
         Print the outputs. Default is False.
     '''
+    transitions = kwargs.get('transitions', ['X', 'Y'])
+    cols = kwargs.get('cols', ['blue', 'green', 'red', 'magenta', 'lime', 'cyan'])
     save_png = kwargs.get('save_png', False)
     save_fname = kwargs.get('save_fname', results_xlsx.replace('.xlsx', '_2D_blob_examples.png'))
     verbose = kwargs.get('verbose', False)
