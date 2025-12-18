@@ -10629,7 +10629,7 @@ def save_data_stack(FIBSEMstack, **kwargs):
             voxel size in nm
         dtp  : dtype
             Python data type for saving. Default is int16, the other option currently is uint8.
-        disp_res : boolean
+        verbose : boolean
             Display messages and intermediate results
         chunked_mrc_write : boolean
             if True, the MRC stack is written in chunks, otherwise (False, Default) frame-by-frame
@@ -10648,12 +10648,12 @@ def save_data_stack(FIBSEMstack, **kwargs):
     voxel_size_default = np.rec.array((8.0, 8.0, 8.0), dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4')])
     voxel_size = kwargs.get("voxel_size", voxel_size_default)
     dtp = kwargs.get("dtp", np.int16)
-    disp_res  = kwargs.get("disp_res", False )
+    verbose  = kwargs.get("verbose", False )
     nz, ny, nx = FIBSEMstack.shape
     chunked_mrc_write = kwargs.get('chunked_mrc_write', False)
     chunk_length = kwargs.get('chunk_length', 32)
 
-    if disp_res:
+    if verbose:
         print('The resulting stack shape will be  nx={:d}, ny={:d}, nz={:d},  data type:'.format(nx, ny, nz), dtp)
         print('Voxel destreak_mrc_stackSize (nm): {:2f} x {:2f} x {:2f}'.format(voxel_size.x, voxel_size.y, voxel_size.z))
 
@@ -10668,7 +10668,7 @@ def save_data_stack(FIBSEMstack, **kwargs):
                 except:
                     pass
                 fnms_saved.append(fpath_reg_h5)
-                if disp_res:
+                if verbose:
                     print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Saving dataset into Big Data Viewer HDF5 file: ', fpath_reg_h5)
                 bdv_writer = npy2bdv.BdvWriter(fpath_reg_h5, nchannels=1, blockdim=((1, 256, 256),))
                 bdv_writer.append_view(stack=FIBSEMstack,
@@ -10679,7 +10679,7 @@ def save_data_stack(FIBSEMstack, **kwargs):
                 bdv_writer.write_xml()
                 bdv_writer.close()
             if fnm_type == 'mrc':
-                if disp_res:
+                if verbose:
                     print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Saving dataset into MRC file: ', fpath_reg)
                 fnms_saved.append(fpath_reg)
                 '''
@@ -10697,7 +10697,7 @@ def save_data_stack(FIBSEMstack, **kwargs):
                     mrc_mode = 1
                     
                 # Make a new, empty memory-mapped MRC file
-                if disp_res:
+                if verbose:
                      print('The resulting stack will saved using mrc_mode={:d},  data type='.format(mrc_mode), dtp)
                 mrc = mrcfile.new_mmap(fpath_reg, shape=(nz, ny, nx), mrc_mode=mrc_mode, overwrite=True)
                 voxel_size_angstr = voxel_size.copy()
@@ -10708,11 +10708,11 @@ def save_data_stack(FIBSEMstack, **kwargs):
                 mrc.voxel_size = voxel_size_angstr
                 if chunked_mrc_write:
                     start_frames = np.arange(0, nz, chunk_length)
-                    for start_frame in tqdm(start_frames, desc = 'Saving Chunks of Frames into MRC File: ', display = disp_res):
+                    for start_frame in tqdm(start_frames, desc = 'Saving Chunks of Frames into MRC File: ', display = verbose):
                         stop_frame = np.min((start_frame+chunk_length, nz-1))
                         mrc.data[start_frame:stop_frame] = FIBSEMstack[start_frame:stop_frame].astype(dtp)
                 else:
-                    for j, FIBSEMframe in enumerate(tqdm(FIBSEMstack, desc = 'Saving Frames into MRC File: ', display = disp_res)):
+                    for j, FIBSEMframe in enumerate(tqdm(FIBSEMstack, desc = 'Saving Frames into MRC File: ', display = verbose)):
                         mrc.data[j, :, :] = FIBSEMframe.astype(dtp)
                 mrc.close()
     else:
