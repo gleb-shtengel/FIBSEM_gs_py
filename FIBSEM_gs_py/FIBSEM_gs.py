@@ -12683,7 +12683,7 @@ class FIBSEM_dataset:
                 for registered_filename in tqdm(registered_filenames, desc='Removing Intermediate Registered Frame Files: ', display = verbose):
                     removed_files.append(dask_remove_file(registered_filename))
             if verbose:
-                print('Removed all {:d} inermediate files successfully:  '.format(len(registered_filenames)), removed_files==registered_filenames)
+                print('Removed all {:d} inermediate files successfully:  '.format(len(registered_filenames)), np.all(removed_files==registered_filenames))
 
         return reg_summary, reg_summary_xlsx
 
