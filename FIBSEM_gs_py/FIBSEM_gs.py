@@ -7890,8 +7890,8 @@ class FIBSEM_frame:
         XResolution_new = XResolution + left_pad + right_pad
         YResolution_new = YResolution + top_pad + bottom_pad
         # Calcularte new FirstPixels
-        FirstPixelX = frame.FirstPixelX
-        FirstPixelY = frame.FirstPixelY
+        FirstPixelX = self.FirstPixelX
+        FirstPixelY = self.FirstPixelY
         FirstPixelX_new = FirstPixelX - left_pad//2
         FirstPixelY_new = FirstPixelY - top_pad//2
         
