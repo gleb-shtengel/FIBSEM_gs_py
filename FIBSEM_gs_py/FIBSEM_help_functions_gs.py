@@ -258,7 +258,7 @@ def get_min_max_thresholds(image, **kwargs):
             fig.savefig(save_filename, dpi=dpi)
     return np.array((data_min, data_max))
 
-def calculate_gradent_map(img, ** kwargs):
+def calculate_gradient_map(img, ** kwargs):
     '''
     Computes 2D Gradient of the image. ©G.Shtengel 10/2024 gleb.shtengel@gmail.com
 

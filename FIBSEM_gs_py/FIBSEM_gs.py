@@ -1024,7 +1024,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     Performs following:
     1. Smooth the image by 2D convolution with a given kernel.
     2. Determine "Noise Image" as difference between the original raw and smoothed data.
-    3. Select subsets of original, smoothed and noise images by selecting only elements where the filter_array (optional input 2D array) is True. Use calculate_gradent_map(img, ** kwargs) to define filter_array.
+    3. Select subsets of original, smoothed and noise images by selecting only elements where the filter_array (optional input 2D array) is True. Use calculate_gradient_map(img, ** kwargs) to define filter_array.
     4. Build a histogram of Smoothed Image (subset if filter_array was set).
     5. For all pixels withing each histogram bin of the Smoothed Image from Step 4, calculate the mean value (mean of intensities of the select pixels of the Smoothed Image from Step 4) and variance (variance of intensities of the select pixels of the Noise Image from the Step 2).
     6. Plot the dependence of the image variance vs. image intensity.
@@ -7362,7 +7362,7 @@ class FIBSEM_frame:
         Performs following:
         1. Smooth the image by 2D convolution with a given kernel.
         2. Determine "Noise Image" as difference between the original raw and smoothed data.
-        3. Select subsets of original, smoothed and noise images by selecting only elements where the filter_array (optional input 2D array) is True. Use calculate_gradent_map(img, ** kwargs) to define filter_array.
+        3. Select subsets of original, smoothed and noise images by selecting only elements where the filter_array (optional input 2D array) is True. Use calculate_gradient_map(img, ** kwargs) to define filter_array.
         4. Build a histogram of Smoothed Image (subset if filter_array was set).
         5. For all pixels withing each histogram bin of the Smoothed Image from Step 4, calculate the mean value (mean of intensities of the select pixels of the Smoothed Image from Step 4) and variance (variance of intensities of the select pixels of the Noise Image from the Step 2).
         6. Plot the dependence of the image variance vs. image intensity.
