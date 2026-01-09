@@ -1176,19 +1176,29 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         axs[1].imshow(img_smoothed, cmap="Greys", vmin = range_disp[0], vmax = range_disp[1])
         axs[1].axis(False)
         axs[1].set_title('Smoothed Image')
-
+        
+        bbox=dict(facecolor='white', alpha=1.0, linewidth=0)
+        if filter_nonzero:
+            axs[1].imshow(filter_mask, cmap="brg")
         axs[1].imshow(low_mask, cmap="brg_r")
         axs[1].imshow(high_mask, cmap="gist_rainbow")
+        axs[1].text(0.03, 0.95, 'Excluded pixels with high intensity', bbox=bbox, transform=axs[1].transAxes, color='red', fontsize=fs-1)
+        axs[1].text(0.03, 0.90, 'Excluded pixels with low intensity', bbox=bbox, transform=axs[1].transAxes, color='lime', fontsize=fs-1)
+        if filter_nonzero:
+            axs[1].text(0.03, 0.85, 'Excluded pixels high local gradients', bbox=bbox, transform=axs[1].transAxes, color='blue', fontsize=fs-1)
 
         axs[2].imshow(imdiff, cmap="Greys", vmin = range_imdiff[0], vmax = range_imdiff[1])
         axs[2].axis(False)
-        
+        axs[2].set_title('Image Difference', fontsize=fs+1)
+
+        '''
         if filter_nonzero:
             axs[2].imshow(filter_mask, cmap="gist_rainbow")
             axs[2].text(0.0, 1.01, 'Image Difference', transform=axs[2].transAxes, fontsize=fs+1)
             axs[2].text(0.4, 1.01, 'Excluded pixels masked red', transform=axs[2].transAxes, color='red', fontsize=fs+1)
         else:
             axs[2].set_title('Image Difference', fontsize=fs+1)
+        '''
 
     if disp_res:
         hist, bins, patches = axs[4].hist(img_smoothed_filtered.ravel(), range=range_disp, bins = nbins_disp)
