@@ -2515,7 +2515,7 @@ class FIBSEM_montage_stack:
                 if verbose:
                     print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Finished post-DASK Computation')
             else:
-                for tile_params in tqdm(tile_params_mult, desc = 'Building layer_mosaic'):
+                for tile_params in tqdm(tile_params_mult, desc = 'Building mosaic for layer_id={:d}'.format(layer_id)):
                     if verbose:
                         print('Performing transform_tile with the following parameters:')
                         print(tile_params)
