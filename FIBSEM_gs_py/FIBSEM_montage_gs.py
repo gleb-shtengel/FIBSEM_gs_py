@@ -2183,16 +2183,17 @@ class FIBSEM_montage_stack:
         self.nz_tiles, num_fls_zslice = self.fls.shape
         try:
             tile_string = os.path.splitext(os.path.split(self.fls[0, -1])[1])[0][-5:].split('-')
-            self.ny_tiles = int(tile_string[1])+1
-            self.nx_tiles = int(tile_string[2])+1
-            self.shape = (self.ny_tiles, self.nx_tiles)
+            auto_ny_tiles = int(tile_string[1])+1
+            auto_nx_tiles = int(tile_string[2])+1
+            auto_shape = (auto_ny_tiles, auto_nx_tiles)
         except:
             if verbose:
                 print('Could not auto-determine the shape, and therefore the montage size and the adjacent tile pairs')
                 print('Define the montage size (self.Xsize, self.Ysize) manually')
                 print('Define the adjacent tile pairs (self.adjacent_pairs - list of indices of files of the adjacent tiles) manually')
-            self.shape = (1, 1)
-        
+            auto_shape = (1, 1)
+        self.shape = kwargs.get('shape', auto_shape)
+        self.ny_tiles, self.nx_tiles = self.shape
         self.Xoverlap = self.XResolution - (self.FirstPixels[1, 0] - self.FirstPixels[0, 0])
         self.Yoverlap = self.YResolution - (self.FirstPixels[self.shape[1], 1] - self.FirstPixels[(self.shape[1]-1), 1])
 
