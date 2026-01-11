@@ -2611,6 +2611,7 @@ class FIBSEM_montage_stack:
             fnms_saved.append(mrc_filename)
             mrc_new = mrcfile.new_mmap(mrc_filename, shape=(self.nz_tiles, self.Ysize, self.Xsize), mrc_mode=mrc_mode, overwrite=True)
             mrc_new.voxel_size = voxel_size_angstr
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Saving the registered stack into the file: ', mrc_filename)
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Result Voxel Size (Angstroms): {:2f} x {:2f} x {:2f}'.format(voxel_size_angstr.x, voxel_size_angstr.y, voxel_size_angstr.z))
             for layer_id in tqdm(np.arange(self.nz_tiles), desc = 'Saving the data stack into MRC file'):
                 mrc_new.data[layer_id, :, :] = self.assemble_layer_mosaic(layer_id, **kwargs).astype(dtp)
