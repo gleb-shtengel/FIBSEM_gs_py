@@ -2209,7 +2209,6 @@ class FIBSEM_montage_stack:
         self.Yoverlap = self.YResolution - (self.FirstPixels[self.shape[1], 1] - self.FirstPixels[(self.shape[1]-1), 1])
 
         # create the structure for pairwice tile transformation
-
         L = self.nz_tiles
         M = self.ny_tiles
         N = self.nx_tiles
@@ -2671,6 +2670,7 @@ class FIBSEM_montage_stack:
                 ymargin, xmargin = pair_margins
                 dt_kwargs['warp_matrix'] = np.array([[1, 0, -FirstPixels_delta[0]], [0, 1, -FirstPixels_delta[1]]], dtype=np.float32)
                 dt_kwargs['image_margins'] = (ymargin, xmargin)
+                dt_kwargs['image_shape'] = (self.YResolution, self.XResolution)
                 dt_kwargs['left_crop'] = left_crop
                 param_SIFT = [fname1, fname2, dt_kwargs]
                 params_SIFT.append(param_SIFT)

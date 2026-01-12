@@ -8619,7 +8619,15 @@ def determine_transformations_files(params_dsf):
         'edges' (default) or 'center'. Start of search (registration error histogram evaluation).
     estimation : string
         'interval' (default) or 'count'. Returns a width of interval determined using search direction from above or total number of bins above half max (registration error histogram evaluation).
-
+    left_crop : int 
+        Cropping value for cropping the image from the left side (used along with deformation_filed or on its own). Default is 0 - no cropping.
+    image_margins : tuple of 2 ints
+        Parts of images to be used. It is assumed that img1 is to the left and above of the img2.
+        Subsets img1[-ymargin:, -xmargin:] and  img2[0:ymargin, 0:xmargin] will be used for correlation.
+        Default is full images, so image_margins = (ymargin, xmargin) = img1.shape
+        should also provide 
+    image_shape : list of 2 ints:
+        ysz, xsz
     Returns:
     transform_matrix, fnm_matches, kpts, error_abs_mean, error_FWHMx, error_FWHMy, iteration
     '''
@@ -8677,6 +8685,17 @@ def determine_transformations_files(params_dsf):
         kp1 = [list_to_kp(kpp1) for kpp1 in kpp1s]     # this converts a list of lists to a list of keypoint objects to be used by a matcher later
         kp2 = [list_to_kp(kpp2) for kpp2 in kpp2s]     # same for the second frame
         
+        if image_margins in kwargs:
+            ymargin, xmargin =  kwargs['image_margins']
+            ysz, xsz = kwargs['image_shape']
+            # if margins are provided, apply margin filtering of kpts
+            kp1_inds = (kp1.pt[0] > xsz - xmargin)*(kp1.pt[1] > ysz - ymargin)
+            kp2_inds = (kp2.pt[0] < xmargin)*(kp2.pt[1] < ymargin)
+            kp1 = kp1[kp1_inds]
+            kp2 = kp2[kp2_inds]
+            des1 = des1[kp1_inds]
+            des2 = des2[kp2_inds]
+
         # establish matches
         if BFMatcher:    # if BFMatcher==True - use BF (Brute Force) matcher
             # This procedure uses BF (Brute-Force) Matcher.
