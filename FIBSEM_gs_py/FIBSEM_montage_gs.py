@@ -2368,7 +2368,7 @@ class FIBSEM_montage_stack:
         else:
             DASK_client_retries = kwargs.get("DASK_client_retries", 3)
         ftype = kwargs.get("ftype", self.ftype)
-        frame_inds = kwargs.get("frame_inds", np.arange(len(self.fls)))
+        frame_inds = kwargs.get("frame_inds", np.arange(len(self.fls.ravel())))
         data_dir = kwargs.get('data_dir', self.data_dir)
         thr_min = kwargs.get("thr_min", self.thr_min)
         thr_max = kwargs.get("thr_max", self.thr_max)
