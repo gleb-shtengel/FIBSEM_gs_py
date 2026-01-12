@@ -2360,6 +2360,7 @@ class FIBSEM_montage_stack:
             YResolutions : int array
                 Y-frame sizes
         '''
+        verbose = kwargs.get('verbose', True)
         DASK_client = kwargs.get('DASK_client', '')
         use_DASK, status_update_address = check_DASK(DASK_client, verbose = verbose)
         if hasattr(self, "DASK_client_retries"):
@@ -2376,7 +2377,6 @@ class FIBSEM_montage_stack:
 
         FIBSEM_Data_xlsx_default = os.path.join(data_dir, self.fnm_montage.replace('.dat', '_FIBSEM_Data.xlsx'))
         FIBSEM_Data_xlsx = kwargs.get('FIBSEM_Data_xlsx', FIBSEM_Data_xlsx_default)
-        verbose = kwargs.get('verbose', True)
         use_existing_data = kwargs.get('use_existing_data', False)
 
         local_kwargs = {'use_DASK' : use_DASK,
