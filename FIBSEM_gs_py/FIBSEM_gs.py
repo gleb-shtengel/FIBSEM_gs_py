@@ -8679,22 +8679,33 @@ def determine_transformations_files(params_dsf):
                 self.params = determine_regularized_affine_transform(src, dst, l2_matrix, targ_vector)
             RegularizedAffineTransform.estimate = estimate
 
-        kpp1s, des1 = pickle.load(open(fnm_1, 'rb'))
-        kpp2s, des2 = pickle.load(open(fnm_2, 'rb'))
-        
-        kp1 = [list_to_kp(kpp1) for kpp1 in kpp1s]     # this converts a list of lists to a list of keypoint objects to be used by a matcher later
-        kp2 = [list_to_kp(kpp2) for kpp2 in kpp2s]     # same for the second frame
-        
+        kpp1s, des1s = pickle.load(open(fnm_1, 'rb'))
+        kpp2s, des2s = pickle.load(open(fnm_2, 'rb'))
+                
         if 'image_margins' in kwargs:
             ymargin, xmargin =  kwargs['image_margins']
             ysz, xsz = kwargs['image_shape']
             # if margins are provided, apply margin filtering of kpts
-            kp1_inds = (kp1.pt[0] > xsz - xmargin)*(kp1.pt[1] > ysz - ymargin)
-            kp2_inds = (kp2.pt[0] < xmargin)*(kp2.pt[1] < ymargin)
-            kp1 = kp1[kp1_inds]
-            kp2 = kp2[kp2_inds]
-            des1 = des1[kp1_inds]
-            des2 = des2[kp2_inds]
+            kp1 = []
+            des1 = []
+            for kpp1i, des1i in zip(kpp1s, des1s):
+                    kp1i = list_to_kp(kpp1i)
+                    if kp1i.pt[0] > (xsz - xmargin) and kp1i.pt[1] > (ysz - ymargin):
+                        kp1.append(kp1i)
+                        des1.append(des1i)
+            kp2 = []
+            des2 = []
+            for kpp2i, des2i in zip(kpp2s, des2s):
+                    kp2i = list_to_kp(kpp2i)
+                    if kp2i.pt[0] < xmargin and kp2i.pt[1] < ymargin:
+                        kp2.append(kp2i)
+                        des2.append(des2i)
+
+        else:
+            kp1 = [list_to_kp(kpp1) for kpp1 in kpp1s]     # this converts a list of lists to a list of keypoint objects to be used by a matcher later
+            kp2 = [list_to_kp(kpp2) for kpp2 in kpp2s]     # same for the second frame
+            des1 = des1s
+            des2 = des2s
 
         # establish matches
         if BFMatcher:    # if BFMatcher==True - use BF (Brute Force) matcher

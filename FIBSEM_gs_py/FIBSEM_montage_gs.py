@@ -721,7 +721,7 @@ class FIBSEM_montage:
         self.sliding_minmax = kwargs.get("sliding_minmax", True)
         self.SIFT_nfeatures = kwargs.get("SIFT_nfeatures", 0)
         self.SIFT_nOctaveLayers = kwargs.get("SIFT_nOctaveLayers", 3)
-        self.SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", 0.04)
+        self.SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", 0.025)
         self.SIFT_edgeThreshold = kwargs.get("SIFT_edgeThreshold", 10)
         self.SIFT_sigma = kwargs.get("SIFT_sigma", 1.6)
         self.BFMatcher = kwargs.get("BFMatcher", False)           # If True, the BF Matcher is used for keypont matching, otherwise FLANN will be used
