@@ -2375,7 +2375,7 @@ class FIBSEM_montage_stack:
         nbins = kwargs.get("nbins", self.nbins)
         fit_params = kwargs.get('fit_params', ['SG', 3, 1])
 
-        FIBSEM_Data_xlsx_default = os.path.join(data_dir, self.fnm_montage.replace('.dat', '_FIBSEM_Data.xlsx'))
+        FIBSEM_Data_xlsx_default = os.path.join(data_dir, os.path.splitext(elf.fnm_montage)[0] + '_FIBSEM_Data.xlsx')
         FIBSEM_Data_xlsx = kwargs.get('FIBSEM_Data_xlsx', FIBSEM_Data_xlsx_default)
         use_existing_data = kwargs.get('use_existing_data', False)
 
