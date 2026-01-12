@@ -2643,9 +2643,9 @@ class FIBSEM_montage_stack:
             use_existing_data = kwargs.get('use_existing_data', False)
 
             params_SIFT = []
-            fls = self.fls.ravel()
+            fnms_kpts = self.fnms_kpts.ravel()
 
-            for index_pair, pair_margins  in zip(tqdm(self.pair_indices, desc='Setting up ECC parameter list', display=verbose), self.pair_margins):
+            for index_pair, pair_margins  in zip(tqdm(self.pair_indices, desc='Setting up SIFT parameter list', display=verbose), self.pair_margins):
                 dt_kwargs = {'ftype' : ftype,
                         'TransformType' : TransformType,
                         'l2_matrix' : l2_matrix,
@@ -2662,8 +2662,8 @@ class FIBSEM_montage_stack:
                         'use_existing_data' : use_existing_data,
                         'verbose' : verbose}
 
-                fname1 = self.fnms_kpts[index_pair[0]]
-                fname2 = self.fnms_kpts[index_pair[1]]
+                fname1 = fnms_kpts[index_pair[0]]
+                fname2 = fnms_kpts[index_pair[1]]
                 index_loc0, index_loc1 = np.mod(index_pair, self.nx_tiles*self.ny_tiles)
                 FirstPixels_delta = self.FirstPixels[index_loc1] - self.FirstPixels[index_loc0]
                 ymargin, xmargin = pair_margins
