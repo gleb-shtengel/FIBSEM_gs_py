@@ -8330,7 +8330,7 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
 
 # Routines to extract Key-Points and Descriptors
 
-def extract_keypoints_descr_files(params):
+def extract_keypoints_descr_files(params, deformation_field):
     '''
     Extracts Key-Points and Descriptors (single image) for SIFT procedure.
     ©G.Shtengel 10/2021 gleb.shtengel@gmail.com
@@ -8378,8 +8378,15 @@ def extract_keypoints_descr_files(params):
         SIFT_sigma : double
             SIFT library default is 1.6.  The sigma of the Gaussian applied to the input image at the octave #0.
             If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
+        interpolation : int
+            Interpolation type as defined in CV2 (if deformation_field is not np.nan) . Default is cv2.INTER_LINEAR.
+        fill_value = 0.0
+            Fill value for outside pixeld in cv2.remap. Default is 0.
         use_existing_data : boolean
             Default is False. If True and this had already been performed, use existing results.
+    deformation_field : 2D array
+        Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
+        Deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
 
     Returns:
         fnm : str
@@ -8394,6 +8401,7 @@ def extract_keypoints_descr_files(params):
     evaluation_box = kwargs.get("evaluation_box", [0, 0, 0, 0])
     use_existing_data = kwargs.get('use_existing_data', False)
     fnm = os.path.splitext(fl)[0] + '_kpdes.bin'
+    perform_deformation = not np.any(np.isnan(deformation_field))
 
     if use_existing_data and os.path.exists(fnm):
         pass
@@ -8403,10 +8411,14 @@ def extract_keypoints_descr_files(params):
         SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", 0.04)
         SIFT_edgeThreshold = kwargs.get("SIFT_edgeThreshold", 10)
         SIFT_sigma = kwargs.get("SIFT_sigma", 1.6)
+        interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
+        fill_value = kwargs.get('fill_value', 0)
 
         #sift = cv2.xfeatures2d.SIFT_create(nfeatures=SIFT_nfeatures, nOctaveLayers=SIFT_nOctaveLayers, edgeThreshold=SIFT_edgeThreshold, contrastThreshold=SIFT_contrastThreshold, sigma=SIFT_sigma)
         sift = cv2.SIFT_create(nfeatures=SIFT_nfeatures, nOctaveLayers=SIFT_nOctaveLayers, edgeThreshold=SIFT_edgeThreshold, contrastThreshold=SIFT_contrastThreshold, sigma=SIFT_sigma)
         img, d1, d2 = FIBSEM_frame(fl, ftype=ftype, calculate_scaled_images=False).RawImageA_8bit_thresholds(thr_min = 1.0e-3, thr_max = 1.0e-3, data_min = dmin, data_max = dmax, nbins=256)
+        if perform_deformation:
+            img = cv2.remap(img, deformation_field[:, :, 0].astype(np.float32), deformation_field[:, :, 1].astype(np.float32), interpolation=interpolation, borderValue=fill_value)[:, left_crop:].astype(np.uint8)
         # extract keypoints and descriptors for both images
 
         xi_eval = evaluation_box[2]
@@ -9143,7 +9155,6 @@ def SIFT_find_keypoints_dataset(fr, **kwargs):
     evaluation_box : list of 4 int
         evaluation_box = [top, height, left, width] boundaries of the box used for key-point extraction
         if evaluation_box is not set or evaluation_box = [0, 0, 0, 0], the entire image is used.
-    
     SIFT_nfeatures : int
         SIFT library default is 0. The number of best features to retain.
         The features are ranked by their scores (measured in SIFT algorithm as the local contrast)
@@ -9164,6 +9175,13 @@ def SIFT_find_keypoints_dataset(fr, **kwargs):
     SIFT_sigma : double
         SIFT library default is 1.6.  The sigma of the Gaussian applied to the input image at the octave #0.
         If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
+    deformation_field : 2D array
+         Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
+    deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
+    interpolation : int
+        Interpolation type as defined in CV2 (if deformation_field is not np.nan) . Default is cv2.INTER_LINEAR.
+    fill_value = 0.0
+        Fill value for outside pixeld in cv2.remap. Default is 0.
     save_res_png  : boolean
         Save PNG images of the intermediate processing statistics and final registration quality check
 
@@ -9194,6 +9212,10 @@ def SIFT_find_keypoints_dataset(fr, **kwargs):
     evaluation_box = kwargs.get("evaluation_box", [0, 0, 0, 0])
     SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", 0.025)
     RANSAC_initial_fraction = kwargs.get("RANSAC_initial_fraction", 0.005)  # fraction of data points for initial RANSAC iteration step.
+    deformation_field = kwargs.get('deformation_field', np.nan)
+    perform_deformation = not np.any(np.isnan(deformation_field))
+    interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
+    fill_value = kwargs.get('fill_value', 0)
 
     frame = FIBSEM_frame(fr, ftype=ftype, calculate_scaled_images=False)
     if ftype == 0:
@@ -9247,7 +9269,7 @@ def SIFT_find_keypoints_dataset(fr, **kwargs):
         
     t0 = time.time()
     params1 = [fr, dmin, dmax, kwargs]
-    fnm_1 = extract_keypoints_descr_files(params1)
+    fnm_1 = extract_keypoints_descr_files(params1, deformation_field)
            
     t1 = time.time()
     comp_time = (t1-t0)
@@ -9354,6 +9376,13 @@ def SIFT_evaluation_dataset(fs, **kwargs):
     SIFT_sigma : double
         SIFT library default is 1.6.  The sigma of the Gaussian applied to the input image at the octave #0.
         If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
+    deformation_field : 2D array
+         Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
+    deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
+    interpolation : int
+        Interpolation type as defined in CV2 (if deformation_field is not np.nan) . Default is cv2.INTER_LINEAR.
+    fill_value = 0.0
+        Fill value for outside pixeld in cv2.remap. Default is 0.
     save_res_png  : boolean
         Save PNG images of the intermediate processing statistics and final registration quality check
     start : string
@@ -9408,6 +9437,10 @@ def SIFT_evaluation_dataset(fs, **kwargs):
     SIFT_sigma = kwargs.get('SIFT_sigma', 1.6)
     start = kwargs.get('start', 'edges')
     estimation = kwargs.get('estimation', 'interval')
+    deformation_field = kwargs.get('deformation_field', np.nan)
+    perform_deformation = not np.any(np.isnan(deformation_field))
+    interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
+    fill_value = kwargs.get('fill_value', 0)
     use_existing_data = kwargs.get('use_existing_data', False)
 
     if memory_profiling:
@@ -9510,11 +9543,11 @@ def SIFT_evaluation_dataset(fs, **kwargs):
     t0 = time.time()
 
     params1 = [fs[0], dmin, dmax, kwargs]
-    fnm_1 = extract_keypoints_descr_files(params1)
+    fnm_1 = extract_keypoints_descr_files(params1, deformation_field)
     kpp1s, des1 = pickle.load(open(fnm_1, 'rb'))
     n_kpts = len(kpp1s)
     params2 = [fs[1], dmin, dmax, kwargs]
-    fnm_2 = extract_keypoints_descr_files(params2)
+    fnm_2 = extract_keypoints_descr_files(params2, deformation_field)
 
     kwargs.pop('DASK_client', None)
     params_dsf = [fnm_1, fnm_2, kwargs]
@@ -11798,6 +11831,13 @@ class FIBSEM_dataset:
         SIFT_sigma : double
             The sigma of the Gaussian applied to the input image at the octave #0. Default is object attribute. SIFT library default is 1.6.
             If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
+        deformation_field : 2D array
+             Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
+        deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
+        interpolation : int
+            Interpolation type as defined in CV2 (if deformation_field is not np.nan) . Default is cv2.INTER_LINEAR.
+        fill_value = 0.0
+            Fill value for outside pixeld in cv2.remap. Default is 0.
         use_existing_data : boolean
             Default is False. If True and this had already been performed, use existing results.
     
@@ -11826,6 +11866,10 @@ class FIBSEM_dataset:
             SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", self.SIFT_contrastThreshold)
             SIFT_edgeThreshold = kwargs.get("SIFT_edgeThreshold", self.SIFT_edgeThreshold)
             SIFT_sigma = kwargs.get("SIFT_sigma", self.SIFT_sigma)
+            deformation_field = kwargs.get('deformation_field', np.nan)
+            perform_deformation = not np.any(np.isnan(deformation_field))
+            interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
+            fill_value = kwargs.get('fill_value', 0)
             use_existing_data = kwargs.get('use_existing_data', False)
 
             minmax_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding = data_minmax
@@ -11838,7 +11882,9 @@ class FIBSEM_dataset:
                         'SIFT_contrastThreshold' : SIFT_contrastThreshold,
                         'SIFT_edgeThreshold' : SIFT_edgeThreshold,
                         'SIFT_sigma' : SIFT_sigma,
-                        'use_existing_data' : use_existing_data}
+                        'use_existing_data' : use_existing_data,
+                        'interpolation' : interpolation,
+                        'fill_value' : fill_value}
 
             if sliding_minmax:
                 params_s3 = [[dts3[0], dts3[1], dts3[2], kpt_kwargs] for dts3 in zip(self.fls, data_min_sliding, data_max_sliding)]
@@ -11846,13 +11892,14 @@ class FIBSEM_dataset:
                 params_s3 = [[fl, data_min_glob, data_max_glob, kpt_kwargs] for fl in self.fls]        
             if use_DASK:
                 print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Using DASK distributed')
-                futures_s3 = DASK_client.map(extract_keypoints_descr_files, params_s3, retries = DASK_client_retries)
+                shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)
+                futures_s3 = DASK_client.map(extract_keypoints_descr_files, params_s3, deformation_field = shared_data_future, retries = DASK_client_retries)
                 fnms = DASK_client.gather(futures_s3)
             else:
                 print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Using Local Computation')
                 fnms = []
                 for j, param_s3 in enumerate(tqdm(params_s3, desc='Extracting Key Points and Descriptors: ')):
-                    fnms.append(extract_keypoints_descr_files(param_s3))
+                    fnms.append(extract_keypoints_descr_files(param_s3, deformation_field))
 
             self.fnms = fnms
         return fnms

@@ -480,11 +480,16 @@ def find_Transform_ECC_DASK(params, deformation_field):
     
     ----------
     Params:
-    img1 : 2D array
-    img2 : 2D array
+    params : list of [fname1, fname2, kwargs]
+    deformation_field : 2D array
+        Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
     
     ----------
     kwargs:
+    interpolation : int
+        Interpolation type as defined in CV2. Default is cv2.INTER_LINEAR.
+    fill_value = 0.0
+        Fill value for outside pixeld in cv2.remap. Default is 0.
     image_margins : tuple of 2 ints
         Parts of images to be used. It is assumed that img1 is to the left and above of the img2.
         Subsets img1[-ymargin:, -xmargin:] and  img2[0:ymargin, 0:xmargin] will be used for correlation.
@@ -638,7 +643,7 @@ class FIBSEM_montage:
             Default is 1.5.
         max_iter : int
             Max number of iterations in the iterative procedure above (RANSAC or LinReg). Default is 1000.
-        npts_min : int
+        SIFT_nmatches_min : int
             Min number of matches for the transformation to be considered valid. Delault is 5.
         int_order : int
             The order of interpolation (when transforming the data).
@@ -672,7 +677,6 @@ class FIBSEM_montage:
         '''  
         disp_res = kwargs.get('disp_res', True)
         self.fls = fls
-        self.nfrs = len(fls)
         self.data_dir = kwargs.get('data_dir', os.path.split(fls[0])[0])
         self.ftype = kwargs.get('ftype', 0) # ftype=0 - Shan Xu's binary format  ftype=1 - tif files
         self.fls_anchors = kwargs.get('fls_anchors', [])
@@ -682,7 +686,7 @@ class FIBSEM_montage:
         self.default_pair_weight = kwargs.get('default_pair_weight', 1.0)
         self.default_anchor_weight = kwargs.get('default_anchor_weight', 100.0)
         self.add_reverse_edges = kwargs.get('add_reverse_edges', False)
-        test_frame = FIBSEM_frame(fls[self.nfrs//2], ftype = self.ftype, calculate_scaled_images=False, read_header_only=True)
+        test_frame = FIBSEM_frame(fls[0], ftype = self.ftype, calculate_scaled_images=False, read_header_only=True)
         self.MachineID = test_frame.MachineID
         self.FileVersion = test_frame.FileVersion
         self.ScanRate = test_frame.ScanRate
@@ -723,7 +727,6 @@ class FIBSEM_montage:
         self.BFMatcher = kwargs.get("BFMatcher", False)           # If True, the BF Matcher is used for keypont matching, otherwise FLANN will be used
         self.save_matches = kwargs.get("save_matches", True)      # If True, matches will be saved into individual files
         self.TransformType = kwargs.get("TransformType", ShiftTransform)
-        self.tr_matr_cum_residual = [np.eye(3,3) for i in np.arange(self.nfrs)]  # placeholder - identity transformation matrix
         l2_param_default = 1e-5                                  # regularization strength (shrinkage parameter)
         l2_matrix_default = np.eye(6)*l2_param_default             # initially set equal shrinkage on all coefficients
         l2_matrix_default[2,2] = 0                                 # turn OFF the regularization on shifts
@@ -735,7 +738,7 @@ class FIBSEM_montage:
         self.Lowe_Ratio_Threshold = kwargs.get("Lowe_Ratio_Threshold", 0.7)
         self.drmax = kwargs.get("drmax", 1.5)
         self.max_iter = kwargs.get("max_iter", 1000)
-        self.npts_min = kwargs.get('npts_min', 5)
+        self.SIFT_nmatches_min = kwargs.get('SIFT_nmatches_min', 5)
         self.save_res_png  = kwargs.get("save_res_png", True)
         self.fnm_types = kwargs.get("fnm_types", ['mrc'])
         self.flipY = kwargs.get("flipY", False)                     # If True, the registered data will be flipped along Y axis
@@ -976,6 +979,13 @@ class FIBSEM_montage:
         SIFT_sigma : double
             The sigma of the Gaussian applied to the input image at the octave #0. Default is object attribute. SIFT library default is 1.6.
             If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
+        deformation_field : 2D array
+             Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
+        deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
+        interpolation : int
+            Interpolation type as defined in CV2 (if deformation_field is not np.nan) . Default is cv2.INTER_LINEAR.
+        fill_value = 0.0
+            Fill value for outside pixeld in cv2.remap. Default is 0.
         use_existing_data : boolean
             Default is False. If True and this had already been performed, use existing results.
         verbose : boolean
@@ -1007,6 +1017,10 @@ class FIBSEM_montage:
             SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", self.SIFT_contrastThreshold)
             SIFT_edgeThreshold = kwargs.get("SIFT_edgeThreshold", self.SIFT_edgeThreshold)
             SIFT_sigma = kwargs.get("SIFT_sigma", self.SIFT_sigma)
+            deformation_field = kwargs.get('deformation_field', np.nan)
+            perform_deformation = not np.any(np.isnan(deformation_field))
+            interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
+            fill_value = kwargs.get('fill_value', 0)
             use_existing_data = kwargs.get('use_existing_data', False)
 
             minmax_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding = data_minmax
@@ -1019,16 +1033,19 @@ class FIBSEM_montage:
                         'SIFT_contrastThreshold' : SIFT_contrastThreshold,
                         'SIFT_edgeThreshold' : SIFT_edgeThreshold,
                         'SIFT_sigma' : SIFT_sigma,
-                        'use_existing_data' : use_existing_data}
+                        'use_existing_data' : use_existing_data,
+                        'interpolation' : interpolation,
+                        'fill_value' : fill_value}
 
             params_s3 = [[fl, data_min_glob, data_max_glob, kpt_kwargs] for fl in self.fls]        
             if use_DASK:
-                futures_s3 = DASK_client.map(extract_keypoints_descr_files, params_s3, retries = DASK_client_retries)
+                shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)
+                futures_s3 = DASK_client.map(extract_keypoints_descr_files, params_s3, deformation_field = shared_data_future, retries = DASK_client_retries)
                 fnms_kpts = DASK_client.gather(futures_s3)
             else:
                 fnms_kpts = []
                 for j, param_s3 in enumerate(tqdm(params_s3, desc='Extracting Key Points and Descriptors: ', display=verbose)):
-                    fnms_kpts.append(extract_keypoints_descr_files(param_s3))
+                    fnms_kpts.append(extract_keypoints_descr_files(param_s3, deformation_field))
             self.fnms_kpts = fnms_kpts
         return fnms_kpts
     
@@ -1070,7 +1087,7 @@ class FIBSEM_montage:
             Default is object attribute.
         max_iter : int
             Max number of iterations in the iterative procedure above (RANSAC or LinReg). Default is object attribute.
-        npts_min : int
+        SIFT_nmatches_min : int
             Min number of matches for the transformation to be considered valid. Delault is 5.
         save_matches : boolean
             If True, matches will be saved into individual files. Default is object attribute.
@@ -1118,10 +1135,10 @@ class FIBSEM_montage:
             RANSAC_initial_fraction = kwargs.get("RANSAC_initial_fraction", self.RANSAC_initial_fraction)
             drmax = kwargs.get("drmax", self.drmax)
             max_iter = kwargs.get("max_iter", self.max_iter)
-            if hasattr('self', 'npts_min'):
-                npts_min = kwargs.get('npts_min', self.npts_min)
+            if hasattr('self', 'SIFT_nmatches_min'):
+                SIFT_nmatches_min = kwargs.get('SIFT_nmatches_min', self.SIFT_nmatches_min)
             else:
-                npts_min = kwargs.get('npts_min', 5)
+                SIFT_nmatches_min = kwargs.get('SIFT_nmatches_min', 5)
             Lowe_Ratio_Threshold = kwargs.get("Lowe_Ratio_Threshold", 0.7)   # threshold for Lowe's Ratio Test
             BFMatcher = kwargs.get("BFMatcher", self.BFMatcher)
             save_matches = kwargs.get("save_matches", self.save_matches)
@@ -1165,7 +1182,7 @@ class FIBSEM_montage:
                     self.SIFT_transformation_matrices[ind] = np.nan_to_num(transformations_result[0])
                     self.fnms_matches[ind] = transformations_result[1]
                     self.npts[ind] = len(transformations_result[2][0])
-                    self.SIFT_transformation_valid[ind] = self.npts[ind] > npts_min
+                    self.SIFT_transformation_valid[ind] = self.npts[ind] > SIFT_nmatches_min
                 except Exception as e:
                     if verbose:
                         print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   An error occurred: {}'.format(e))
@@ -1561,14 +1578,12 @@ class FIBSEM_montage:
         else:
             DASK_client_retries = kwargs.get("DASK_client_retries", 3)
         kwargs['DASK_client_retries'] = DASK_client_retries
-        method = kwargs.get('method', 'SIFT-ECC')
-        valid_methods = ['SIFT-ECC', 'SIFT', 'ECC']
         target_pairs = self.adjacent_pairs
-        if hasattr(self, 'npts_min'):
-            npts_min = kwargs.get('npts_min', self.npts_min)
+        if hasattr(self, 'SIFT_nmatches_min'):
+            SIFT_nmatches_min = kwargs.get('SIFT_nmatches_min', self.SIFT_nmatches_min)
         else:
-            npts_min = kwargs.get('npts_min', -1)
-        kwargs['npts_min'] = npts_min       
+            SIFT_nmatches_min = kwargs.get('SIFT_nmatches_min',  5)
+        kwargs['SIFT_nmatches_min'] = SIFT_nmatches_min       
         if hasattr(self, 'default_pair_weight'):
             default_pair_weight = kwargs.get('default_pair_weight', self.default_pair_weight)
         else:
@@ -1586,7 +1601,8 @@ class FIBSEM_montage:
         kwargs['default_anchor_weight'] = default_anchor_weight
         kwargs['add_reverse_edges'] = add_reverse_edges
         kwargs['anchors'] = anchors
-        
+        method = kwargs.get('method', 'SIFT-ECC')
+        valid_methods = ['SIFT-ECC', 'SIFT', 'ECC']
         if method not in valid_methods:
             if verbose:
                 print('Method ' + method +' is not among valid methods: ', valid_methods)
@@ -1604,7 +1620,7 @@ class FIBSEM_montage:
                 if method == 'SIFT-ECC':
                     target_pairs = self.adjacent_pairs[np.array(self.SIFT_transformation_valid)==False]
                     if verbose:
-                        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'  These image pairs had insufficient number of SIFT keypoints (<{:d}), will use ECC'.format(npts_min))
+                        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'  These image pairs had insufficient number of SIFT keypoints (<{:d}), will use ECC'.format(SIFT_nmatches_min))
             if method == 'SIFT-ECC' or method == 'ECC':
                 if verbose:
                     print(time.strftime('%Y/%m/%d  %H:%M:%S')+'  Determining adjacent tile transformations using ECC')
@@ -2043,7 +2059,7 @@ class FIBSEM_montage_stack:
             Default is 1.5.
         max_iter : int
             Max number of iterations in the iterative procedure above (RANSAC or LinReg). Default is 1000.
-        npts_min : int
+        SIFT_nmatches_min : int
             Min number of matches for the transformation to be considered valid. Delault is 5.
         int_order : int
             The order of interpolation (when transforming the data).
@@ -2083,11 +2099,8 @@ class FIBSEM_montage_stack:
             start_time = time.time()
 
         self.fls = np.array(fls)
-
-        self.nfrs = len(fls)
         self.data_dir = kwargs.get('data_dir', os.path.split(fls[0, 0])[0])
         self.ftype = kwargs.get('ftype', 0) # ftype=0 - Shan Xu's binary format  ftype=1 - tif files
-        
         self.intralayer_weight = kwargs.get('intralayer_weight', 1.0)
         self.interlayer_weight = kwargs.get('interlayer_weight', 100.0)
         self.add_reverse_edges = kwargs.get('add_reverse_edges', False)
@@ -2112,7 +2125,6 @@ class FIBSEM_montage_stack:
         else:
             self.PixelSize = kwargs.get("PixelSize", 8.0)
         self.voxel_size = np.rec.array((self.PixelSize,  self.PixelSize,  self.PixelSize), dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4')])
-
         self.DetA = test_frame.DetA
         self.DetB = test_frame.DetB
         self.ImgB_fraction = kwargs.get("ImgB_fraction", 0.0)
@@ -2133,7 +2145,6 @@ class FIBSEM_montage_stack:
         self.BFMatcher = kwargs.get("BFMatcher", False)           # If True, the BF Matcher is used for keypont matching, otherwise FLANN will be used
         self.save_matches = kwargs.get("save_matches", True)      # If True, matches will be saved into individual files
         self.TransformType = kwargs.get("TransformType", ShiftTransform)
-        self.tr_matr_cum_residual = [np.eye(3,3) for i in np.arange(self.nfrs)]  # placeholder - identity transformation matrix
         l2_param_default = 1e-5                                  # regularization strength (shrinkage parameter)
         l2_matrix_default = np.eye(6)*l2_param_default             # initially set equal shrinkage on all coefficients
         l2_matrix_default[2,2] = 0                                 # turn OFF the regularization on shifts
@@ -2145,7 +2156,7 @@ class FIBSEM_montage_stack:
         self.Lowe_Ratio_Threshold = kwargs.get("Lowe_Ratio_Threshold", 0.7)
         self.drmax = kwargs.get("drmax", 1.5)
         self.max_iter = kwargs.get("max_iter", 1000)
-        self.npts_min = kwargs.get('npts_min', 5)
+        self.SIFT_nmatches_min = kwargs.get('SIFT_nmatches_min', 5)
         self.save_res_png  = kwargs.get("save_res_png", True)
         self.fnm_types = kwargs.get("fnm_types", ['mrc'])
         self.flipY = kwargs.get("flipY", False)                     # If True, the registered data will be flipped along Y axis
@@ -2266,9 +2277,11 @@ class FIBSEM_montage_stack:
         self.ECC_transformation_valid = np.full(C, False)
         self.SIFT_transformation_matrices = np.repeat(eye3x3[np.newaxis, :, :], C, axis=0)
         self.SIFT_transformation_valid = np.full(C, False)
+        self.SIFT_fnms_matches = np.full(C, '')
+        self.SIFT_nmatches = np.full(C, 0)
 
         if verbose:
-            print('Montage stack object:')
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Initialized FIBSEM_montage_stack instance:')
             print('Total number of tile files: {:d}'.format(V))
             print('Individual Z-slice shape (nx_tiles, ny_tiles): {:d} x {:d} tiles'.format(self.nx_tiles, self.ny_tiles))
             print('Number of Z-slices (nz_tiles): {:d}'.format(self.nz_tiles))
@@ -2295,6 +2308,399 @@ class FIBSEM_montage_stack:
                         format_bytes(vms_after - vms_before),
                         format_bytes(shared_after - shared_before),
                         elapsed_time))
+
+
+    def evaluate_FIBSEM_statistics(self, **kwargs):
+        '''
+        Evaluates parameters of FIBSEM montage (Min/Max, Working Distance (WD), Milling Y Voltage (MV), FOV center positions). ©G.Shtengel 10/2021 gleb.shtengel@gmail.com
+        
+        kwargs:
+        ---------
+        DASK_client : DASK client. If set to empty string '' (default), local computations are performed.
+        DASK_client_retries : int (default to 3)
+            Number of allowed automatic retries if a task fails. Default is object attribute.
+        ftype : int
+            File type (0 - Shan Xu's .dat, 1 - tif). Default is object attribute.
+        frame_inds : array
+            Array of frames to be used for evaluation. If not provided, evaluzation will be performed on all frames.
+        data_dir : str
+            Data directory (path). Default is object attribute.
+        thr_min : float
+            CDF threshold for determining the minimum data value. Default is object attribute.
+        thr_max : float
+            CDF threshold for determining the maximum data value. Default is object attribute.
+        nbins : int
+            Number of histogram bins for building the PDF and CDF. Default is object attribute.
+        FIBSEM_Data_xlsx : str
+            File path of the Excell file for the FIBSEM data set data to be saved (Data Min/Max, Working Distance, Milling Y Voltage, FOV center positions).
+        use_existing_data : boolean
+            Default is False. If True and the data exists (saved into XLSX), use that.            
+        verbose : boolean
+            If True (default), intermediate messages and results will be displayed.
+
+        Returns:
+        list of 14 parameters: FIBSEM_Data_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding, mill_rate_WD, mill_rate_MV, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolutions, YResolutions
+            FIBSEM_Data_xlsx : str
+                path to Excel file with the FIBSEM data
+            data_min_glob : float   
+                min data value for I8 conversion (open CV SIFT requires I8)
+            data_man_glob : float   
+                max data value for I8 conversion (open CV SIFT requires I8)
+            center_x : float array
+                FOV Center X-coordinate extracted from the header data
+            center_y : float array
+                FOV Center Y-coordinate extracted from the header data
+            ScanRate : float array
+                SEM Scan Rate (Hz)
+            EHT : float array
+                SEM EHT voltage (kV)
+            SEMSpecimenI : float array
+                SEM Specimen current (nA)
+            XResolutions : int array
+                X-frame sizes
+            YResolutions : int array
+                Y-frame sizes
+        '''
+        DASK_client = kwargs.get('DASK_client', '')
+        use_DASK, status_update_address = check_DASK(DASK_client, verbose = verbose)
+        if hasattr(self, "DASK_client_retries"):
+            DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
+        else:
+            DASK_client_retries = kwargs.get("DASK_client_retries", 3)
+        ftype = kwargs.get("ftype", self.ftype)
+        frame_inds = kwargs.get("frame_inds", np.arange(len(self.fls)))
+        data_dir = kwargs.get('data_dir', self.data_dir)
+        thr_min = kwargs.get("thr_min", self.thr_min)
+        thr_max = kwargs.get("thr_max", self.thr_max)
+        nbins = kwargs.get("nbins", self.nbins)
+        fit_params = kwargs.get('fit_params', ['SG', 3, 1])
+
+        FIBSEM_Data_xlsx_default = os.path.join(data_dir, self.fnm_montage.replace('.dat', '_FIBSEM_Data.xlsx'))
+        FIBSEM_Data_xlsx = kwargs.get('FIBSEM_Data_xlsx', FIBSEM_Data_xlsx_default)
+        verbose = kwargs.get('verbose', True)
+        use_existing_data = kwargs.get('use_existing_data', False)
+
+        local_kwargs = {'use_DASK' : use_DASK,
+                        'DASK_client_retries' : DASK_client_retries,
+                        'ftype' : ftype,
+                        'frame_inds' : frame_inds,
+                        'data_dir' : data_dir,
+                        'thr_min' : thr_min,
+                        'thr_max' : thr_max,
+                        'nbins' : nbins,
+                        'sliding_minmax' : False,
+                        'fit_params' : fit_params,
+                        'FIBSEM_Data_xlsx' : FIBSEM_Data_xlsx,
+                        'verbose' : verbose,
+                        'use_existing_data' : use_existing_data}
+
+        if verbose:
+            print('Evaluating the parameters of FIBSEM data set (data Min/Max, Working Distance, FOV center positions, Scan Rate, EHT)')
+        self.FIBSEM_Data = evaluate_FIBSEM_frames_dataset(self.fls.ravel(), DASK_client, **local_kwargs)
+        self.data_minmax = self.FIBSEM_Data[0:5]
+        self.data_min_glob = self.FIBSEM_Data[1]
+        self.data_max_glob = self.FIBSEM_Data[2]
+        
+        self.FOV_x = self.FIBSEM_Data[7]
+        self.FOV_y = self.FIBSEM_Data[8]
+        try:
+            self.XResolutions = self.FIBSEM_Data[12].astype(int)
+            self.YResolutions = self.FIBSEM_Data[13].astype(int)
+        except:
+            self.XResolutions = np.full(len(WD), self.XResolution).astype(int)
+            self.YResolutions = np.full(len(WD), self.YResolution).astype(int)
+
+        self.XResolution = np.max(self.XResolutions)
+        self.YResolution = np.max(self.YResolutions)
+
+        return self.FIBSEM_Data
+    
+
+    def extract_keypoints(self, **kwargs):
+        '''
+        Extract Key-Points and Descriptors. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
+        
+        kwargs:
+        ---------
+        DASK_client : DASK client. DASK client. If empty string '' (Default), local computations are performed.
+        DASK_client_retries : int
+            Number of allowed automatic retries if a task fails. Default is object attribute.
+        ftype : int
+            File type (0 - Shan Xu's .dat, 1 - tif). Default is object attribute.
+        EightBit : int
+            0 - 16-bit data, 1: 8-bit data. Default is object attribute.
+        data_dir : str
+            Data directory (path). Default is object attribute.
+        thr_min : float
+            CDF threshold for determining the minimum data value. Default is object attribute.
+        thr_max : float
+            CDF threshold for determining the maximum data value. Default is object attribute.
+        deformation_field : 3D array
+            Deformation field for distortion corrections to be executed before SIFT. Default is np.nan - no distortion correction
+        nbins : int
+            Number of histogram bins for building the PDF and CDF. Default is object attribute.
+        data_minmax : list of 5 parameters
+            minmax_xlsx : str
+                path to Excel file with Min/Max data.
+            data_min_glob : float   
+                min data value for I8 conversion (open CV SIFT requires I8).
+            data_min_sliding : float array
+                min data values (one per file) for I8 conversion.
+            data_max_sliding : float array
+                max data values (one per file) for I8 conversion.
+            data_minmax_glob : 2D float array
+                min and max data values without sliding averaging.
+        SIFT_nfeatures : int
+            The number of best features to retain. Default is object attribute. SIFT library default is 0 (all features retained).
+            The features are ranked by their scores (measured in SIFT algorithm as the local contrast)
+        SIFT_nOctaveLayers : int
+            The number of layers in each octave. Default is object attribute. SIFT library default is 3.
+            3 is the value used in D. Lowe paper. The number of octaves is computed automatically from the image resolution.
+        SIFT_contrastThreshold : double
+            The contrast threshold used to filter out weak features in semi-uniform (low-contrast) regions. Default is object attribute. SIFT library default is 0.04.
+            The larger the threshold, the less features are produced by the detector.
+            The contrast threshold will be divided by nOctaveLayers when the filtering is applied.
+            When nOctaveLayers is set to default and if you want to use the value used in
+            D. Lowe paper (0.03), set this argument to 0.09.
+        SIFT_edgeThreshold : double
+            The threshold used to filter out edge-like features. Default is object attribute. SIFT library default is 10.
+            Note that its meaning is different from the contrastThreshold,
+            i.e. the larger the edgeThreshold, the less features are filtered out (more features are retained).
+        SIFT_sigma : double
+            The sigma of the Gaussian applied to the input image at the octave #0. Default is object attribute. SIFT library default is 1.6.
+            If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
+        deformation_field : 2D array
+             Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
+        deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
+        interpolation : int
+            Interpolation type as defined in CV2 (if deformation_field is not np.nan) . Default is cv2.INTER_LINEAR.
+        fill_value = 0.0
+            Fill value for outside pixeld in cv2.remap. Default is 0.
+        use_existing_data : boolean
+            Default is False. If True and this had already been performed, use existing results.
+        verbose : boolean
+        If True, outputs will be printed.
+    
+        Returns:
+        fnms_kpts : array of str
+            Filenames for binary files containing Key-Points and Descriptors for each frame.
+        '''
+        verbose = kwargs.get('verbose', True)
+        DASK_client = kwargs.get('DASK_client', '')
+        use_DASK, status_update_address = check_DASK(DASK_client, verbose = verbose)
+        if hasattr(self, "DASK_client_retries"):
+            DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
+        else:
+            DASK_client_retries = kwargs.get("DASK_client_retries", 3)
+        ftype = kwargs.get("ftype", self.ftype)
+        thr_min = kwargs.get("thr_min", self.thr_min)
+        thr_max = kwargs.get("thr_max", self.thr_max)
+        nbins = kwargs.get("nbins", self.nbins)
+        data_minmax = kwargs.get("data_minmax", self.data_minmax)
+        SIFT_nfeatures = kwargs.get("SIFT_nfeatures", self.SIFT_nfeatures)
+        SIFT_nOctaveLayers = kwargs.get("SIFT_nOctaveLayers", self.SIFT_nOctaveLayers)
+        SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", self.SIFT_contrastThreshold)
+        SIFT_edgeThreshold = kwargs.get("SIFT_edgeThreshold", self.SIFT_edgeThreshold)
+        SIFT_sigma = kwargs.get("SIFT_sigma", self.SIFT_sigma)
+        deformation_field = kwargs.get('deformation_field', np.nan)
+        interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
+        fill_value = kwargs.get('fill_value', 0)
+        use_existing_data = kwargs.get('use_existing_data', False)
+
+        minmax_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding = data_minmax
+        kpt_kwargs = {'ftype' : ftype,
+                    'thr_min' : thr_min,
+                    'thr_max' : thr_max,
+                    'nbins' : nbins,
+                    'SIFT_nfeatures' : SIFT_nfeatures,
+                    'SIFT_nOctaveLayers' : SIFT_nOctaveLayers,
+                    'SIFT_contrastThreshold' : SIFT_contrastThreshold,
+                    'SIFT_edgeThreshold' : SIFT_edgeThreshold,
+                    'SIFT_sigma' : SIFT_sigma,
+                    'use_existing_data' : use_existing_data,
+                    'interpolation' : interpolation,
+                    'fill_value' : fill_value}
+
+        params_s3 = [[fl, data_min_glob, data_max_glob, kpt_kwargs] for fl in self.fls.ravel()]        
+        if use_DASK:
+            shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)
+            futures_s3 = DASK_client.map(extract_keypoints_descr_files, params_s3, deformation_field = shared_data_future, retries = DASK_client_retries)
+            fnms_kpts = DASK_client.gather(futures_s3)
+        else:
+            fnms_kpts = []
+            for j, param_s3 in enumerate(tqdm(params_s3, desc='Extracting Key Points and Descriptors: ', display=verbose)):
+                fnms_kpts.append(extract_keypoints_descr_files(param_s3, deformation_field))
+        self.fnms_kpts = np.array(fnms_kpts).reshape(self.fls.shape)
+        return fnms_kpts
+    
+
+    def determine_transformations_SIFT(self, **kwargs):
+        '''
+        Determine transformation matrices for frame pairs using SIFT. ©G.Shtengel 10/2021 gleb.shtengel@gmail.com
+        
+        kwargs:
+        ---------
+        DASK_client : DASK client. If empty string '' (default), local computations are performed.
+        DASK_client_retries : int
+            Number of allowed automatic retries if a task fails. Default is object attribute.
+        ftype : int
+            File type (0 - Shan Xu's .dat, 1 - tif). Default is object attribute.
+        pair_margins : arraiy of tuples of 2 ints
+            Parts of images to be used. It is assumed that first image (img1) in each target_pair is to the left and above of the second image (img2).
+            Subsets img1[-ymargin:, :] and  img2[0:ymargin, :] or img1[:, -xmargin:] and  img2[:, 0:xmargin] will be used for correlation.
+            Default is full images, so image_margins = (self.YResolution, self.XResolution)
+        deformation_field : 3D array
+            Deformation field for distortion corrections to be executed before SIFT. Default is np.nan - no distortion correction
+        left_crop : int 
+            Cropping value for cropping the image from the left side (used along with deformation_filed or on its own). Default is 0 - no cropping.
+        TransformType : object reference
+            Transformation model used for determining the transformation matrix from Key-Point pairs. Default is object attribute.
+            Choose from the following options:
+                ShiftTransform - only x-shift and y-shift
+                XScaleShiftTransform  -  x-scale, x-shift, y-shift
+                ScaleShiftTransform - x-scale, y-scale, x-shift, y-shift
+                AffineTransform -  full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift)
+                RegularizedAffineTransform - full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift) with regularization on deviation from ShiftTransform
+        l2_matrix : 2D float array
+           Matrix of regularization (shrinkage) parameters (applicable only if RegularizedAffineTransform is used). Default is object attribute.
+        targ_vector = 1D float array
+            Target vector for regularization (applicable only if RegularizedAffineTransform is used). Default is object attribute.
+        solver : str
+            Solver used for SIFT ('RANSAC' or 'LinReg'). Default is object attribute.
+        RANSAC_initial_fraction : float
+            Fraction of data points for initial RANSAC iteration step. Default is object attribute.
+        Lowe_Ratio_Threshold : float
+            Threshold for Lowe's Ratio Test. Default is object attribute.
+        BFMatcher : boolean
+            If True, the BF Matcher is used for Key-Point matching, otherwise FLANN will be used. Default is object attribute.
+        drmax : float
+            In the case of 'RANSAC' - Maximum distance for a data point to be classified as an inlier.
+            In the case of 'LinReg' - outlier threshold for iterative regression.
+            Default is object attribute.
+        max_iter : int
+            Max number of iterations in the iterative procedure above (RANSAC or LinReg). Default is object attribute.
+        SIFT_nmatches_min : int
+            Min number of matches for the transformation to be considered valid. Delault is 5.
+        save_matches : boolean
+            If True, matches will be saved into individual files. Default is object attribute.
+        save_res_png  : boolean
+            Save PNG images of the intermediate processing statistics and final registration quality check. Default is object attribute.
+        start : string
+            Start of search for determining FWHM of the error distributions. Options are 'edges' (default) or 'center'.
+        estimation : string
+            Returns a width of interval determined using search direction from above or total number of bins above half max. Options are 'interval' (default) or 'count'.
+        use_existing_data : boolean
+            Default is False. If True and this had already been performed, use existing results.
+        verbose : boolean
+            Display intermediate results. Default is True.
+    
+        Returns:
+        transformations_results : array of lists containing the results:
+            [transformation_matrix, fnm_matches, npt, error_abs_mean, error_FWHMx, error_FWHMy, iteration]
+            transformation_matrix : 2D float array
+                Transformation matrix for each sequential frame pair.
+            fnm_matches : str
+                Filename containing the matches used to determine the transformation for the pair of frames.
+            npts : int
+                Number of matches.
+            error_abs_mean : float
+                Mean abs error of registration for all matched Key-Points.
+        '''
+        verbose = kwargs.get('verbose', False)
+        if len(self.fnms_kpts) == 0:
+            if verbose:
+                print('No data on individual key-point data files, peform key-point search')
+            transformations_results = []
+        else:
+            DASK_client = kwargs.get('DASK_client', '')
+            use_DASK, status_update_address = check_DASK(DASK_client, verbose = verbose)
+            if hasattr(self, "DASK_client_retries"):
+                DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
+            else:
+                DASK_client_retries = kwargs.get("DASK_client_retries", 3)
+            ftype = kwargs.get("ftype", self.ftype)
+            deformation_field = kwargs.get('deformation_field', np.nan)
+            left_crop = kwargs.get('left_crop', 0)
+            if hasattr(self, 'pair_margins'):
+                pair_margins = kwargs.get('pair_margins', self.pair_margins)
+            else:
+                pair_margins = kwargs.get('pair_margins', (self.YResolution, self.XResolution))
+            TransformType = kwargs.get("TransformType", self.TransformType)
+            l2_matrix = kwargs.get("l2_matrix", self.l2_matrix)
+            targ_vector = kwargs.get("targ_vector", self.targ_vector)
+            solver = kwargs.get("solver", self.solver)
+            RANSAC_initial_fraction = kwargs.get("RANSAC_initial_fraction", self.RANSAC_initial_fraction)
+            drmax = kwargs.get("drmax", self.drmax)
+            max_iter = kwargs.get("max_iter", self.max_iter)
+            if hasattr('self', 'SIFT_nmatches_min'):
+                SIFT_nmatches_min = kwargs.get('SIFT_nmatches_min', self.SIFT_nmatches_min)
+            else:
+                SIFT_nmatches_min = kwargs.get('SIFT_nmatches_min', 5)
+            Lowe_Ratio_Threshold = kwargs.get("Lowe_Ratio_Threshold", 0.7)   # threshold for Lowe's Ratio Test
+            BFMatcher = kwargs.get("BFMatcher", self.BFMatcher)
+            save_matches = kwargs.get("save_matches", self.save_matches)
+            save_res_png  = kwargs.get("save_res_png", self.save_res_png )
+            start = kwargs.get('start', 'edges')
+            estimation = kwargs.get('estimation', 'interval')
+            use_existing_data = kwargs.get('use_existing_data', False)
+
+            params_SIFT = []
+            fls = self.fls.ravel()
+
+            for index_pair, pair_margins  in zip(tqdm(self.pair_indices, desc='Setting up ECC parameter list', display=verbose), self.pair_margins):
+                dt_kwargs = {'ftype' : ftype,
+                        'TransformType' : TransformType,
+                        'l2_matrix' : l2_matrix,
+                        'targ_vector': targ_vector, 
+                        'solver' : solver,
+                        'RANSAC_initial_fraction' : RANSAC_initial_fraction,
+                        'drmax' : drmax,
+                        'max_iter' : max_iter,
+                        'BFMatcher' : BFMatcher,
+                        'save_matches' : save_matches,
+                        'Lowe_Ratio_Threshold' : Lowe_Ratio_Threshold,
+                        'start' : start,
+                        'estimation' : estimation,
+                        'use_existing_data' : use_existing_data,
+                        'verbose' : verbose}
+
+                fname1 = self.fnms_kpts[index_pair[0]]
+                fname2 = self.fnms_kpts[index_pair[1]]
+                index_loc0, index_loc1 = np.mod(index_pair, self.nx_tiles*self.ny_tiles)
+                FirstPixels_delta = self.FirstPixels[index_loc1] - self.FirstPixels[index_loc0]
+                ymargin, xmargin = pair_margins
+                dt_kwargs['warp_matrix'] = np.array([[1, 0, -FirstPixels_delta[0]], [0, 1, -FirstPixels_delta[1]]], dtype=np.float32)
+                dt_kwargs['image_margins'] = (ymargin, xmargin)
+                dt_kwargs['left_crop'] = left_crop
+                param_SIFT = [fname1, fname2, dt_kwargs]
+                params_SIFT.append(param_SIFT)
+                if verbose:
+                    print('Added a set: ')
+                    print([fname1, fname2, dt_kwargs])
+
+            if use_DASK:
+                futures_SIFT = DASK_client.map(determine_transformations_files, params_SIFT, retries = DASK_client_retries)                
+                transformations_results_3D = DASK_client.gather(futures_SIFT)
+            else:
+                transformations_results_3D = []
+                for param_SIFT in tqdm(params_SIFT, desc = 'Extracting Transformation Parameters: ', display=verbose):
+                    transformations_results_3D.append(determine_transformations_files(param_SIFT))
+            
+            for j, transformations_result  in enumerate(tqdm(transformations_results_3D, desc = 'Parsing the SIFT results', display = verbose)):
+                try:
+                    self.SIFT_transformation_matrices[j, 0:2, :] = np.nan_to_num(transformations_result[0])
+                    self.SIFT_fnms_matches[j] = transformations_result[1]
+                    self.SIFT_nmatches[j] = len(transformations_result[2][0])
+                    self.SIFT_transformation_valid[j] = self.SIFT_nmatches[j] > SIFT_nmatches_min
+
+                except Exception as e:
+                    if verbose:
+                        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   An error occurred: {}'.format(e))
+                        print('transformations_result:  ', transformations_result)
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints :', np.mean(self.npts).astype(np.int64))
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Valid SIFT transformation established: ', self.SIFT_transformation_valid)
+        return transformations_results_3D
 
 
     def determine_transformations_ECC(self, **kwargs):
@@ -2401,6 +2807,7 @@ class FIBSEM_montage_stack:
                     print('transformations_result:  ', transformations_result)
         return transformations_results_3D
 
+
     def solve_stack_stitching(self, **kwargs):
         '''
         Solve montage stack stitching (perform bundle optimization). ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
@@ -2409,12 +2816,16 @@ class FIBSEM_montage_stack:
         ---------
         verbose : boolean
             Display intermediate results. Default is True.
+        method : string
+            Options are: ['SIFT-ECC', 'SIFT', 'ECC']. Default is 'ECC'.  'SIFT-ECC' means - try SIFT first, and for the tiles that SIFT failed, try ECC.
         
         Returns:
         positions : array of new tile positions.
         '''
         
         verbose = kwargs.get('verbose', False)
+        method = kwargs.get('method', 'ECC')
+        valid_methods = ['SIFT-ECC', 'SIFT', 'ECC']
 
         L = self.nz_tiles
         M = self.ny_tiles
@@ -2435,15 +2846,23 @@ class FIBSEM_montage_stack:
         w_sqrt_inter = np.sqrt(self.interlayer_weight)
         weights = np.concatenate((np.full((nh+nv), w_sqrt_intra), np.full(nl, w_sqrt_inter)))
 
-
-        bx = self.ECC_transformation_matrices[:, 0, 2] * weights
-        by = self.ECC_transformation_matrices[:, 1, 2] * weights
-
-        res_x_all = lsqr(self.A_csr[self.ECC_transformation_valid], bx[self.ECC_transformation_valid])
-        res_y_all = lsqr(self.A_csr[self.ECC_transformation_valid], by[self.ECC_transformation_valid])
+        if method not in valid_methods:
+            if verbose:
+                print('Method ' + method +' is not among valid methods: ', valid_methods)
+            return np.nan
+        else:
+            if method == method == 'SIFT':
+                bx = self.SIFT_transformation_matrices[:, 0, 2] * weights
+                by = self.SIFT_transformation_matrices[:, 1, 2] * weights
+                res_x_all = lsqr(self.A_csr[self.SIFT_transformation_valid], bx[self.SIFT_transformation_valid])
+                res_y_all = lsqr(self.A_csr[self.SIFT_transformation_valid], by[self.SIFT_transformation_valid])
+            else:
+                bx = self.ECC_transformation_matrices[:, 0, 2] * weights
+                by = self.ECC_transformation_matrices[:, 1, 2] * weights
+                res_x_all = lsqr(self.A_csr[self.ECC_transformation_valid], bx[self.ECC_transformation_valid])
+                res_y_all = lsqr(self.A_csr[self.ECC_transformation_valid], by[self.ECC_transformation_valid])
         res_x = res_x_all[0]
         res_y = res_y_all[0]
-
         positions = np.zeros((V, 2))
         positions[:, 0] = res_x - res_x[0]
         positions[:, 1] = res_y - res_y[0]
@@ -2452,6 +2871,7 @@ class FIBSEM_montage_stack:
         self.tile_positions = -positions.reshape((L, M*N, 2))
 
         return self.tile_positions
+
 
     def assemble_layer_mosaic(self, layer_id, **kwargs):
         '''
@@ -2516,7 +2936,7 @@ class FIBSEM_montage_stack:
                 if verbose:
                     print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Finished post-DASK Computation')
             else:
-                for tile_params in tqdm(tile_params_mult, desc = 'Building mosaic for layer_id={:d}'.format(layer_id)):
+                for tile_params in tqdm(tile_params_mult, desc = 'Building mosaic for layer_id={:d}'.format(layer_id), display = verbose):
                     if verbose:
                         print('Performing transform_tile with the following parameters:')
                         print(tile_params)
@@ -2531,10 +2951,10 @@ class FIBSEM_montage_stack:
             layer_mosaic = np.nan_to_num(layer_mosaic / layer_mosaic_weights, nan=-fill_value)
         return layer_mosaic
 
+
     def save_stack(self, **kwargs):
         '''
         Assemble all layers based on transformation matrices for each tile and save them into stack. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
-
         
         kwargs:
         ----------
