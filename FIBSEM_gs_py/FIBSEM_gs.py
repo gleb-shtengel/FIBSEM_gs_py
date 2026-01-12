@@ -8685,7 +8685,7 @@ def determine_transformations_files(params_dsf):
         kp1 = [list_to_kp(kpp1) for kpp1 in kpp1s]     # this converts a list of lists to a list of keypoint objects to be used by a matcher later
         kp2 = [list_to_kp(kpp2) for kpp2 in kpp2s]     # same for the second frame
         
-        if image_margins in kwargs:
+        if 'image_margins' in kwargs:
             ymargin, xmargin =  kwargs['image_margins']
             ysz, xsz = kwargs['image_shape']
             # if margins are provided, apply margin filtering of kpts
