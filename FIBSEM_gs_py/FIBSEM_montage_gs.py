@@ -169,15 +169,16 @@ def transform_tile(tile_params, deformation_field):
     else:
         df = convert_tr_matr_into_deformation_field(tr_matr_single, (fr.YResolution, fr.XResolution)).astype(np.float32)
     tile_transformed, shift_x, shift_y = remap_tile(tile_initial, df)
-    shift_x = shift_x
     loc_szy, loc_szx = tile_transformed.shape
     xi = - shift_x
     xa = np.min(((xi + loc_szx), montage_xsz-1))
     yi = - shift_y
     ya = np.min(((yi + loc_szy), montage_ysz-1))
     tile_transformed_cropped = tile_transformed[0:(ya-yi), left_crop:(xa-xi)]
+    nan_indices = np.argwhere(np.isnan(tile_transformed_cropped))
     weight_out = build_weight_array(tile_transformed_cropped.shape, weight_min = weight_min, weight_max = weight_max)
-    tile_out = tile_transformed_cropped * weight_out
+    weight_out[nan_indices] = 0
+    tile_out = np.nan_to_num(tile_transformed_cropped, copy=False, nan=0.0) * weight_out
     return tile_out, weight_out, xi, xa-left_crop, yi,  ya
 
 def overlay_montage_grid(ax, montage_object, **kwargs):
@@ -197,8 +198,8 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
         Matplotlib linewidth. Default is 1.0.
     color : string
         Matplotlib color. Default 'cyan'.
-    tile_positions_actual : boolean
-        Use actual or default tile positions. Default is True.
+    tile_positions : 2D array or list
+        Actual tile positions. Default is montage_object.tile_positions.
     left_crop : int 
         Cropping value for cropping the image from the left side (used along with deformation_filed or on its own). Default is 0 - no cropping.
     dx : int
@@ -383,12 +384,12 @@ def remap_tile(img, deformation_field, **kwargs):
         interpolation : int
             interpolation used by CV2.remap. Default is cv2.INTER_LINEAR (==1).
         borderValue : int
-            borderValue used by CV2.remap. Default is 0.
+            borderValue used by CV2.remap. Default is np.nan.
     
     Returns: image_deformed, shift_x, shift_y
     '''
     interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
-    borderValue = kwargs.get('borderValue', 0)
+    borderValue = kwargs.get('borderValue', np.nan)
     
     img_shape = img.shape
     shift_x = int(np.min((np.nanmin(deformation_field[:, :, 0]), 0)))
@@ -409,7 +410,7 @@ def remap_tile(img, deformation_field, **kwargs):
                            
     image_deformed = cv2.remap(image_expanded,
                                df_expanded[:, :, 0].astype(np.float32),
-                               df_expanded[:, :, 1].astype(np.float32), interpolation=interpolation, borderValue=0)
+                               df_expanded[:, :, 1].astype(np.float32), interpolation=interpolation, borderValue=borderValue)
     
     return image_deformed, shift_x, shift_y
 
@@ -2951,7 +2952,7 @@ class FIBSEM_montage_stack:
                     layer_mosaic_weights[yi:ya, xi:xa] = layer_mosaic_weights[yi:ya, xi:xa] + weight_out
             layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*np.product(self.shape)) 
             layer_mosaic = np.nan_to_num(layer_mosaic / layer_mosaic_weights, nan=-fill_value)
-        return layer_mosaic, xy_limits
+        return layer_mosaic, layer_mosaic_weights, xy_limits
 
 
     def save_stack(self, **kwargs):
