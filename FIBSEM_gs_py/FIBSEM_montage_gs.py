@@ -2019,7 +2019,7 @@ class FIBSEM_montage_stack:
             The number of layers in each octave. SIFT library default is 3.
             3 is the value used in D. Lowe paper. The number of octaves is computed automatically from the image resolution.
         SIFT_contrastThreshold : double
-            The contrast threshold used to filter out weak features in semi-uniform (low-contrast) regions. SIFT library default is 0.04.
+            The contrast threshold used to filter out weak features in semi-uniform (low-contrast) regions. SIFT library default is 0.025.
             The larger the threshold, the less features are produced by the detector.
             The contrast threshold will be divided by nOctaveLayers when the filtering is applied.
             When nOctaveLayers is set to default and if you want to use the value used in
@@ -2139,7 +2139,7 @@ class FIBSEM_montage_stack:
         self.sliding_minmax = kwargs.get("sliding_minmax", True)
         self.SIFT_nfeatures = kwargs.get("SIFT_nfeatures", 0)
         self.SIFT_nOctaveLayers = kwargs.get("SIFT_nOctaveLayers", 3)
-        self.SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", 0.04)
+        self.SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", 0.025)
         self.SIFT_edgeThreshold = kwargs.get("SIFT_edgeThreshold", 10)
         self.SIFT_sigma = kwargs.get("SIFT_sigma", 1.6)
         self.BFMatcher = kwargs.get("BFMatcher", False)           # If True, the BF Matcher is used for keypont matching, otherwise FLANN will be used
