@@ -2919,6 +2919,7 @@ class FIBSEM_montage_stack:
         layer_mosaic = np.zeros((self.Ysize, self.Xsize-left_crop), dtype=float)
         layer_mosaic_weights = np.zeros((self.Ysize, self.Xsize-left_crop), dtype=float)
         tile_params_mult = []
+        xy_limits = []
         for fl, (j, tr_matr_single) in zip(tqdm(self.fls[layer_id], desc = 'Building tile parameter sets', display = verbose), enumerate(self.tr_matr[layer_id])):
             tile_params_mult.append([j, fl, tr_matr_single, self.Ysize, self.Xsize, weight_min, weight_max, left_crop])
         if len(tile_params_mult)>0:
@@ -2929,6 +2930,7 @@ class FIBSEM_montage_stack:
                 futures = DASK_client.map(transform_tile, tile_params_mult, deformation_field=shared_data_future)
                 for future in as_completed(futures):
                     tile_out, weight_out, xi, xa, yi, ya = future.result()
+                    xy_limits.append([xi, xa, yi, ya])
                     layer_mosaic[yi:ya, xi:xa] = layer_mosaic[yi:ya, xi:xa] + tile_out
                     layer_mosaic_weights[yi:ya, xi:xa] = layer_mosaic_weights[yi:ya, xi:xa] + weight_out
                     future.cancel()
@@ -2940,6 +2942,7 @@ class FIBSEM_montage_stack:
                         print('Performing transform_tile with the following parameters:')
                         print(tile_params)
                     tile_out, weight_out, xi, xa, yi,  ya = transform_tile(tile_params, deformation_field)
+                    xy_limits.append([xi, xa, yi, ya])
                     if verbose:
                         print('Output is:')
                         print('tile_out.shape=', tile_out.shape, 'weight_out.shape=', weight_out.shape)
@@ -2948,7 +2951,7 @@ class FIBSEM_montage_stack:
                     layer_mosaic_weights[yi:ya, xi:xa] = layer_mosaic_weights[yi:ya, xi:xa] + weight_out
             layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*np.product(self.shape)) 
             layer_mosaic = np.nan_to_num(layer_mosaic / layer_mosaic_weights, nan=-fill_value)
-        return layer_mosaic
+        return layer_mosaic, xy_limits
 
 
     def save_stack(self, **kwargs):
