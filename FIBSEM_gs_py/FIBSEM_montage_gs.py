@@ -97,47 +97,6 @@ def build_weight_array(shape, **kwargs):
     weights = np.clip((np.min(np.array([indx, indx_r, indy, indy_r]), axis=0) + weight_min), weight_min, weight_max)
     return weights
 
-def transform_tile_old(tile_params, deformation_field):
-    '''
-    Transforms individual tile to add to the montage. gleb.shtengel@gmail.com 11.2025
-    
-    Parameters:
-    -----------
-    tile_params : list :  j, fl, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max
-        j : int, tile ID
-        fl : str, filename for the tile
-        tr_matr_single : 3x3 array : transformation matrix
-        montage_xsz : int : montage x-size in pixels
-        montage_ysz : int : montage y-size in pixels
-        weight_min : float :  weight_min for weight
-        weight_max : float :  weight_max for weight
-
-    deformation_field : 3D array
-        Deformation field for distortion corrections to be executed before ECC. Default is np.nan - no distortion correction
-    
-    '''
-    j, fl, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max, left_crop = tile_params
-    fr = FIBSEM_frame(fl)
-    tile_initial = fr.RawImageA
-    #weight_initial = build_weight_array((fr.YResolution, fr.XResolution), weight_min = weight_min, weight_max = weight_max)
-    perform_deformation = not np.all(np.isnan(deformation_field))
-    if perform_deformation:
-        df = deformation_field + convert_tr_matr_into_deformation_field(tr_matr_single, (fr.YResolution, fr.XResolution)).astype(np.float32)
-    else:
-        df = convert_tr_matr_into_deformation_field(tr_matr_single, (fr.YResolution, fr.XResolution)).astype(np.float32)
-    tile_transformed, shift_x, shift_y = remap_tile(tile_initial, df)
-    tile_transformed = tile_transformed[:, left_crop:]
-    shift_x = shift_x + left_crop
-    loc_szy, loc_szx = tile_transformed.shape
-    weight_transformed = build_weight_array((loc_szy, loc_szx), weight_min = weight_min, weight_max = weight_max)
-    #weight_transformed, shift_x, shift_y = remap_tile(weight_initial, df)
-    xi = - shift_x
-    xa = np.min(((xi + loc_szx), montage_xsz-1))
-    yi = - shift_y
-    ya = np.min(((yi + loc_szy), montage_ysz-1))
-    tile_out = tile_transformed[0:(ya-yi), 0:(xa-xi)] * weight_transformed[0:(ya-yi), 0:(xa-xi)]
-    weight_out = weight_transformed[0:(ya-yi), 0:(xa-xi)]
-    return tile_out, weight_out, xi, xa, yi,  ya
 
 def transform_tile(tile_params, deformation_field):
     '''
@@ -169,12 +128,19 @@ def transform_tile(tile_params, deformation_field):
     else:
         df = convert_tr_matr_into_deformation_field(tr_matr_single, (fr.YResolution, fr.XResolution)).astype(np.float32)
     tile_transformed, shift_x, shift_y = remap_tile(tile_initial, df)
-    loc_szy, loc_szx = tile_transformed.shape
-    xi = - shift_x
-    xa = np.min(((xi + loc_szx), montage_xsz-1))
-    yi = - shift_y
-    ya = np.min(((yi + loc_szy), montage_ysz-1))
-    tile_transformed_cropped = tile_transformed[0:(ya-yi), left_crop:(xa-xi)]
+    tile_transformed_precropped = tile_transformed[:, left_crop:]
+    #loc_szy, loc_szx = tile_transformed.shape
+    loc_szy, loc_szx = tile_transformed_precropped.shape
+    xi = np.max((- shift_x, 0))
+    xa = np.min(((- shift_x + loc_szx), montage_xsz-1))
+    yi = np.max((- shift_y, 0))
+    ya = np.min(((- shift_y + loc_szy), montage_ysz-1))
+    #xi = - shift_x
+    #xa = np.min(((xi + loc_szx), montage_xsz-1))
+    #yi = - shift_y
+    #ya = np.min(((yi + loc_szy), montage_ysz-1))
+    #tile_transformed_cropped = tile_transformed[0:(ya-yi), left_crop:(xa-xi)]
+    tile_transformed_cropped = tile_transformed_precropped[yi:(ya-yi), xi:(xa-xi)]
     weight_out = build_weight_array(tile_transformed_cropped.shape, weight_min = weight_min, weight_max = weight_max)
     weight_out[np.isnan(tile_transformed_cropped)] = 0
     tile_out = np.nan_to_num(tile_transformed_cropped, copy=False, nan=0.0) * weight_out
@@ -2335,7 +2301,7 @@ class FIBSEM_montage_stack:
         use_existing_data : boolean
             Default is False. If True and the data exists (saved into XLSX), use that.            
         verbose : boolean
-            If True (default), intermediate messages and results will be displayed.
+            If True, intermediate messages and results will be displayed. Default is False.
 
         Returns:
         list of 14 parameters: FIBSEM_Data_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding, mill_rate_WD, mill_rate_MV, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolutions, YResolutions
@@ -2360,9 +2326,9 @@ class FIBSEM_montage_stack:
             YResolutions : int array
                 Y-frame sizes
         '''
-        verbose = kwargs.get('verbose', True)
+        verbose = kwargs.get('verbose', False)
         DASK_client = kwargs.get('DASK_client', '')
-        use_DASK, status_update_address = check_DASK(DASK_client, verbose = verbose)
+        use_DASK, status_update_address = check_DASK(DASK_client, verbose = True)
         if hasattr(self, "DASK_client_retries"):
             DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
         else:
