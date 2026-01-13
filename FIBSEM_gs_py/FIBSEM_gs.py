@@ -8408,7 +8408,7 @@ def extract_keypoints_descr_files(params, deformation_field):
     else:
         SIFT_nfeatures = kwargs.get("SIFT_nfeatures", 0)
         SIFT_nOctaveLayers = kwargs.get("SIFT_nOctaveLayers", 3)
-        SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", 0.04)
+        SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", 0.025)
         SIFT_edgeThreshold = kwargs.get("SIFT_edgeThreshold", 10)
         SIFT_sigma = kwargs.get("SIFT_sigma", 1.6)
         interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
@@ -8655,6 +8655,7 @@ def determine_transformations_files(params_dsf):
     RANSAC_initial_fraction = kwargs.get("RANSAC_initial_fraction", 0.005)  # fraction of data points for initial RANSAC iteration step.
     start = kwargs.get('start', 'edges')
     estimation = kwargs.get('estimation', 'interval')
+    verbose = kwargs.get('verbose', False)
 
     if save_matches:
         fnm_matches = fnm_2.replace('_kpdes.bin', '_matches.bin')
@@ -8681,6 +8682,9 @@ def determine_transformations_files(params_dsf):
 
         kpp1s, des1s = pickle.load(open(fnm_1, 'rb'))
         kpp2s, des2s = pickle.load(open(fnm_2, 'rb'))
+        if verbose:
+            print('File 1 loaded: # of kpts={:d}, # of desc={:d}'.format(len(kpp1s), len(des1s)))
+            print('File 2 loaded: # of kpts={:d}, # of desc={:d}'.format(len(kpp2s), len(des2s)))
                 
         if 'image_margins' in kwargs:
             ymargin, xmargin =  kwargs['image_margins']
@@ -8700,12 +8704,18 @@ def determine_transformations_files(params_dsf):
                     if kp2i.pt[0] < xmargin and kp2i.pt[1] < ymargin:
                         kp2.append(kp2i)
                         des2.append(des2i)
+            des1 = np.array(des1)
+            des2 = np.array(des2)
 
         else:
             kp1 = [list_to_kp(kpp1) for kpp1 in kpp1s]     # this converts a list of lists to a list of keypoint objects to be used by a matcher later
             kp2 = [list_to_kp(kpp2) for kpp2 in kpp2s]     # same for the second frame
             des1 = des1s
             des2 = des2s
+
+        if verbose:
+            print('File 1 with margin limits applied: # of kpts={:d}, # of desc={:d}'.format(len(kp1), len(des1)))
+            print('File 2 with margin limits applied: # of kpts={:d}, # of desc={:d}'.format(len(kp2), len(des2)))
 
         # establish matches
         if BFMatcher:    # if BFMatcher==True - use BF (Brute Force) matcher
