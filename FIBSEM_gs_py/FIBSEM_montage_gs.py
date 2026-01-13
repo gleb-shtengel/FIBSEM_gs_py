@@ -2687,7 +2687,7 @@ class FIBSEM_montage_stack:
             
             for j, transformations_result  in enumerate(tqdm(transformations_results_3D, desc = 'Parsing the SIFT results', display = verbose)):
                 try:
-                    self.SIFT_transformation_matrices[j,] = np.nan_to_num(transformations_result[0])
+                    self.SIFT_transformation_matrices[j] = np.nan_to_num(transformations_result[0])
                     self.SIFT_fnms_matches[j] = transformations_result[1]
                     self.SIFT_nmatches[j] = len(transformations_result[2][0])
                     self.SIFT_transformation_valid[j] = self.SIFT_nmatches[j] > SIFT_nmatches_min
