@@ -175,9 +175,8 @@ def transform_tile(tile_params, deformation_field):
     yi = - shift_y
     ya = np.min(((yi + loc_szy), montage_ysz-1))
     tile_transformed_cropped = tile_transformed[0:(ya-yi), left_crop:(xa-xi)]
-    nan_indices = np.argwhere(np.isnan(tile_transformed_cropped))
     weight_out = build_weight_array(tile_transformed_cropped.shape, weight_min = weight_min, weight_max = weight_max)
-    weight_out[nan_indices] = 0
+    weight_out[np.isnan(tile_transformed_cropped)] = 0
     tile_out = np.nan_to_num(tile_transformed_cropped, copy=False, nan=0.0) * weight_out
     return tile_out, weight_out, xi, xa-left_crop, yi,  ya
 
@@ -850,7 +849,7 @@ class FIBSEM_montage:
         use_existing_data : boolean
             Default is False. If True and the data exists (saved into XLSX), use that.            
         verbose : boolean
-            If True (default), intermediate messages and results will be displayed.
+            If True, intermediate messages and results will be displayed. Default is False.
 
         Returns:
         list of 14 parameters: FIBSEM_Data_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding, mill_rate_WD, mill_rate_MV, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolutions, YResolutions
@@ -876,7 +875,7 @@ class FIBSEM_montage:
                 Y-frame sizes
         '''
         DASK_client = kwargs.get('DASK_client', '')
-        use_DASK, status_update_address = check_DASK(DASK_client, verbose = verbose)
+        use_DASK, status_update_address = check_DASK(DASK_client, verbose = True)
         if hasattr(self, "DASK_client_retries"):
             DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
         else:
@@ -891,7 +890,7 @@ class FIBSEM_montage:
 
         FIBSEM_Data_xlsx_default = os.path.join(data_dir, self.fnm_montage.replace('.dat', '_FIBSEM_Data.xlsx'))
         FIBSEM_Data_xlsx = kwargs.get('FIBSEM_Data_xlsx', FIBSEM_Data_xlsx_default)
-        verbose = kwargs.get('verbose', True)
+        verbose = kwargs.get('verbose', False)
         use_existing_data = kwargs.get('use_existing_data', False)
 
         local_kwargs = {'use_DASK' : use_DASK,
@@ -2612,7 +2611,7 @@ class FIBSEM_montage_stack:
             transformations_results = []
         else:
             DASK_client = kwargs.get('DASK_client', '')
-            use_DASK, status_update_address = check_DASK(DASK_client, verbose = verbose)
+            use_DASK, status_update_address = check_DASK(DASK_client, verbose = True)
             if hasattr(self, "DASK_client_retries"):
                 DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
             else:
@@ -2760,7 +2759,7 @@ class FIBSEM_montage_stack:
             criteria = kwargs.get('criteria', (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 1000, 1e-7))
         
         DASK_client = kwargs.get('DASK_client', '')
-        use_DASK, status_update_address = check_DASK(DASK_client, verbose = verbose)
+        use_DASK, status_update_address = check_DASK(DASK_client, verbose = True)
         if hasattr(self, "DASK_client_retries"):
             DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
         else:
@@ -3038,7 +3037,7 @@ class FIBSEM_montage_stack:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Saving the registered stack into the file: ', mrc_filename)
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Result Voxel Size (Angstroms): {:2f} x {:2f} x {:2f}'.format(voxel_size_angstr.x, voxel_size_angstr.y, voxel_size_angstr.z))
             for layer_id in tqdm(np.arange(self.nz_tiles), desc = 'Saving the data stack into MRC file'):
-                mrc_new.data[layer_id, :, :] = self.assemble_layer_mosaic(layer_id, **kwargs).astype(dtp)
+                mrc_new.data[layer_id, :, :] = self.assemble_layer_mosaic(layer_id, **kwargs)[0].astype(dtp)
 
         mrc_new.close()
 
