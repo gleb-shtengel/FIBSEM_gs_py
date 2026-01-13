@@ -2687,7 +2687,7 @@ class FIBSEM_montage_stack:
             
             for j, transformations_result  in enumerate(tqdm(transformations_results_3D, desc = 'Parsing the SIFT results', display = verbose)):
                 try:
-                    self.SIFT_transformation_matrices[j, 0:2, :] = np.nan_to_num(transformations_result[0])
+                    self.SIFT_transformation_matrices[j,] = np.nan_to_num(transformations_result[0])
                     self.SIFT_fnms_matches[j] = transformations_result[1]
                     self.SIFT_nmatches[j] = len(transformations_result[2][0])
                     self.SIFT_transformation_valid[j] = self.SIFT_nmatches[j] > SIFT_nmatches_min
@@ -2850,7 +2850,7 @@ class FIBSEM_montage_stack:
                 print('Method ' + method +' is not among valid methods: ', valid_methods)
             return np.nan
         else:
-            if method == method == 'SIFT':
+            if method == 'SIFT':
                 bx = self.SIFT_transformation_matrices[:, 0, 2] * weights
                 by = self.SIFT_transformation_matrices[:, 1, 2] * weights
                 res_x_all = lsqr(self.A_csr[self.SIFT_transformation_valid], bx[self.SIFT_transformation_valid])
