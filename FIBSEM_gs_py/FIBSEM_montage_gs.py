@@ -128,23 +128,23 @@ def transform_tile(tile_params, deformation_field):
     else:
         df = convert_tr_matr_into_deformation_field(tr_matr_single, (fr.YResolution, fr.XResolution)).astype(np.float32)
     tile_transformed, shift_x, shift_y = remap_tile(tile_initial, df)
-    tile_transformed_precropped = tile_transformed[:, left_crop:]
-    #loc_szy, loc_szx = tile_transformed.shape
-    loc_szy, loc_szx = tile_transformed_precropped.shape
-    xi = np.max((- shift_x, 0))
-    xa = np.min(((- shift_x + loc_szx), montage_xsz-1))
-    yi = np.max((- shift_y, 0))
-    ya = np.min(((- shift_y + loc_szy), montage_ysz-1))
+    loc_szy, loc_szx = tile_transformed.shape
     #xi = - shift_x
     #xa = np.min(((xi + loc_szx), montage_xsz-1))
+    x0 = np.max((shift_x, 0))
+    xi = np.max((- shift_x, 0))
+    xa = np.min(((xi + loc_szx), montage_xsz-1))
     #yi = - shift_y
     #ya = np.min(((yi + loc_szy), montage_ysz-1))
-    #tile_transformed_cropped = tile_transformed[0:(ya-yi), left_crop:(xa-xi)]
-    tile_transformed_cropped = tile_transformed_precropped[yi:(ya-yi), xi:(xa-xi)]
+    y0 = np.max((shift_y, 0))
+    yi = np.max((- shift_y, 0))
+    ya = np.min(((yi + loc_szy), montage_ysz-1))
+    tile_transformed_cropped = tile_transformed[y0:(ya-yi), x0+left_crop:(xa-xi)]
     weight_out = build_weight_array(tile_transformed_cropped.shape, weight_min = weight_min, weight_max = weight_max)
     weight_out[np.isnan(tile_transformed_cropped)] = 0
     tile_out = np.nan_to_num(tile_transformed_cropped, copy=False, nan=0.0) * weight_out
-    return tile_out, weight_out, xi, xa-left_crop, yi,  ya
+    return tile_out, weight_out, xi, xa-left_crop-x0, yi,  ya-y0
+    
 
 def overlay_montage_grid(ax, montage_object, **kwargs):
     '''
