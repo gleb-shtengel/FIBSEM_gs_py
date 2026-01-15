@@ -8683,6 +8683,7 @@ def determine_transformations_files(params_dsf):
         kpp1s, des1s = pickle.load(open(fnm_1, 'rb'))
         kpp2s, des2s = pickle.load(open(fnm_2, 'rb'))
         if verbose:
+            print('')
             print('File 1: ', fnm_1)
             print('File 1 loaded: # of kpts={:d}, # of desc={:d}'.format(len(kpp1s), len(des1s)))
             print('File 2: ', fnm_2)
