@@ -194,9 +194,11 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
         X0 = montage_object.FirstPixels[0, 0]
         Y0 = montage_object.FirstPixels[0, 1]
         for FirstPixel_pair in montage_object.FirstPixels:
-            xi = FirstPixel_pair[0]- X0
-            yi = FirstPixel_pair[1]- Y0
-            rect_patch = patches.Rectangle((xi,yi), dx-2, dy-2,
+            xi = np.max((FirstPixel_pair[0]- X0, 0))
+            yi = np.max((FirstPixel_pair[1]- Y0, 0))
+            dx_loc = dx  + np.min((FirstPixel_pair[0]- X0, 0))
+            dy_loc = dy  + np.min((FirstPixel_pair[1]- Y0, 0))
+            rect_patch = patches.Rectangle((xi,yi), dx_loc-2, dy_loc-2,
             linewidth=linewidth, linestyle=linestyle, edgecolor=color, facecolor='none')
             ax.add_patch(rect_patch)
 
@@ -2663,7 +2665,18 @@ class FIBSEM_montage_stack:
                         print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   An error occurred: {}'.format(e))
                         print('transformations_result:  ', transformations_result)
             if verbose:
-                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints :', np.mean(self.npts).astype(np.int64))
+                L = self.nz_tiles
+                M = self.ny_tiles
+                N = self.nx_tiles
+                V = L * M * N                     # Total number of tiles
+                nh = L * M * (N - 1)              # Total number of left-right intra-layer pairs
+                nv = L * (M - 1) * N              # Total number of up-down intra-layer pairs
+                nl = (L - 1) * M * N              # Total number of inter-layer pairs
+                C = nh + nv + nl                  # Total number of of pairs (pair-wise translations)
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intralayer horisontal matches :', np.mean(self.SIFT_nmatches[0:nh]).astype(np.int64))
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intralayer horisontal matches :', np.mean(self.SIFT_nmatches[nh:nh+nv]).astype(np.int64))
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intralayer horisontal matches :', np.mean(self.SIFT_nmatches[nh+nv:]).astype(np.int64))
+
                 print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Valid SIFT transformation established: ', self.SIFT_transformation_valid)
         return transformations_results_3D
 

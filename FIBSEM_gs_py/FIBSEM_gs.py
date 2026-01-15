@@ -8683,7 +8683,9 @@ def determine_transformations_files(params_dsf):
         kpp1s, des1s = pickle.load(open(fnm_1, 'rb'))
         kpp2s, des2s = pickle.load(open(fnm_2, 'rb'))
         if verbose:
+            print('File 1: ', fnm_1)
             print('File 1 loaded: # of kpts={:d}, # of desc={:d}'.format(len(kpp1s), len(des1s)))
+            print('File 2: ', fnm_2)
             print('File 2 loaded: # of kpts={:d}, # of desc={:d}'.format(len(kpp2s), len(des2s)))
                 
         if 'image_margins' in kwargs:
@@ -8761,6 +8763,8 @@ def determine_transformations_files(params_dsf):
 
         src_pts = np.float32([ kp1[m.queryIdx].pt for m in good ]).reshape(-1, 2)
         dst_pts = np.float32([ kp2[m.trainIdx].pt for m in good ]).reshape(-1, 2)
+        if verbose:
+            print('Number of Matches after Low Ratio Test: ', len(src_pts))
         
         if solver == 'LinReg':
             # Determine the transformation matrix via iterative liear regression
@@ -8798,6 +8802,9 @@ def determine_transformations_files(params_dsf):
                 iteration = 0
                 error_FWHMx = np.nan
                 error_FWHMy = np.nan
+        if verbose:
+            print('Transformation Matrix : ', transform_matrix)
+            print('error_abs_mean={:.3f}, error_FWHMx={:.3f}, error_FWHMy={:.3f} : '.format(error_abs_mean, error_FWHMx, error_FWHMy))
         if save_matches:
             int_results = [transform_matrix, fnm_matches, kpts, error_abs_mean, error_FWHMx, error_FWHMy, iteration]
             pickle.dump(int_results, open(fnm_matches, 'wb'))
