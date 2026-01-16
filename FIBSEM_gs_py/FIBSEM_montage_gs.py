@@ -2636,8 +2636,6 @@ class FIBSEM_montage_stack:
 
                 fname1 = fnms_kpts[index_pair[0]]
                 fname2 = fnms_kpts[index_pair[1]]
-                fname1 = self.fnms_kpts[index_pair[0]]
-                fname2 = self.fnms_kpts[index_pair[1]]
                 path_base, f1 = os.path.split(fname1)
                 _, f2 = os.path.split(fname2)
                 fnm_matches = os.path.join(path_base, f1.replace('_kpdes.bin', '_')+f2.replace('_kpdes.bin', '_matches.bin'))
