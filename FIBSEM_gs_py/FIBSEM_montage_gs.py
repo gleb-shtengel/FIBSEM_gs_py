@@ -1123,7 +1123,7 @@ class FIBSEM_montage:
                             'drmax' : drmax,
                             'max_iter' : max_iter,
                             'BFMatcher' : BFMatcher,
-                            'save_matches' : save_matches,
+                            'fnm_matches' : fnms_matches,
                             'Lowe_Ratio_Threshold' : Lowe_Ratio_Threshold,
                             'start' : start,
                             'estimation' : estimation,
@@ -1132,6 +1132,10 @@ class FIBSEM_montage:
             for j, index_pair in enumerate(target_pairs):
                 fname1 = self.fnms_kpts[index_pair[0]]
                 fname2 = self.fnms_kpts[index_pair[1]]
+                path_base, f1 = os.path.split(fname1)
+                _, f2 = os.path.split(fname2)
+                fnm_matches = os.path.join(path_base, f1.replace('_kpdes.bin', '_')+f2.replace('_kpdes.bin', '_matches.bin'))
+                dt_kwargs['fnm_matches'] = fnm_matches
                 params_SIFT.append([fname1, fname2, dt_kwargs])
                 if verbose:
                     print('Added a set: ')
@@ -2632,6 +2636,12 @@ class FIBSEM_montage_stack:
 
                 fname1 = fnms_kpts[index_pair[0]]
                 fname2 = fnms_kpts[index_pair[1]]
+                fname1 = self.fnms_kpts[index_pair[0]]
+                fname2 = self.fnms_kpts[index_pair[1]]
+                path_base, f1 = os.path.split(fname1)
+                _, f2 = os.path.split(fname2)
+                fnm_matches = os.path.join(path_base, f1.replace('_kpdes.bin', '_')+f2.replace('_kpdes.bin', '_matches.bin'))
+                dt_kwargs['fnm_matches'] = fnm_matches
                 index_loc0, index_loc1 = np.mod(index_pair, self.nx_tiles*self.ny_tiles)
                 FirstPixels_delta = self.FirstPixels[index_loc1] - self.FirstPixels[index_loc0]
                 ymargin, xmargin = pair_margins

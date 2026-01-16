@@ -8615,6 +8615,7 @@ def determine_transformations_files(params_dsf):
            - in the case of 'RANSAC' - Maximum distance for a data point to be classified as an inlier.
     max_iter - max number of iterations
     save_matches - if True - save the matched keypoints into a binary dump file
+    fnm_matches - fuilename to save the matches. Defaults is constructed as fnm_2.replace('_kpdes.bin', '_matches.bin')
     start : string
         'edges' (default) or 'center'. Start of search (registration error histogram evaluation).
     estimation : string
@@ -8658,7 +8659,7 @@ def determine_transformations_files(params_dsf):
     verbose = kwargs.get('verbose', False)
 
     if save_matches:
-        fnm_matches = fnm_2.replace('_kpdes.bin', '_matches.bin')
+        fnm_matches = kwargs.get('fnm_matches', fnm_2.replace('_kpdes.bin', '_matches.bin'))
     else:
         fnm_matches = ''
 
@@ -8805,11 +8806,10 @@ def determine_transformations_files(params_dsf):
                 error_FWHMy = np.nan
         if verbose:
             print('Transformation Matrix : ', transform_matrix)
-            print('error_abs_mean={:.3f}, error_FWHMx={:.3f}, error_FWHMy={:.3f} : '.format(error_abs_mean, error_FWHMx, error_FWHMy))
+            print('error_abs_mean={:.3f}, error_FWHMx={:.3f}, error_FWHMy={:.3f}'.format(error_abs_mean, error_FWHMx, error_FWHMy))
         if save_matches:
             int_results = [transform_matrix, fnm_matches, kpts, error_abs_mean, error_FWHMx, error_FWHMy, iteration]
             pickle.dump(int_results, open(fnm_matches, 'wb'))
-
     return transform_matrix, fnm_matches, kpts, error_abs_mean, error_FWHMx, error_FWHMy, iteration
 
 
