@@ -2248,7 +2248,7 @@ class FIBSEM_montage_stack:
         self.ECC_transformation_valid = np.full(C, False)
         self.SIFT_transformation_matrices = np.repeat(eye3x3[np.newaxis, :, :], C, axis=0)
         self.SIFT_transformation_valid = np.full(C, False)
-        self.SIFT_fnms_matches = np.full(C, '')
+        self.SIFT_fnms_matches = ['' for x in np.arange(C)]
         self.SIFT_nmatches = np.full(C, 0)
 
         if verbose:
