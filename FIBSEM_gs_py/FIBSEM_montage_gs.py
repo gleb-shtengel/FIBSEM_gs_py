@@ -2720,7 +2720,7 @@ class FIBSEM_montage_stack:
         save_res_png  = kwargs.get("save_res_png", self.save_res_png )
         start = kwargs.get('start', 'edges')
         estimation = kwargs.get('estimation', 'interval')
-        verbose = kwargs.get('verbose' : True)
+        verbose = kwargs.get('verbose', True)
 
         minmax_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding = data_minmax
         kpt_kwargs = {'ftype' : ftype,
