@@ -2746,7 +2746,7 @@ class FIBSEM_montage_stack:
             fnms_kpts.append(extract_keypoints_descr_files(param_s3, deformation_field))
 
         params_SIFT = []
-            fnms_kpts = self.fnms_kpts.ravel()
+        fnms_kpts = self.fnms_kpts.ravel()
 
         dt_kwargs = {'ftype' : ftype,
                 'TransformType' : TransformType,
