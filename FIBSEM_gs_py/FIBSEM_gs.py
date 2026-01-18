@@ -8384,6 +8384,8 @@ def extract_keypoints_descr_files(params, deformation_field):
             Fill value for outside pixeld in cv2.remap. Default is 0.
         use_existing_data : boolean
             Default is False. If True and this had already been performed, use existing results.
+        save_deformed_image : boolean
+            Used for debugging. Default is False.
     deformation_field : 2D array
         Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
         Deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
@@ -8402,6 +8404,7 @@ def extract_keypoints_descr_files(params, deformation_field):
     use_existing_data = kwargs.get('use_existing_data', False)
     fnm = os.path.splitext(fl)[0] + '_kpdes.bin'
     perform_deformation = not np.any(np.isnan(deformation_field))
+    save_deformed_image = kwargs.get('save_deformed_image', False)
 
     if use_existing_data and os.path.exists(fnm):
         pass
@@ -8420,6 +8423,9 @@ def extract_keypoints_descr_files(params, deformation_field):
         if perform_deformation:
             img = cv2.remap(img, deformation_field[:, :, 0].astype(np.float32), deformation_field[:, :, 1].astype(np.float32), interpolation=interpolation, borderValue=fill_value)[:, left_crop:].astype(np.uint8)
         # extract keypoints and descriptors for both images
+        if save_deformed_image:
+            fnm_deformed_image = kwargs.get('fnm_deformed_image', os.path.splitext(fl)[0] + '_def_image.tif')
+            tiff.imsave(fnm_deformed_image, img)
 
         xi_eval = evaluation_box[2]
         if evaluation_box[3] > 0:

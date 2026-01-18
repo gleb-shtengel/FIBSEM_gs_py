@@ -2688,6 +2688,107 @@ class FIBSEM_montage_stack:
                 print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Valid SIFT transformation established: ', self.SIFT_transformation_valid)
         return transformations_results_3D
 
+    def test_SIFT(self, index_pair, pair_margins, **kwargs):
+        ftype = kwargs.get("ftype", self.ftype)
+        thr_min = kwargs.get("thr_min", self.thr_min)
+        thr_max = kwargs.get("thr_max", self.thr_max)
+        nbins = kwargs.get("nbins", self.nbins)
+        data_minmax = kwargs.get("data_minmax", self.data_minmax)
+        SIFT_nfeatures = kwargs.get("SIFT_nfeatures", self.SIFT_nfeatures)
+        SIFT_nOctaveLayers = kwargs.get("SIFT_nOctaveLayers", self.SIFT_nOctaveLayers)
+        SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", self.SIFT_contrastThreshold)
+        SIFT_edgeThreshold = kwargs.get("SIFT_edgeThreshold", self.SIFT_edgeThreshold)
+        SIFT_sigma = kwargs.get("SIFT_sigma", self.SIFT_sigma)
+        deformation_field = kwargs.get('deformation_field', np.nan)
+        interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
+        fill_value = kwargs.get('fill_value', 0)
+
+        TransformType = kwargs.get("TransformType", self.TransformType)
+        l2_matrix = kwargs.get("l2_matrix", self.l2_matrix)
+        targ_vector = kwargs.get("targ_vector", self.targ_vector)
+        solver = kwargs.get("solver", self.solver)
+        RANSAC_initial_fraction = kwargs.get("RANSAC_initial_fraction", self.RANSAC_initial_fraction)
+        drmax = kwargs.get("drmax", self.drmax)
+        max_iter = kwargs.get("max_iter", self.max_iter)
+        if hasattr('self', 'SIFT_nmatches_min'):
+            SIFT_nmatches_min = kwargs.get('SIFT_nmatches_min', self.SIFT_nmatches_min)
+        else:
+            SIFT_nmatches_min = kwargs.get('SIFT_nmatches_min', 5)
+        Lowe_Ratio_Threshold = kwargs.get("Lowe_Ratio_Threshold", 0.7)   # threshold for Lowe's Ratio Test
+        BFMatcher = kwargs.get("BFMatcher", self.BFMatcher)
+        save_matches = kwargs.get("save_matches", self.save_matches)
+        save_res_png  = kwargs.get("save_res_png", self.save_res_png )
+        start = kwargs.get('start', 'edges')
+        estimation = kwargs.get('estimation', 'interval')
+        verbose = kwargs.get('verbose' : True)
+
+        minmax_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding = data_minmax
+        kpt_kwargs = {'ftype' : ftype,
+                    'thr_min' : thr_min,
+                    'thr_max' : thr_max,
+                    'nbins' : nbins,
+                    'SIFT_nfeatures' : SIFT_nfeatures,
+                    'SIFT_nOctaveLayers' : SIFT_nOctaveLayers,
+                    'SIFT_contrastThreshold' : SIFT_contrastThreshold,
+                    'SIFT_edgeThreshold' : SIFT_edgeThreshold,
+                    'SIFT_sigma' : SIFT_sigma,
+                    'use_existing_data' : False,
+                    'save_deformed_image' : True,
+                    'interpolation' : interpolation,
+                    'fill_value' : fill_value,
+                    'verbose' : verbose}
+
+        fl1 = self.fls.ravel()[index_pair[0]]
+        fl2 = self.fls.ravel()[index_pair[1]]
+        params_s3 = [[fl, data_min_glob, data_max_glob, kpt_kwargs] for fl in [fl1, fl2]]
+        fnms_kpts = []
+        for j, param_s3 in enumerate(tqdm(params_s3, desc='Extracting Key Points and Descriptors: ', display=verbose)):
+            fnms_kpts.append(extract_keypoints_descr_files(param_s3, deformation_field))
+
+        params_SIFT = []
+            fnms_kpts = self.fnms_kpts.ravel()
+
+        dt_kwargs = {'ftype' : ftype,
+                'TransformType' : TransformType,
+                'l2_matrix' : l2_matrix,
+                'targ_vector': targ_vector, 
+                'solver' : solver,
+                'RANSAC_initial_fraction' : RANSAC_initial_fraction,
+                'drmax' : drmax,
+                'max_iter' : max_iter,
+                'BFMatcher' : BFMatcher,
+                'save_matches' : save_matches,
+                'Lowe_Ratio_Threshold' : Lowe_Ratio_Threshold,
+                'start' : start,
+                'estimation' : estimation,
+                'use_existing_data' : False,
+                'verbose' : verbose}
+
+        fname1 = fnms_kpts[0]
+        fname2 = fnms_kpts[1]
+
+        fnm_deformed1 = os.path.splitext(fname1)[0] + '_def_image.tif'
+        fnm_deformed2 = os.path.splitext(fname2)[0] + '_def_image.tif'
+        path_base, f1 = os.path.split(fname1)
+        _, f2 = os.path.split(fname2)
+        fnm_matches = os.path.join(path_base, f1.replace('_kpdes.bin', '_')+f2.replace('_kpdes.bin', '_matches.bin'))
+        dt_kwargs['fnm_matches'] = fnm_matches
+        index_loc0, index_loc1 = np.mod(index_pair, self.nx_tiles*self.ny_tiles)
+        FirstPixels_delta = self.FirstPixels[index_loc1] - self.FirstPixels[index_loc0]
+        ymargin, xmargin = pair_margins
+        dt_kwargs['warp_matrix'] = np.array([[1, 0, -FirstPixels_delta[0]], [0, 1, -FirstPixels_delta[1]]], dtype=np.float32)
+        dt_kwargs['image_margins'] = (ymargin, xmargin)
+        dt_kwargs['image_shape'] = (self.YResolution, self.XResolution)
+        dt_kwargs['left_crop'] = left_crop
+        param_SIFT = [fname1, fname2, dt_kwargs]
+
+        transformations_result = determine_transformations_files(param_SIFT)
+
+        print('SIFT_transformation_matrix = ', transformations_result[0])
+        print('SIFT_fnms_matches: ', transformations_result[1])
+        print('SIFT_nmatches = ', len(transformations_result[2][0]))
+
+        return fnm_deformed1, fnm_deformed2, transformations_result
 
     def determine_transformations_ECC(self, **kwargs):
         '''
