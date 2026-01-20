@@ -2822,7 +2822,8 @@ class FIBSEM_montage_stack:
             symsize = 2
             fsize_text = 5
             fsize_label = 10
-            dpi= 600
+            scale = 100
+            width = 0.0010
 
             fig, axs = plt.subplots(1, 2, figsize=(10, 5.5))
             fig.subplots_adjust(left=0.01, bottom=0.01, right=0.99, top=0.95, wspace=0.05)
