@@ -2817,7 +2817,8 @@ class FIBSEM_montage_stack:
 
             fig, axs = plt.subplots(1, 2, figsize=(10, 5.5))
             fig.subplots_adjust(left=0.01, bottom=0.01, right=0.99, top=0.95, wspace=0.05)
-
+            img1 = tiff.imread(fnm_deformed1)
+            img2 = tiff.imread(fnm_deformed2)
             axs[0].imshow(img1, cmap='Greys')
             axs[1].imshow(img2, cmap='Greys')
             axs[0].text(0.01, 1.00 - 0.015*frame.XResolution/frame.YResolution, 'thr_min={:.0e}, thr_max={:.0e}'.format(thr_min, thr_max), fontsize=fsize_text, transform=axs[0].transAxes)
