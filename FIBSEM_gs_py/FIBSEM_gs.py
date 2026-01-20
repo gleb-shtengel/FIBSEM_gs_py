@@ -8378,6 +8378,8 @@ def extract_keypoints_descr_files(params, deformation_field):
         SIFT_sigma : double
             SIFT library default is 1.6.  The sigma of the Gaussian applied to the input image at the octave #0.
             If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
+        left_crop : int 
+            Cropping value for cropping the image from the left side (used along with deformation_filed or on its own). Default is 0 - no cropping.
         interpolation : int
             Interpolation type as defined in CV2 (if deformation_field is not np.nan) . Default is cv2.INTER_LINEAR.
         fill_value = 0.0
@@ -8404,6 +8406,7 @@ def extract_keypoints_descr_files(params, deformation_field):
     use_existing_data = kwargs.get('use_existing_data', False)
     fnm = os.path.splitext(fl)[0] + '_kpdes.bin'
     perform_deformation = np.any(np.invert(np.isnan(deformation_field)))
+    left_crop = kwargs.get('left_crop', 0)
 
     if verbose:
             print('Deformation Field is present. Will perform image deforation first.')
