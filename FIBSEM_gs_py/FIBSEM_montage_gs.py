@@ -2802,7 +2802,8 @@ class FIBSEM_montage_stack:
         param_SIFT = [fname1, fname2, dt_kwargs]
 
         transformations_result = determine_transformations_files(param_SIFT)
-        n_matches = len(transformations_result[2][0])
+        transform_matrix, fnm_matches, kpts, error_abs_mean, error_FWHMx, error_FWHMy, iteration = transformations_result
+        n_matches = len(kpts[0])
         if verbose:
             print('SIFT_transformation_matrix = ', transformations_result[0])
             print('SIFT_fnms_matches: ', transformations_result[1])
@@ -2848,7 +2849,6 @@ class FIBSEM_montage_stack:
                 
                 x, y = src_pts_filtered.T
                 M = np.sqrt(xshifts*xshifts+yshifts*yshifts)
-                mean_error = np.mean(M)
                 xs = xshifts
                 ys = yshifts
                 # the code below is for vector map. vectors have origin coordinates x and y, and vector projections xs and ys.
@@ -2862,12 +2862,8 @@ class FIBSEM_montage_stack:
                 cbar = fig.colorbar(vec_field, pad=0.05, shrink=0.70, orientation = 'horizontal', format="%.1f")
                 cbar.set_label('SIFT Error Amplitude (pix)', fontsize=fsize_label)
 
-                xcounts, xbins = np.histogram(xshifts, bins=64)
-                error_FWHMx, indxi, indxa, mxx, mxx_ind = find_FWHM(xbins, xcounts[:-1], verbose=False, max_aver_aperture=5)
-                ycounts, ybins = np.histogram(yshifts, bins=64)
-                error_FWHMy, indyi, indya, mxy, mxy_ind = find_FWHM(ybins, ycounts[:-1], verbose=False, max_aver_aperture=5)
                 axs[0].text(0.01, 1.00 - 0.195*frame.XResolution/frame.YResolution, '# of keypoints = {:d} and {:d}, # of matches ={:d}'.format(n_kpts1, n_kpts2, n_matches), fontsize=fsize_text, transform=axs[0].transAxes) 
-                axs[0].text(0.01, 1.00 - 0.215*frame.XResolution/frame.YResolution, 'mean_error = {:.3f}, error_FWHMx = {:3f},  error_FWHMy={:3f}'.format(mean_error, error_FWHMx, error_FWHMy), fontsize=fsize_text, transform=axs[0].transAxes) 
+                axs[0].text(0.01, 1.00 - 0.215*frame.XResolution/frame.YResolution, 'mean_error = {:.3f}, error_FWHMx = {:3f},  error_FWHMy={:3f}'.format(error_abs_mean, error_FWHMx, error_FWHMy), fontsize=fsize_text, transform=axs[0].transAxes) 
 
 
             for title, ax in zip([fnm_deformed1, fnm_deformed2], axs):
