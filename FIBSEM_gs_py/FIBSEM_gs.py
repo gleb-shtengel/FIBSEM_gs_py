@@ -8403,7 +8403,10 @@ def extract_keypoints_descr_files(params, deformation_field):
     evaluation_box = kwargs.get("evaluation_box", [0, 0, 0, 0])
     use_existing_data = kwargs.get('use_existing_data', False)
     fnm = os.path.splitext(fl)[0] + '_kpdes.bin'
-    perform_deformation = not np.any(np.isnan(deformation_field))
+    perform_deformation = np.any(np.invert(np.isnan(deformation_field)))
+
+    if verbose:
+            print('Deformation Field is present. Will perform image deforation first.')
     save_deformed_image = kwargs.get('save_deformed_image', False)
 
     if use_existing_data and os.path.exists(fnm):
@@ -9267,7 +9270,7 @@ def SIFT_find_keypoints_dataset(fr, **kwargs):
     SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", 0.025)
     RANSAC_initial_fraction = kwargs.get("RANSAC_initial_fraction", 0.005)  # fraction of data points for initial RANSAC iteration step.
     deformation_field = kwargs.get('deformation_field', np.nan)
-    perform_deformation = not np.any(np.isnan(deformation_field))
+    perform_deformation = np.any(np.invert(np.isnan(deformation_field)))
     interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
     fill_value = kwargs.get('fill_value', 0)
 
@@ -9492,7 +9495,7 @@ def SIFT_evaluation_dataset(fs, **kwargs):
     start = kwargs.get('start', 'edges')
     estimation = kwargs.get('estimation', 'interval')
     deformation_field = kwargs.get('deformation_field', np.nan)
-    perform_deformation = not np.any(np.isnan(deformation_field))
+    perform_deformation = np.any(np.invert(np.isnan(deformation_field)))
     interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
     fill_value = kwargs.get('fill_value', 0)
     use_existing_data = kwargs.get('use_existing_data', False)
@@ -11921,7 +11924,7 @@ class FIBSEM_dataset:
             SIFT_edgeThreshold = kwargs.get("SIFT_edgeThreshold", self.SIFT_edgeThreshold)
             SIFT_sigma = kwargs.get("SIFT_sigma", self.SIFT_sigma)
             deformation_field = kwargs.get('deformation_field', np.nan)
-            perform_deformation = not np.any(np.isnan(deformation_field))
+            perform_deformation = np.any(np.invert(np.isnan(deformation_field)))
             interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
             fill_value = kwargs.get('fill_value', 0)
             use_existing_data = kwargs.get('use_existing_data', False)
