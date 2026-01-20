@@ -2817,7 +2817,6 @@ class FIBSEM_montage_stack:
             print('drmax={:.3f}'.format(drmax))
             print('# of keypoints = {:d} and {:d}, # of matches ={:d}'.format(n_kpts1, n_kpts2, n_matches))
 
-        if save_res_png:
             fs=12
             symsize = 2
             fsize_text = 5
@@ -2871,7 +2870,9 @@ class FIBSEM_montage_stack:
                 ax.set_title(title, fontsize = fsize_text)
                 ax.axis(False)
 
-            fig.savefig(save_filename, dpi=dpi)
+            if save_res_png:
+                save_filename = kwargs.get('save_filename', fnm_matches.replace('_matches.bin', '_SIFT_test.png'))
+                fig.savefig(save_filename, dpi=dpi)
 
         return fnm_deformed1, fnm_deformed2, transformations_result
 
