@@ -7,6 +7,7 @@ import glob
 import pandas as pd
 import socket
 import platform
+import pickle
 
 from scipy.sparse import csr_matrix
 from scipy.sparse.linalg import lsqr
@@ -41,6 +42,7 @@ from FIBSEM_gs_py.FIBSEM_gs import (FIBSEM_frame,
                         evaluate_FIBSEM_frames_dataset)
 
 from FIBSEM_gs_py.FIBSEM_help_functions_gs import (check_DASK,
+                                                    find_FWHM,
                                                     dask_remove_file,
                                                     elapsed_since,
                                                     get_process_memory,
@@ -2701,6 +2703,7 @@ class FIBSEM_montage_stack:
         SIFT_sigma = kwargs.get("SIFT_sigma", self.SIFT_sigma)
         left_crop = kwargs.get('left_crop', 0)
         deformation_field = kwargs.get('deformation_field', np.nan)
+        perform_deformation = np.any(np.invert(np.isnan(deformation_field)))
         interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
         fill_value = kwargs.get('fill_value', 0)
 
@@ -2717,11 +2720,16 @@ class FIBSEM_montage_stack:
             SIFT_nmatches_min = kwargs.get('SIFT_nmatches_min', 5)
         Lowe_Ratio_Threshold = kwargs.get("Lowe_Ratio_Threshold", 0.7)   # threshold for Lowe's Ratio Test
         BFMatcher = kwargs.get("BFMatcher", self.BFMatcher)
+        if BFMatcher:
+            matcher = 'BFMatcher'
+        else:
+            matcher = 'FLANN'
         save_matches = kwargs.get("save_matches", self.save_matches)
-        save_res_png  = kwargs.get("save_res_png", self.save_res_png )
+        save_res_png  = kwargs.get("save_res_png", True )
         start = kwargs.get('start', 'edges')
         estimation = kwargs.get('estimation', 'interval')
         verbose = kwargs.get('verbose', True)
+        dpi = kwargs.get('dpi', 600)
 
         minmax_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding = data_minmax
         kpt_kwargs = {'ftype' : ftype,
@@ -2746,6 +2754,10 @@ class FIBSEM_montage_stack:
         fnms_kpts = []
         for j, param_s3 in enumerate(tqdm(params_s3, desc='Extracting Key Points and Descriptors: ', display=verbose)):
             fnms_kpts.append(extract_keypoints_descr_files(param_s3, deformation_field))
+        kpp1s, des1 = pickle.load(open(fnms_kpts[0], 'rb'))
+        n_kpts1 = len(kpp1s)
+        kpp2s, des2 = pickle.load(open(fnms_kpts[1], 'rb'))
+        n_kpts2 = len(kpp2s)
 
         params_SIFT = []
         fnms_kpts = self.fnms_kpts.ravel()
@@ -2785,10 +2797,77 @@ class FIBSEM_montage_stack:
         param_SIFT = [fname1, fname2, dt_kwargs]
 
         transformations_result = determine_transformations_files(param_SIFT)
+        n_matches = len(transformations_result[2][0])
+        if verbose:
+            print('SIFT_transformation_matrix = ', transformations_result[0])
+            print('SIFT_fnms_matches: ', transformations_result[1])
+            print('SIFT_nmatches = ', n_matches)
+            print('thr_min={:.0e}, thr_max={:.0e}'.format(thr_min, thr_max))
+            print(TransformType.__name__+ ', ' + solver + ',  ' + matcher)
+            print('SIFT_nfeatures={:d}'.format(SIFT_nfeatures))
+            print('SIFT_nOctaveLayers={:d},  SIFT_edgeThreshold={:.3f}'.format(SIFT_nOctaveLayers, SIFT_edgeThreshold))
+            print('SIFT_contrastThreshold={:.3f},  SIFT_sigma={:.3f}'.format(SIFT_contrastThreshold, SIFT_sigma))
+            print('RANSAC_initial_fraction = {:.4f}, max_iter={:d}'.format(RANSAC_initial_fraction, max_iter))
+            print('drmax={:.3f}'.format(drmax))
+            print('# of keypoints = {:d} and {:d}, # of matches ={:d}'.format(n_kpts1, n_kpts2, n_matches))
 
-        print('SIFT_transformation_matrix = ', transformations_result[0])
-        print('SIFT_fnms_matches: ', transformations_result[1])
-        print('SIFT_nmatches = ', len(transformations_result[2][0]))
+        if save_res_png:
+            fs=12
+            symsize = 2
+            fsize_text = 5
+            fsize_label = 10
+            dpi= 600
+
+            fig, axs = plt.subplots(1, 2, figsize=(10, 5.5))
+            fig.subplots_adjust(left=0.01, bottom=0.01, right=0.99, top=0.95, wspace=0.05)
+
+            axs[0].imshow(img1, cmap='Greys')
+            axs[1].imshow(img2, cmap='Greys')
+            axs[0].text(0.01, 1.00 - 0.015*frame.XResolution/frame.YResolution, 'thr_min={:.0e}, thr_max={:.0e}'.format(thr_min, thr_max), fontsize=fsize_text, transform=axs[0].transAxes)
+            axs[0].text(0.01, 1.00 - 0.035*frame.XResolution/frame.YResolution, TransformType.__name__+ ', ' + solver + ',  ' + matcher, fontsize=fsize_text, transform=axs[0].transAxes)
+            axs[0].text(0.01, 1.00 - 0.055*frame.XResolution/frame.YResolution, 'SIFT_nfeatures={:d}'.format(SIFT_nfeatures), fontsize=fsize_text, transform=axs[0].transAxes)
+            axs[0].text(0.01, 1.00 - 0.075*frame.XResolution/frame.YResolution, 'SIFT_nOctaveLayers={:d},  SIFT_edgeThreshold={:.3f}'.format(SIFT_nOctaveLayers, SIFT_edgeThreshold), fontsize=fsize_text, transform=axs[0].transAxes)
+            axs[0].text(0.01, 1.00 - 0.095*frame.XResolution/frame.YResolution, 'SIFT_contrastThreshold={:.3f},  SIFT_sigma={:.3f}'.format(SIFT_contrastThreshold, SIFT_sigma), fontsize=fsize_text, transform=axs[0].transAxes)
+            axs[0].text(0.01, 1.00 - 0.115*frame.XResolution/frame.YResolution, 'RANSAC_initial_fraction={:.4f}, max_iter={:d}'.format(RANSAC_initial_fraction, max_iter), fontsize=fsize_text, transform=axs[0].transAxes)
+            axs[0].text(0.01, 1.00 - 0.135*frame.XResolution/frame.YResolution, 'drmax={:.3f}'.format(drmax), fontsize=fsize_text, transform=axs[0].transAxes)
+            axs[0].text(0.01, 1.00 - 0.155*frame.XResolution/frame.YResolution, 'Deformation Field Present: ' + perform_deformation_text + ',  left_crop={:d}'.format(left_crop), fontsize=fsize_text, transform=axs[0].transAxes)
+            axs[0].text(0.01, 1.00 - 0.175*frame.XResolution/frame.YResolution, 'Image Margins: {:d}, {:d}'.format(*pair_margins), fontsize=fsize_text, transform=axs[0].transAxes)
+
+            if n_matches > 0:
+                src_pts_filtered, dst_pts_filtered = kpts
+                src_pts_transformed = src_pts_filtered @ transform_matrix[0:2, 0:2].T + transform_matrix[0:2, 2]
+                xshifts = (dst_pts_filtered - src_pts_transformed)[:,0]
+                yshifts = (dst_pts_filtered - src_pts_transformed)[:,1]
+                
+                x, y = src_pts_filtered.T
+                M = np.sqrt(xshifts*xshifts+yshifts*yshifts)
+                mean_error = np.mean(M)
+                xs = xshifts
+                ys = yshifts
+                # the code below is for vector map. vectors have origin coordinates x and y, and vector projections xs and ys.
+                vec_field = axs[0].quiver(x,y,xs,ys,M, scale=scale, width = width, cmap='jet')
+                cbar = fig.colorbar(vec_field, pad=0.05, shrink=0.70, orientation = 'horizontal', format="%.1f")
+                cbar.set_label('SIFT Error Amplitude (pix)', fontsize=fsize_label)
+                
+                x, y = dst_pts_filtered.T
+                # the code below is for vector map. vectors have origin coordinates x and y, and vector projections xs and ys.
+                vec_field = axs[1].quiver(x,y,xs,ys,M, scale=scale, width = width, cmap='jet')
+                cbar = fig.colorbar(vec_field, pad=0.05, shrink=0.70, orientation = 'horizontal', format="%.1f")
+                cbar.set_label('SIFT Error Amplitude (pix)', fontsize=fsize_label)
+
+                xcounts, xbins = np.histogram(xshifts, bins=64)
+                error_FWHMx, indxi, indxa, mxx, mxx_ind = find_FWHM(xbins, xcounts[:-1], verbose=False, max_aver_aperture=5)
+                ycounts, ybins = np.histogram(yshifts, bins=64)
+                error_FWHMy, indyi, indya, mxy, mxy_ind = find_FWHM(ybins, ycounts[:-1], verbose=False, max_aver_aperture=5)
+                axs[0].text(0.01, 1.00 - 0.195*frame.XResolution/frame.YResolution, '# of keypoints = {:d} and {:d}, # of matches ={:d}'.format(n_kpts1, n_kpts2, n_matches), fontsize=fsize_text, transform=axs[0].transAxes) 
+                axs[0].text(0.01, 1.00 - 0.215*frame.XResolution/frame.YResolution, 'mean_error = {:.3f}, error_FWHMx = {:3f},  error_FWHMy={:3f}'.format(mean_error, error_FWHMx, error_FWHMy), fontsize=fsize_text, transform=axs[0].transAxes) 
+
+
+            for title, ax in zip([fnm_deformed1, fnm_deformed2], axs):
+                ax.set_title(title, fontsize = fsize_text)
+                ax.axis(False)
+
+            fig.savefig(save_filename, dpi=dpi)
 
         return fnm_deformed1, fnm_deformed2, transformations_result
 
