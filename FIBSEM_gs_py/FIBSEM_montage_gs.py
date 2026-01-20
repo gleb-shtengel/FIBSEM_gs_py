@@ -2825,6 +2825,7 @@ class FIBSEM_montage_stack:
             img2 = tiff.imread(fnm_deformed2)
             axs[0].imshow(img1, cmap='Greys')
             axs[1].imshow(img2, cmap='Greys')
+            frame = FIBSEM_frame(fl1, read_header_only =True)
             axs[0].text(0.01, 1.00 - 0.015*frame.XResolution/frame.YResolution, 'thr_min={:.0e}, thr_max={:.0e}'.format(thr_min, thr_max), fontsize=fsize_text, transform=axs[0].transAxes)
             axs[0].text(0.01, 1.00 - 0.035*frame.XResolution/frame.YResolution, TransformType.__name__+ ', ' + solver + ',  ' + matcher, fontsize=fsize_text, transform=axs[0].transAxes)
             axs[0].text(0.01, 1.00 - 0.055*frame.XResolution/frame.YResolution, 'SIFT_nfeatures={:d}'.format(SIFT_nfeatures), fontsize=fsize_text, transform=axs[0].transAxes)
