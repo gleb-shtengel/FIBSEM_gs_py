@@ -2708,6 +2708,10 @@ class FIBSEM_montage_stack:
         left_crop = kwargs.get('left_crop', 0)
         deformation_field = kwargs.get('deformation_field', np.nan)
         perform_deformation = np.any(np.invert(np.isnan(deformation_field)))
+        if perform_deformation:
+            perform_deformation_text = 'True'
+        else:
+            perform_deformation_text = 'False'
         interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
         fill_value = kwargs.get('fill_value', 0)
 
