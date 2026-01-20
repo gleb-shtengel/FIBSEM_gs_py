@@ -8409,7 +8409,7 @@ def extract_keypoints_descr_files(params, deformation_field):
     left_crop = kwargs.get('left_crop', 0)
 
     if verbose:
-            print('Deformation Field is present. Will perform image deforation first.')
+            print('Deformation Field is present. Will perform image deformation first.')
     save_deformed_image = kwargs.get('save_deformed_image', False)
 
     if use_existing_data and os.path.exists(fnm):

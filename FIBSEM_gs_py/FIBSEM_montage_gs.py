@@ -2760,8 +2760,6 @@ class FIBSEM_montage_stack:
         n_kpts2 = len(kpp2s)
 
         params_SIFT = []
-        fnms_kpts = self.fnms_kpts.ravel()
-
         dt_kwargs = {'ftype' : ftype,
                 'TransformType' : TransformType,
                 'l2_matrix' : l2_matrix,
@@ -2780,7 +2778,6 @@ class FIBSEM_montage_stack:
 
         fname1 = fnms_kpts[0]
         fname2 = fnms_kpts[1]
-
         fnm_deformed1 = fname1.replace('_kpdes.bin','_def_image.tif')
         fnm_deformed2 = fname2.replace('_kpdes.bin','_def_image.tif')
         path_base, f1 = os.path.split(fname1)
