@@ -8818,6 +8818,7 @@ def determine_transformations_files(params_dsf):
                 error_FWHMy = np.nan
         if verbose:
             print('Transformation Matrix : ', transform_matrix)
+            print('Number of Matches : ', len(src_pts_ransac))
             print('error_abs_mean={:.3f}, error_FWHMx={:.3f}, error_FWHMy={:.3f}'.format(error_abs_mean, error_FWHMx, error_FWHMy))
         if save_matches:
             int_results = [transform_matrix, fnm_matches, kpts, error_abs_mean, error_FWHMx, error_FWHMy, iteration]

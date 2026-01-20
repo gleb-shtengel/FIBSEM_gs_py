@@ -2699,6 +2699,7 @@ class FIBSEM_montage_stack:
         SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", self.SIFT_contrastThreshold)
         SIFT_edgeThreshold = kwargs.get("SIFT_edgeThreshold", self.SIFT_edgeThreshold)
         SIFT_sigma = kwargs.get("SIFT_sigma", self.SIFT_sigma)
+        left_crop = kwargs.get('left_crop', 0)
         deformation_field = kwargs.get('deformation_field', np.nan)
         interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
         fill_value = kwargs.get('fill_value', 0)
@@ -2732,6 +2733,7 @@ class FIBSEM_montage_stack:
                     'SIFT_contrastThreshold' : SIFT_contrastThreshold,
                     'SIFT_edgeThreshold' : SIFT_edgeThreshold,
                     'SIFT_sigma' : SIFT_sigma,
+                    'left_crop' : left_crop,
                     'use_existing_data' : False,
                     'save_deformed_image' : True,
                     'interpolation' : interpolation,
@@ -2767,8 +2769,8 @@ class FIBSEM_montage_stack:
         fname1 = fnms_kpts[0]
         fname2 = fnms_kpts[1]
 
-        fnm_deformed1 = os.path.splitext(fname1)[0] + '_def_image.tif'
-        fnm_deformed2 = os.path.splitext(fname2)[0] + '_def_image.tif'
+        fnm_deformed1 = fname1.replace('_kpdes.bin','_def_image.tif')
+        fnm_deformed2 = fname2.replace('_kpdes.bin','_def_image.tif')
         path_base, f1 = os.path.split(fname1)
         _, f2 = os.path.split(fname2)
         fnm_matches = os.path.join(path_base, f1.replace('_kpdes.bin', '_')+f2.replace('_kpdes.bin', '_matches.bin'))
