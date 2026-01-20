@@ -2133,7 +2133,7 @@ class FIBSEM_montage_stack:
         self.RANSAC_initial_fraction = kwargs.get("RANSAC_initial_fraction", 0.05)  # fraction of data points for initial RANSAC iteration step.
         self.Lowe_Ratio_Threshold = kwargs.get("Lowe_Ratio_Threshold", 0.7)
         self.drmax = kwargs.get("drmax", 1.5)
-        self.max_iter = kwargs.get("max_iter", 1000)
+        self.max_iter = kwargs.get("max_iter", 10000)
         self.SIFT_nmatches_min = kwargs.get('SIFT_nmatches_min', 5)
         self.save_res_png  = kwargs.get("save_res_png", True)
         self.fnm_types = kwargs.get("fnm_types", ['mrc'])
