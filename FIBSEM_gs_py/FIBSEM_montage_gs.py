@@ -24,6 +24,10 @@ from tqdm.notebook import tqdm
 from collections import defaultdict
 import mrcfile
 import cv2
+try:
+    import skimage.external.tifffile as tiff
+except:
+    import tifffile as tiff
 
 from dask.distributed import Client
 from dask.distributed import as_completed
