@@ -3288,7 +3288,7 @@ class FIBSEM_montage_stack:
         fill_value = kwargs.get ('fill_value', -10000)
         kwargs['fill_value'] = fill_value
         verbose = kwargs.get('verbose', False)
-        use_DASK, status_update_address = check_DASK(DASK_client, verbose=verbose)
+        use_DASK, status_update_address = check_DASK(DASK_client, verbose=True)
         deformation_field = kwargs.get('deformation_field', np.nan)
         DF0 = convert_tr_matr_into_deformation_field(np.eye(3,3).astype(float), (self.YResolution, self.XResolution))
         kwargs['deformation_field'] = deformation_field - DF0
