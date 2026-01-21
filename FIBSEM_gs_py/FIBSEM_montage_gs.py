@@ -3025,15 +3025,23 @@ class FIBSEM_montage_stack:
             return np.nan
         else:
             if method == 'SIFT':
+                self.SIFT_residual_error_x = np.full(C, np.nan)
+                self.SIFT_residual_error_y = np.full(C, np.nan)
                 bx = self.SIFT_transformation_matrices[:, 0, 2] * weights
                 by = self.SIFT_transformation_matrices[:, 1, 2] * weights
                 res_x_all = lsqr(self.A_csr[self.SIFT_transformation_valid], bx[self.SIFT_transformation_valid])
                 res_y_all = lsqr(self.A_csr[self.SIFT_transformation_valid], by[self.SIFT_transformation_valid])
+                self.SIFT_residual_error_x[self.SIFT_transformation_valid] = self.SIFT_transformation_matrices[:, 0, 2] - res_x_all
+                self.SIFT_residual_error_y[self.SIFT_transformation_valid] = self.SIFT_transformation_matrices[:, 1, 2] - res_y_all
             else:
+                self.ECC_residual_error_x = np.full(C, np.nan)
+                self.ECC_residual_error_y = np.full(C, np.nan)
                 bx = self.ECC_transformation_matrices[:, 0, 2] * weights
                 by = self.ECC_transformation_matrices[:, 1, 2] * weights
                 res_x_all = lsqr(self.A_csr[self.ECC_transformation_valid], bx[self.ECC_transformation_valid])
                 res_y_all = lsqr(self.A_csr[self.ECC_transformation_valid], by[self.ECC_transformation_valid])
+                self.ECC_residual_error_x[self.ECC_transformation_valid] = self.ECC_transformation_valid[:, 0, 2] - res_x_all
+                self.ECC_residual_error_y[self.ECC_transformation_valid] = self.ECC_transformation_valid[:, 1, 2] - res_y_all
         res_x = res_x_all[0]
         res_y = res_y_all[0]
         positions = np.zeros((V, 2))
