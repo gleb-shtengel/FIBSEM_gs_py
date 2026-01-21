@@ -2322,7 +2322,7 @@ class FIBSEM_montage_stack:
         Returns:
         dump_filename : string
         '''
-        default_dump_filename = os.path.join(self.data_dir, self.fnm_reg.replace('.mrc', '_params.bin'))
+        default_dump_filename = os.path.join(self.data_dir, self.fnm_montage.replace('.mrc', '_params.bin'))
         dump_filename = kwargs.get("dump_filename", default_dump_filename)
 
         pickle.dump(self.__dict__, open(dump_filename, 'wb'))
@@ -3191,7 +3191,7 @@ class FIBSEM_montage_stack:
         layer_mosaic_weights = np.zeros((self.Ysize, self.Xsize-left_crop), dtype=float)
         tile_params_mult = []
         xy_limits = []
-        for fl, (j, tr_matr_single) in zip(tqdm(self.fls[layer_id], desc = 'Building tile parameter sets', display = verbose), enumerate(self.tr_matr[layer_id])):
+        for fl, (j, tr_matr_single) in zip(tqdm(self.fls[layer_id].ravel(), desc = 'Building tile parameter sets', display = verbose), enumerate(self.tr_matr[layer_id])):
             tile_params_mult.append([j, fl, tr_matr_single, self.Ysize, self.Xsize, weight_min, weight_max, left_crop])
         if len(tile_params_mult)>0:
             if use_DASK:
