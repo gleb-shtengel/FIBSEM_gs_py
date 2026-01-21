@@ -8431,7 +8431,7 @@ def extract_keypoints_descr_files(params, deformation_field):
         # extract keypoints and descriptors for both images
         if save_deformed_image:
             fnm_deformed_image = kwargs.get('fnm_deformed_image', os.path.splitext(fl)[0] + '_def_image.tif')
-            tiff.imsave(fnm_deformed_image, img)
+            tiff.imwrite(fnm_deformed_image, img)
 
         xi_eval = evaluation_box[2]
         if evaluation_box[3] > 0:
