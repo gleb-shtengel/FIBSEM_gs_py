@@ -2079,7 +2079,7 @@ class FIBSEM_montage_stack:
             start_time = time.time()
 
         self.fls = np.array(fls)
-        self.data_dir = kwargs.get('data_dir', os.path.split(fls[0, 0])[0])
+        self.data_dir = kwargs.get('data_dir', os.path.split(fls.ravel()[0])[0])
         self.ftype = kwargs.get('ftype', 0) # ftype=0 - Shan Xu's binary format  ftype=1 - tif files
         self.intralayer_weight = kwargs.get('intralayer_weight', 1.0)
         self.interlayer_weight = kwargs.get('interlayer_weight', 100.0)
