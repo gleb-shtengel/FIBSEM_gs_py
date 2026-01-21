@@ -3031,8 +3031,8 @@ class FIBSEM_montage_stack:
                 by = self.SIFT_transformation_matrices[:, 1, 2] * weights
                 res_x_all = lsqr(self.A_csr[self.SIFT_transformation_valid], bx[self.SIFT_transformation_valid])
                 res_y_all = lsqr(self.A_csr[self.SIFT_transformation_valid], by[self.SIFT_transformation_valid])
-                self.SIFT_residual_error_x[self.SIFT_transformation_valid] = self.SIFT_transformation_matrices[self.SIFT_transformation_valid, 0, 2] - res_x_all
-                self.SIFT_residual_error_y[self.SIFT_transformation_valid] = self.SIFT_transformation_matrices[self.SIFT_transformation_valid, 1, 2] - res_y_all
+                self.SIFT_residual_error_x[self.SIFT_transformation_valid] = self.SIFT_transformation_matrices[self.SIFT_transformation_valid, 0, 2] - self.A_csr[self.SIFT_transformation_valid] @ res_x_all[0]
+                self.SIFT_residual_error_y[self.SIFT_transformation_valid] = self.SIFT_transformation_matrices[self.SIFT_transformation_valid, 1, 2] - self.A_csr[self.SIFT_transformation_valid] @ res_y_all[0]
             else:
                 self.ECC_residual_error_x = np.full(C, np.nan)
                 self.ECC_residual_error_y = np.full(C, np.nan)
@@ -3040,8 +3040,8 @@ class FIBSEM_montage_stack:
                 by = self.ECC_transformation_matrices[:, 1, 2] * weights
                 res_x_all = lsqr(self.A_csr[self.ECC_transformation_valid], bx[self.ECC_transformation_valid])
                 res_y_all = lsqr(self.A_csr[self.ECC_transformation_valid], by[self.ECC_transformation_valid])
-                self.ECC_residual_error_x[self.ECC_transformation_valid] = self.ECC_transformation_valid[self.ECC_transformation_valid, 0, 2] - res_x_all
-                self.ECC_residual_error_y[self.ECC_transformation_valid] = self.ECC_transformation_valid[self.ECC_transformation_valid, 1, 2] - res_y_all
+                self.ECC_residual_error_x[self.ECC_transformation_valid] = self.ECC_transformation_valid[self.ECC_transformation_valid, 0, 2] - self.A_csr[self.ECC_transformation_valid] @ res_x_all[0]
+                self.ECC_residual_error_y[self.ECC_transformation_valid] = self.ECC_transformation_valid[self.ECC_transformation_valid, 1, 2] - self.A_csr[self.ECC_transformation_valid] @ res_y_all[0]
         res_x = res_x_all[0]
         res_y = res_y_all[0]
         positions = np.zeros((V, 2))
