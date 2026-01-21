@@ -3309,7 +3309,7 @@ class FIBSEM_montage_stack:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Result Voxel Size (Angstroms): {:2f} x {:2f} x {:2f}'.format(voxel_size_angstr.x, voxel_size_angstr.y, voxel_size_angstr.z))
             layer_ids = np.arange(self.nz_tiles)
             if use_DASK:
-                futures = DASK_client(self.assemble_layer_mosaic, layer_ids, **kwargs)
+                futures = DASK_client.map(self.assemble_layer_mosaic, layer_ids, **kwargs)
                 for future in as_completed(futures):
                     mosaic_out, j, _, _ = future.result()
                     mrc_new.data[j, :, :] = mosaic_out.astype(dtp)
