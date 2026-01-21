@@ -2079,12 +2079,12 @@ class FIBSEM_montage_stack:
             start_time = time.time()
 
         self.fls = np.array(fls)
-        self.data_dir = kwargs.get('data_dir', os.path.split(fls.ravel()[0])[0])
+        self.data_dir = kwargs.get('data_dir', os.path.split(self.fls.ravel()[0])[0])
         self.ftype = kwargs.get('ftype', 0) # ftype=0 - Shan Xu's binary format  ftype=1 - tif files
         self.intralayer_weight = kwargs.get('intralayer_weight', 1.0)
         self.interlayer_weight = kwargs.get('interlayer_weight', 100.0)
         self.add_reverse_edges = kwargs.get('add_reverse_edges', False)
-        test_frame = FIBSEM_frame(fls[0, 0], ftype = self.ftype, calculate_scaled_images=False, read_header_only=True)
+        test_frame = FIBSEM_frame(self.fls.ravel()[0], ftype = self.ftype, calculate_scaled_images=False, read_header_only=True)
 
         self.MachineID = test_frame.MachineID
         self.FileVersion = test_frame.FileVersion
@@ -2154,7 +2154,7 @@ class FIBSEM_montage_stack:
         self.deformation_type = kwargs.get("deformation_type", 'post_1DY')
         self.deformation_sigma = kwargs.get('deformation_sigma', 50)
         try:
-            build_fnm_montage = os.path.splitext(os.path.split(fls[0, 0])[1])[0][0:-5] + 'montage_stack.mrc'
+            build_fnm_montage = os.path.splitext(os.path.split(self.fls.ravel()[0])[1])[0][0:-5] + 'montage_stack.mrc'
         except:
             build_fnm_montage = 'montage_stack.mrc'
         self.fnm_montage = kwargs.get("fnm_montage", build_fnm_montage)
@@ -2173,7 +2173,7 @@ class FIBSEM_montage_stack:
         # self.nx_tiles  - # of columns per layer(# of tiles along X-axis)
         self.nz_tiles, num_fls_zslice = self.fls.shape
         try:
-            tile_string = os.path.splitext(os.path.split(self.fls[0, -1])[1])[0][-5:].split('-')
+            tile_string = os.path.splitext(os.path.split(self.fls.ravel()[-1])[1])[0][-5:].split('-')
             auto_ny_tiles = int(tile_string[1])+1
             auto_nx_tiles = int(tile_string[2])+1
             auto_shape = (auto_ny_tiles, auto_nx_tiles)
