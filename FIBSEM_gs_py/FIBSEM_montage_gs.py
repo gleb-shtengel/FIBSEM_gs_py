@@ -3312,7 +3312,7 @@ class FIBSEM_montage_stack:
             for layer_id in layer_ids:
                 fls_layer = self.fls[layer_id].ravel()
                 tr_matr = self.tr_matr[layer_id]
-                params_mult.append([layer_id, fls_layer, tr_matr_layer, weight_min, weight_max fill_value, self.shape, self.Xsize, self.Ysize, left_crop, verbose])
+                params_mult.append([layer_id, fls_layer, tr_matr_layer, weight_min, weight_max, fill_value, self.shape, self.Xsize, self.Ysize, left_crop, verbose])
 
             if use_DASK:
                 shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)
