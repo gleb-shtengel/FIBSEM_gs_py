@@ -3329,8 +3329,9 @@ class FIBSEM_montage_stack:
         return fnms_saved
 
 def assemble_layer(params, deformation_field):
-    layer_id, fls_layer, tr_matr_layer, weight_min, weight_max fill_value, shape, Xsize, Ysize, left_crop, verbose = params
-    deformation_field = kwargs.get('deformation_field', np.nan)
+
+    layer_id, fls_layer, tr_matr_layer, weight_min, weight_max, fill_value, shape, Xsize, Ysize, left_crop, verbose = params
+
     layer_mosaic = np.zeros((Ysize, Xsize-left_crop), dtype=float)
     layer_mosaic_weights = np.zeros((Ysize, Xsize-left_crop), dtype=float)
     tile_params_mult = []
