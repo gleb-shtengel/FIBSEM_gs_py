@@ -2148,7 +2148,6 @@ class FIBSEM_montage_stack:
                                                                     #    - 3: Bi-cubic
                                                                     #    - 4: Bi-quartic
                                                                     #    - 5: Bi-quintic
-        
         self.pad_edges =  kwargs.get("pad_edges", True)
         self.perform_deformation = kwargs.get("perform_deformation", False)
         self.deformation_type = kwargs.get("deformation_type", 'post_1DY')
@@ -2162,7 +2161,7 @@ class FIBSEM_montage_stack:
         kwargs.update({'data_dir' : self.data_dir, 'fnm_montage' : self.fnm_montage, 'dtp' : self.dtp})
                
         FirstPixels = []
-        for fl in fls[0]:
+        for fl in fls[0].ravel():
             fr = FIBSEM_frame(fl, read_header_only=True)
             FirstPixels.append([fr.FirstPixelX, fr.FirstPixelY])
         self.FirstPixels = np.array(FirstPixels)
