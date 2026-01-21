@@ -3063,6 +3063,48 @@ class FIBSEM_montage_stack:
         w_sqrt_inter = np.sqrt(self.interlayer_weight)
         weights = np.concatenate((np.full((nh+nv), w_sqrt_intra), np.full(nl, w_sqrt_inter)))
 
+        data = []
+        row_ind = []
+        col_ind = []
+        row = 0   # row (entry) in the sparse matrix A (not a tile row)
+
+        # Build a sparse matrix A for Ax=b lsqr equation
+        # idx1 and idx2 are absolute (in 1D sense) tile indecis
+        # each entry is a single sparse matrix element, there are two elements per pairwise translation condtion, they enter with opposite signs
+
+        # Horizontal adjacent pairs (intra-layer)
+        for l in range(L):
+            for i in range(M):
+                for j in range(N - 1):
+                    idx1 = l * M * N + i * N + j
+                    idx2 = l * M * N + i * N + j + 1
+                    row_ind.extend([row, row])
+                    col_ind.extend([idx1, idx2])
+                    data.extend([-w_sqrt_intra, w_sqrt_intra])
+                    row += 1
+        # Vertical adjacent pairs (intra-layer)
+        for l in range(L):
+            for i in range(M - 1):
+                for j in range(N):
+                    idx1 = l * M * N + i * N + j
+                    idx2 = l * M * N + (i + 1) * N + j
+                    row_ind.extend([row, row])
+                    col_ind.extend([idx1, idx2])
+                    data.extend([-w_sqrt_intra, w_sqrt_intra])
+                    row += 1
+        # Layer-to-layer correspondences (inter-layer)
+        for l in range(L - 1):
+            for i in range(M):
+                for j in range(N):
+                    idx1 = l * M * N + i * N + j
+                    idx2 = (l + 1) * M * N + i * N + j
+                    row_ind.extend([row, row])
+                    col_ind.extend([idx1, idx2])
+                    data.extend([-w_sqrt_inter, w_sqrt_inter])
+                    row += 1
+
+        self.A_csr = csr_matrix((data, (row_ind, col_ind)), shape=(C, V)) # sparse matrix
+
         if method not in valid_methods:
             if verbose:
                 print('Method ' + method +' is not among valid methods: ', valid_methods)
@@ -3075,8 +3117,11 @@ class FIBSEM_montage_stack:
                 by = self.SIFT_transformation_matrices[:, 1, 2] * weights
                 res_x_all = lsqr(self.A_csr[self.SIFT_transformation_valid], bx[self.SIFT_transformation_valid])
                 res_y_all = lsqr(self.A_csr[self.SIFT_transformation_valid], by[self.SIFT_transformation_valid])
-                self.SIFT_residual_error_x[self.SIFT_transformation_valid] = self.SIFT_transformation_matrices[self.SIFT_transformation_valid, 0, 2] - self.A_csr[self.SIFT_transformation_valid] @ res_x_all[0]
-                self.SIFT_residual_error_y[self.SIFT_transformation_valid] = self.SIFT_transformation_matrices[self.SIFT_transformation_valid, 1, 2] - self.A_csr[self.SIFT_transformation_valid] @ res_y_all[0]
+                # calculate weighted residuals: b_weighted - A_weighted x
+                self.SIFT_residual_error_x[self.SIFT_transformation_valid] = bx[self.SIFT_transformation_valid] - self.A_csr[self.SIFT_transformation_valid] @ res_x_all[0]
+                self.SIFT_residual_error_y[self.SIFT_transformation_valid] = by[self.SIFT_transformation_valid] - self.A_csr[self.SIFT_transformation_valid] @ res_y_all[0]
+                self.SIFT_r2norm_x = res_x_all[4]
+                self.SIFT_r2norm_y = res_y_all[4]
             else:
                 self.ECC_residual_error_x = np.full(C, np.nan)
                 self.ECC_residual_error_y = np.full(C, np.nan)
@@ -3084,14 +3129,15 @@ class FIBSEM_montage_stack:
                 by = self.ECC_transformation_matrices[:, 1, 2] * weights
                 res_x_all = lsqr(self.A_csr[self.ECC_transformation_valid], bx[self.ECC_transformation_valid])
                 res_y_all = lsqr(self.A_csr[self.ECC_transformation_valid], by[self.ECC_transformation_valid])
-                self.ECC_residual_error_x[self.ECC_transformation_valid] = self.ECC_transformation_valid[self.ECC_transformation_valid, 0, 2] - self.A_csr[self.ECC_transformation_valid] @ res_x_all[0]
-                self.ECC_residual_error_y[self.ECC_transformation_valid] = self.ECC_transformation_valid[self.ECC_transformation_valid, 1, 2] - self.A_csr[self.ECC_transformation_valid] @ res_y_all[0]
+                self.ECC_residual_error_x[self.ECC_transformation_valid] = bx[self.ECC_transformation_valid] - self.A_csr[self.ECC_transformation_valid] @ res_x_all[0]
+                self.ECC_residual_error_y[self.ECC_transformation_valid] = by[self.ECC_transformation_valid] - self.A_csr[self.ECC_transformation_valid] @ res_y_all[0]
+                self.ECC_r2norm_x = res_x_all[4]
+                self.ECC_r2norm_y = res_y_all[4]
         res_x = res_x_all[0]
         res_y = res_y_all[0]
         positions = np.zeros((V, 2))
         positions[:, 0] = res_x - res_x[0]
         positions[:, 1] = res_y - res_y[0]
-
         self.tr_matr[:, :, 0:2, 2] = positions.reshape((L, M*N, 2))
         self.tile_positions = -positions.reshape((L, M*N, 2))
 
