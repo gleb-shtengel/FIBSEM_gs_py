@@ -1963,6 +1963,8 @@ class FIBSEM_montage_stack:
         anchor_ids : list or array of indices of the anchor tiles.
         EightBit : int
             If 1 then the data is assumed uint8, otherwise int16
+        recall_parameters : boolean
+            If True and dump_filename kwarg points to a valid binary file, will recall the dataset saved into that dump_filename. Default is False.
         dump_filename : str
             Filename (full path) to a binary dump file with saved dataset attributes. If dump_filename points to a valid binary file the data set saved in that file will be recalled. Default is empty string ''.
         data_dir : str
@@ -2285,6 +2287,48 @@ class FIBSEM_montage_stack:
                         format_bytes(vms_after - vms_before),
                         format_bytes(shared_after - shared_before),
                         elapsed_time))
+
+
+        if kwargs.get("recall_parameters", False):
+            dump_filename = kwargs.get("dump_filename", '')
+            try:
+                dump_data = pickle.load(open(dump_filename, 'rb'))
+                print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Loaded the data from the dump filename: ', dump_filename)
+                dump_loaded = True
+            except Exception as ex1:
+                dump_loaded = False
+                if disp_res:
+                    print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Failed to open Parameter dump filename: ', dump_filename)
+                    print(ex1.message)
+            if dump_loaded:
+                try:
+                    for key in tqdm(dump_data, desc='Recalling the data set parameters'):
+                        setattr(self, key, dump_data[key])
+                except Exception as ex2:
+                    if disp_res:
+                        print('Parameter dump filename: ', dump_filename)
+                        print('Failed to restore the object parameters')
+                        print(ex2.message)
+
+
+    def save_parameters(self, **kwargs):
+        '''
+        Save transformation attributes and parameters (including transformation matrices).
+
+        kwargs:
+        -------
+        dump_filename : string
+            String containing the name of the binary dump for saving all attributes of the current instance of the FIBSEM_dataset object.
+
+        Returns:
+        dump_filename : string
+        '''
+        default_dump_filename = os.path.join(self.data_dir, self.fnm_reg.replace('.mrc', '_params.bin'))
+        dump_filename = kwargs.get("dump_filename", default_dump_filename)
+
+        pickle.dump(self.__dict__, open(dump_filename, 'wb'))
+
+        return dump_filename
 
 
     def evaluate_FIBSEM_statistics(self, **kwargs):
