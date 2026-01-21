@@ -3308,17 +3308,48 @@ class FIBSEM_montage_stack:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Saving the registered stack into the file: ', mrc_filename)
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Result Voxel Size (Angstroms): {:2f} x {:2f} x {:2f}'.format(voxel_size_angstr.x, voxel_size_angstr.y, voxel_size_angstr.z))
             layer_ids = np.arange(self.nz_tiles)
+            params_mult = []
+            for layer_id in layer_ids:
+                fls_layer = self.fls[layer_id].ravel()
+                tr_matr = self.tr_matr[layer_id]
+                params_mult.append([layer_id, fls_layer, tr_matr_layer, weight_min, weight_max fill_value, self.shape, self.Xsize, self.Ysize, left_crop, verbose])
+
             if use_DASK:
-                futures = DASK_client.map(self.assemble_layer_mosaic, layer_ids, **kwargs)
+                shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)
+                futures = DASK_client.map(assemble_layer, params_mult, deformation_field = shared_data_future, retries = DASK_client_retries)
                 for future in as_completed(futures):
-                    mosaic_out, j, _, _ = future.result()
+                    mosaic_out, j = future.result()
                     mrc_new.data[j, :, :] = mosaic_out.astype(dtp)
                     future.cancel()
             else:
-                for layer_id in tqdm(layer_ids, desc = 'Saving the data stack into MRC file'):
-                    mrc_new.data[layer_id, :, :] = self.assemble_layer_mosaic(layer_id, **kwargs)[0].astype(dtp)
+                for j, params in tqdm(enumerate(params_mult), desc = 'Saving the data stack into MRC file'):
+                    mrc_new.data[j, :, :] = assemble_layer(params_mult, deformation_field)[0].astype(dtp)
             mrc_new.close()
 
         return fnms_saved
 
-        
+def assemble_layer(params, deformation_field):
+    layer_id, fls_layer, tr_matr_layer, weight_min, weight_max fill_value, shape, Xsize, Ysize, left_crop, verbose = params
+    deformation_field = kwargs.get('deformation_field', np.nan)
+    layer_mosaic = np.zeros((Ysize, Xsize-left_crop), dtype=float)
+    layer_mosaic_weights = np.zeros((Ysize, Xsize-left_crop), dtype=float)
+    tile_params_mult = []
+    xy_limits = []
+    for fl, (j, tr_matr_single) in zip(tqdm(fls_layer, desc = 'Building tile parameter sets', display = verbose), enumerate(tr_matr_layer)):
+        tile_params_mult.append([j, fl, tr_matr_single, Ysize, Xsize, weight_min, weight_max, left_crop])
+    if len(tile_params_mult)>0:
+        for tile_params in tqdm(tile_params_mult, desc = 'Building mosaic for layer_id={:d}'.format(layer_id), display = verbose):
+            if verbose:
+                print('Performing transform_tile with the following parameters:')
+                print(tile_params)
+            tile_out, weight_out, xi, xa, yi,  ya = transform_tile(tile_params, deformation_field)
+            xy_limits.append([xi, xa, yi, ya])
+            if verbose:
+                print('Output is:')
+                print('tile_out.shape=', tile_out.shape, 'weight_out.shape=', weight_out.shape)
+                print('xi={:d}, xa={:d}, yi={:d},  ya={:d}'.format(xi, xa, yi,  ya))
+            layer_mosaic[yi:ya, xi:xa] = layer_mosaic[yi:ya, xi:xa] + tile_out
+            layer_mosaic_weights[yi:ya, xi:xa] = layer_mosaic_weights[yi:ya, xi:xa] + weight_out
+        layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*np.product(shape)) 
+        layer_mosaic = np.nan_to_num(layer_mosaic / layer_mosaic_weights, nan=-fill_value)
+    return layer_mosaic, layer_id
