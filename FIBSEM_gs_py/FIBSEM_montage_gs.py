@@ -2170,9 +2170,9 @@ class FIBSEM_montage_stack:
         # self.nz_tiles  - # of layers (# of tiles along Z-axis)
         # self.ny_tiles  - # of rows per layer (# of tiles along Y-axis)
         # self.nx_tiles  - # of columns per layer(# of tiles along X-axis)
-        self.nz_tiles, num_fls_zslice = self.fls.shape
+        self.nz_tiles = self.fls.shape[0]
         try:
-            tile_string = os.path.splitext(os.path.split(self.fls.ravel()[-1])[1])[0][-5:].split('-')
+            tile_string = os.path.splitext(os.path.split(self.fls.ravel()[-1])[1])[0][-5:].split('-')    
             auto_ny_tiles = int(tile_string[1])+1
             auto_nx_tiles = int(tile_string[2])+1
             auto_shape = (auto_ny_tiles, auto_nx_tiles)
