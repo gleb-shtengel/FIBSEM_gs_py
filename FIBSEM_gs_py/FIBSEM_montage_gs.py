@@ -3222,7 +3222,7 @@ class FIBSEM_montage_stack:
                     layer_mosaic_weights[yi:ya, xi:xa] = layer_mosaic_weights[yi:ya, xi:xa] + weight_out
             layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*np.product(self.shape)) 
             layer_mosaic = np.nan_to_num(layer_mosaic / layer_mosaic_weights, nan=-fill_value)
-        return layer_mosaic, layer_mosaic_weights, xy_limits
+        return layer_mosaic, layer_id, layer_mosaic_weights, xy_limits
 
 
     def save_stack(self, **kwargs):
@@ -3292,8 +3292,8 @@ class FIBSEM_montage_stack:
         deformation_field = kwargs.get('deformation_field', np.nan)
         DF0 = convert_tr_matr_into_deformation_field(np.eye(3,3).astype(float), (self.YResolution, self.XResolution))
         kwargs['deformation_field'] = deformation_field - DF0
-
         left_crop = kwargs.get('left_crop', 0)
+        kwargs['left_crop'] = left_crop
         if hasattr(self, "DASK_client_retries"):
             DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
         else:
@@ -3303,14 +3303,21 @@ class FIBSEM_montage_stack:
         if 'mrc' in fnm_types:
             mrc_filename = os.path.splitext(fnm_montage)[0] + '.mrc'
             fnms_saved.append(mrc_filename)
-            mrc_new = mrcfile.new_mmap(mrc_filename, shape=(self.nz_tiles, self.Ysize, self.Xsize), mrc_mode=mrc_mode, overwrite=True)
+            mrc_new = mrcfile.new_mmap(mrc_filename, shape=(self.nz_tiles, self.Ysize, self.Xsize-left_crop), mrc_mode=mrc_mode, overwrite=True)
             mrc_new.voxel_size = voxel_size_angstr
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Saving the registered stack into the file: ', mrc_filename)
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Result Voxel Size (Angstroms): {:2f} x {:2f} x {:2f}'.format(voxel_size_angstr.x, voxel_size_angstr.y, voxel_size_angstr.z))
-            for layer_id in tqdm(np.arange(self.nz_tiles), desc = 'Saving the data stack into MRC file'):
-                mrc_new.data[layer_id, :, :] = self.assemble_layer_mosaic(layer_id, **kwargs)[0].astype(dtp)
-
-        mrc_new.close()
+            layer_ids = np.arange(self.nz_tiles)
+            if use_DASK:
+                futures = DASK_client(self.assemble_layer_mosaic, layer_ids, **kwargs)
+                for future in as_completed(futures):
+                    mosaic_out, j, _, _ = future.result()
+                    mrc_new.data[j, :, :] = mosaic_out.astype(dtp)
+                    future.cancel()
+            else:
+                for layer_id in tqdm(layer_ids, desc = 'Saving the data stack into MRC file'):
+                    mrc_new.data[layer_id, :, :] = self.assemble_layer_mosaic(layer_id, **kwargs)[0].astype(dtp)
+            mrc_new.close()
 
         return fnms_saved
 
