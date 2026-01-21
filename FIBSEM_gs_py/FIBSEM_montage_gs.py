@@ -3322,8 +3322,8 @@ class FIBSEM_montage_stack:
                     mrc_new.data[j, :, :] = mosaic_out.astype(dtp)
                     future.cancel()
             else:
-                for j, params in tqdm(enumerate(params_mult), desc = 'Saving the data stack into MRC file'):
-                    mrc_new.data[j, :, :] = assemble_layer(params_mult, deformation_field)[0].astype(dtp)
+                for j, params in enumerate(tqdm(params_mult), desc = 'Saving the data stack into MRC file'):
+                    mrc_new.data[j, :, :] = assemble_layer(params, deformation_field)[0].astype(dtp)
             mrc_new.close()
 
         return fnms_saved
