@@ -2382,7 +2382,7 @@ class FIBSEM_montage_stack:
             YResolutions : int array
                 Y-frame sizes
         '''
-        verbose = kwargs.get('verbose', False)
+        verbose = kwargs.get('verbose', True)
         DASK_client = kwargs.get('DASK_client', '')
         use_DASK, status_update_address = check_DASK(DASK_client, verbose = True)
         if hasattr(self, "DASK_client_retries"):
@@ -2399,6 +2399,7 @@ class FIBSEM_montage_stack:
         FIBSEM_Data_xlsx_default = os.path.join(data_dir, os.path.splitext(self.fnm_montage)[0] + '_FIBSEM_Data.xlsx')
         FIBSEM_Data_xlsx = kwargs.get('FIBSEM_Data_xlsx', FIBSEM_Data_xlsx_default)
         use_existing_data = kwargs.get('use_existing_data', False)
+
         if hasattr(self, 'Mill_Volt_Rate_um_per_V'):
             Mill_Volt_Rate_um_per_V = kwargs.get("Mill_Volt_Rate_um_per_V", self.Mill_Volt_Rate_um_per_V)
         else:
@@ -3188,8 +3189,8 @@ class FIBSEM_montage_stack:
         frame_inds = kwargs.get('data_dir', np.arange(self.nz_tiles))
         save_fname = kwargs.get('save_fname', os.path.join(data_dir, 'Relative_Tile_Shifts.png'))
 
-        tile_poitions_x = self.tile_poitions[:, :, 0] - self.tile_poitions[0, :, 0]
-        tile_poitions_y = self.tile_poitions[:, :, 1] - self.tile_poitions[0, :, 1]
+        tile_positions_x = self.tile_positions[:, :, 0] - self.tile_positions[0, :, 0]
+        tile_positions_y = self.tile_positions[:, :, 1] - self.tile_positions[0, :, 1]
 
         if verbose:
             print('Generating Plot')
@@ -3198,16 +3199,16 @@ class FIBSEM_montage_stack:
 
         for k in np.arange(nxny):
             my_col = plt.get_cmap("gist_rainbow_r")((nxny-k)/(nxny-1))
-            tile_poitions_xk = tile_poitions_x[:, k]
-            tile_poitions_yk = tile_poitions_y[:, k]
+            tile_positions_xk = tile_positions_x[:, k]
+            tile_positions_yk = tile_positions_y[:, k]
             if k == test_stack.nx_tiles*tile_id[0]+tile_id[1]:
-                axs[0].plot(fr, tile_poitions_xk, color=my_col, marker='x', markersize=4)
-                axs[1].plot(fr, tile_poitions_yk, color=my_col, marker='x', markersize=4)
-                axs[2].plot(fr, tile_poitions_xk, color='red', label='Tile ({:d},{:d}), X-shift'.format(*tile_id))
-                axs[2].plot(fr, tile_poitions_yk, color='blue', label='Tile ({:d},{:d}), Y-shift'.format(*tile_id))
+                axs[0].plot(fr, tile_positions_xk, color=my_col, marker='x', markersize=4)
+                axs[1].plot(fr, tile_positions_yk, color=my_col, marker='x', markersize=4)
+                axs[2].plot(fr, tile_positions_xk, color='red', label='Tile ({:d},{:d}), X-shift'.format(*tile_id))
+                axs[2].plot(fr, tile_positions_yk, color='blue', label='Tile ({:d},{:d}), Y-shift'.format(*tile_id))
             else:
-                axs[0].plot(fr, tile_poitions_xk, color=my_col, linewidth = 0.25)
-                axs[1].plot(fr, tile_poitions_yk, color=my_col, linewidth = 0.25)
+                axs[0].plot(fr, tile_positions_xk, color=my_col, linewidth = 0.25)
+                axs[1].plot(fr, tile_positions_yk, color=my_col, linewidth = 0.25)
 
         for ax in axs:
             ax.grid(True)
