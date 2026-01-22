@@ -8818,7 +8818,7 @@ def determine_transformations_files(params_dsf):
                 error_FWHMy = np.nan
         if verbose:
             print('Transformation Matrix : ', transform_matrix)
-            print('Number of Matches : ', len(src_pts_ransac))
+            print('Number of Matches : ', len(kpts[0]))
             print('error_abs_mean={:.3f}, error_FWHMx={:.3f}, error_FWHMy={:.3f}'.format(error_abs_mean, error_FWHMx, error_FWHMy))
         if save_matches:
             int_results = [transform_matrix, fnm_matches, kpts, error_abs_mean, error_FWHMx, error_FWHMy, iteration]
@@ -12312,7 +12312,7 @@ class FIBSEM_dataset:
         tr_mx_dt.to_csv(Tr_matrix_xls_fnm, index = None)
         '''
         return dump_filename
-        
+
 
     def check_for_nomatch_frames(self, thr_npt, **kwargs):
         '''
