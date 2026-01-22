@@ -2408,7 +2408,7 @@ class FIBSEM_montage_stack:
         local_kwargs = {'use_DASK' : use_DASK,
                         'DASK_client_retries' : DASK_client_retries,
                         'ftype' : ftype,
-                        'frame_inds' : frame_inds,
+                        'frame_inds' : np.arange(len(self.fls.ravel())),
                         'data_dir' : data_dir,
                         'thr_min' : thr_min,
                         'thr_max' : thr_max,
@@ -2441,7 +2441,6 @@ class FIBSEM_montage_stack:
 
         WD = self.FIBSEM_Data[5]
         MillingYVoltage = self.FIBSEM_Data[6]
-
         frame_inds_ext = np.repeat(np.array(frame_inds), self.nx_tiles*self.ny_tiles)
 
         WD_fit_coef = np.polyfit(frame_inds_ext, WD, 1)
@@ -2925,13 +2924,13 @@ class FIBSEM_montage_stack:
                 # the code below is for vector map. vectors have origin coordinates x and y, and vector projections xs and ys.
                 vec_field = axs[0].quiver(x,y,xs,ys,M, scale=scale, width = width, cmap='jet')
                 cbar = fig.colorbar(vec_field, pad=0.05, shrink=0.70, orientation = 'horizontal', format="%.1f")
-                cbar.set_label('SIFT Error Amplitude (pix)', fontsize=fsize_label)
+                cbar.set_label('SIFT Error Magnitude (pix)', fontsize=fsize_label)
                 
                 x, y = dst_pts_filtered.T
                 # the code below is for vector map. vectors have origin coordinates x and y, and vector projections xs and ys.
                 vec_field = axs[1].quiver(x,y,xs,ys,M, scale=scale, width = width, cmap='jet')
                 cbar = fig.colorbar(vec_field, pad=0.05, shrink=0.70, orientation = 'horizontal', format="%.1f")
-                cbar.set_label('SIFT Error Amplitude (pix)', fontsize=fsize_label)
+                cbar.set_label('SIFT Error Magnitude (pix)', fontsize=fsize_label)
 
                 axs[0].text(0.01, 1.00 - 0.195*frame.XResolution/frame.YResolution, '# of keypoints = {:d} and {:d}, # of matches ={:d}'.format(n_kpts1, n_kpts2, n_matches), fontsize=fsize_text, transform=axs[0].transAxes) 
                 axs[0].text(0.01, 1.00 - 0.215*frame.XResolution/frame.YResolution, 'mean_error = {:.3f}, error_FWHMx = {:3f},  error_FWHMy={:3f}'.format(error_abs_mean, error_FWHMx, error_FWHMy), fontsize=fsize_text, transform=axs[0].transAxes) 
@@ -3189,8 +3188,8 @@ class FIBSEM_montage_stack:
         frame_inds = kwargs.get('data_dir', np.arange(self.nz_tiles))
         save_fname = kwargs.get('save_fname', os.path.join(data_dir, 'Relative_Tile_Shifts.png'))
 
-        tile_positions_x = self.tile_positions[:, :, 0] - self.tile_positions[0, :, 0]
-        tile_positions_y = self.tile_positions[:, :, 1] - self.tile_positions[0, :, 1]
+        tile_positions_x = self.tile_positions[frame_inds, :, 0] - self.tile_positions[0, :, 0]
+        tile_positions_y = self.tile_positions[frame_inds, :, 1] - self.tile_positions[0, :, 1]
 
         if verbose:
             print('Generating Plot')
@@ -3202,13 +3201,13 @@ class FIBSEM_montage_stack:
             tile_positions_xk = tile_positions_x[:, k]
             tile_positions_yk = tile_positions_y[:, k]
             if k == self.nx_tiles*tile_id[0]+tile_id[1]:
-                axs[0].plot(fr, tile_positions_xk, color=my_col, marker='x', markersize=4)
-                axs[1].plot(fr, tile_positions_yk, color=my_col, marker='x', markersize=4)
-                axs[2].plot(fr, tile_positions_xk, color='red', label='Tile ({:d},{:d}), X-shift'.format(*tile_id))
-                axs[2].plot(fr, tile_positions_yk, color='blue', label='Tile ({:d},{:d}), Y-shift'.format(*tile_id))
+                axs[0].plot(frame_inds, tile_positions_xk, color=my_col, marker='x', markersize=4)
+                axs[1].plot(frame_inds, tile_positions_yk, color=my_col, marker='x', markersize=4)
+                axs[2].plot(frame_inds, tile_positions_xk, color='red', label='Tile ({:d},{:d}), X-shift'.format(*tile_id))
+                axs[2].plot(frame_inds, tile_positions_yk, color='blue', label='Tile ({:d},{:d}), Y-shift'.format(*tile_id))
             else:
-                axs[0].plot(fr, tile_positions_xk, color=my_col, linewidth = 0.25)
-                axs[1].plot(fr, tile_positions_yk, color=my_col, linewidth = 0.25)
+                axs[0].plot(frame_inds, tile_positions_xk, color=my_col, linewidth = 0.25)
+                axs[1].plot(frame_inds, tile_positions_yk, color=my_col, linewidth = 0.25)
 
         for ax in axs:
             ax.grid(True)
