@@ -2433,6 +2433,28 @@ class FIBSEM_montage_stack:
         self.XResolution = np.max(self.XResolutions)
         self.YResolution = np.max(self.YResolutions)
 
+
+        WD = self.FIBSEM_Data[5]
+        MillingYVoltage = self.FIBSEM_Data[6]
+
+        frame_inds_ext = np.repeat(np.array(frame_inds), self.nx_tiles*self.ny_tiles)
+
+        WD_fit_coef = np.polyfit(frame_inds, WD, 1)
+        rate_WD = WD_fit_coef[0]*1.0e6
+    
+        MV_fit_coef = np.polyfit(frame_inds, MillingYVoltage, 1)
+        rate_MV = MV_fit_coef[0]*Mill_Volt_Rate_um_per_V*-1.0e3
+
+        Z_pixel_size_WD = rate_WD
+        Z_pixel_size_MV = rate_MV
+
+        if ftype == 0:
+            if verbose:
+                print('Z pixel = {:.2f} nm  - based on WD data'.format(Z_pixel_size_WD))
+                print('Z pixel = {:.2f} nm  - based on Milling Voltage data'.format(Z_pixel_size_MV))
+
+            self.voxel_size = np.rec.array((self.PixelSize,  self.PixelSize,  Z_pixel_size_WD), dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4')])
+
         return self.FIBSEM_Data
     
 
@@ -3144,6 +3166,61 @@ class FIBSEM_montage_stack:
         return self.tile_positions
 
 
+    def generate_transformation_report(self, **kwargs):
+        '''
+        Generate Report Plot for transformation summary. ©G.Shtengel 12/2022 gleb.shtengel@gmail.com
+        
+        Parameters:
+        
+
+        '''
+        mosaic_shape = kwargs.get('mosaic_shape', (self.ny_tiles, self.nx_tiles))
+        nxny = np.product(mosaic_shape)
+        tile_id = kwargs.get('tile_id', (0, 0))
+        verbose = kwargs.get('verbose', False)
+        data_dir = kwargs.get('data_dir', self.data_dir)
+        Sample_ID = kwargs.get('Sample_ID', self.Sample_ID)
+        Saved_Mill_Volt_Rate_um_per_V = kwargs.get("Mill_Volt_Rate_um_per_V", 31.235258870176065)
+        Mill_Volt_Rate_um_per_V = kwargs.get("Mill_Volt_Rate_um_per_V", Saved_Mill_Volt_Rate_um_per_V)
+        frame_inds = kwargs.get('data_dir', np.arange(self.nz_tiles))
+        save_fname = kwargs.get('save_fname', os.path.join(data_dir, 'Relative_Tile_Shifts.png'))
+
+        tile_poitions_x = self.tile_poitions[:, :, 0] - self.tile_poitions[0, :, 0]
+        tile_poitions_y = self.tile_poitions[:, :, 1] - self.tile_poitions[0, :, 1]
+
+        if verbose:
+            print('Generating Plot')
+        fig, axs = plt.subplots(3,1, figsize = (6,10), sharex=True)
+        fig.subplots_adjust(left=0.12, bottom=0.04, right=0.99, top=0.97, wspace=0.05, hspace=0.03)
+
+        for k in np.arange(nxny):
+            my_col = plt.get_cmap("gist_rainbow_r")((nxny-k)/(nxny-1))
+            tile_poitions_xk = tile_poitions_x[:, k]
+            tile_poitions_yk = tile_poitions_y[:, k]
+            if k == test_stack.nx_tiles*tile_id[0]+tile_id[1]:
+                axs[0].plot(fr, tile_poitions_xk, color=my_col, marker='x', markersize=4)
+                axs[1].plot(fr, tile_poitions_yk, color=my_col, marker='x', markersize=4)
+                axs[2].plot(fr, tile_poitions_xk, color='red', label='Tile ({:d},{:d}), X-shift'.format(*tile_id))
+                axs[2].plot(fr, tile_poitions_yk, color='blue', label='Tile ({:d},{:d}), Y-shift'.format(*tile_id))
+            else:
+                axs[0].plot(fr, tile_poitions_xk, color=my_col, linewidth = 0.25)
+                axs[1].plot(fr, tile_poitions_yk, color=my_col, linewidth = 0.25)
+
+        for ax in axs:
+            ax.grid(True)
+
+        axs[0].text(0.40, 0.92, 'All Tiles: X-shift', transform=axs[0].transAxes, fontsize=12)
+        axs[0].text(0.0, 1.02, save_fname, transform=axs[0].transAxes, fontsize=6)
+        axs[1].text(0.40, 0.92, 'All Tiles: Y-shift', transform=axs[1].transAxes, fontsize=12)
+        axs[2].legend(fontsize=12)
+        axs[2].set_xlabel('Frame')
+        axs[0].set_ylabel('Realtive X-Shift (pix)')
+        axs[1].set_ylabel('Realtive Y-Shift (pix)')
+        axs[2].set_ylabel('Realtive Shift (pix)')
+        fig.savefig(save_fname, dpi=300)
+        return save_fname
+
+
     def assemble_layer_mosaic(self, layer_id, **kwargs):
         '''
         Assemble layer montage based on transformation matrices for each tile. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
@@ -3411,7 +3488,7 @@ def generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs):
     for k in np.arange(nxny):
         my_col = plt.get_cmap("gist_rainbow_r")((nxny-k)/(nxny-1))
         WDk = int_results_all.iloc[k::nxny, :]['Working Distance (mm)']
-        if k == mosaic_shape[0]*tile_id[0]+tile_id[1]:
+        if k == mosaic_shape[1]*tile_id[0]+tile_id[1]:
             axs[0].plot(fr, WDk, color=my_col, marker='x', markersize=4)
         else:
             axs[0].plot(fr, WDk, color=my_col)
