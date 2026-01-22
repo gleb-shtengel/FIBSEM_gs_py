@@ -2399,6 +2399,10 @@ class FIBSEM_montage_stack:
         FIBSEM_Data_xlsx_default = os.path.join(data_dir, os.path.splitext(self.fnm_montage)[0] + '_FIBSEM_Data.xlsx')
         FIBSEM_Data_xlsx = kwargs.get('FIBSEM_Data_xlsx', FIBSEM_Data_xlsx_default)
         use_existing_data = kwargs.get('use_existing_data', False)
+        if hasattr(self, 'Mill_Volt_Rate_um_per_V'):
+            Mill_Volt_Rate_um_per_V = kwargs.get("Mill_Volt_Rate_um_per_V", self.Mill_Volt_Rate_um_per_V)
+        else:
+            Mill_Volt_Rate_um_per_V = kwargs.get("Mill_Volt_Rate_um_per_V", 31.235258870176065)
 
         local_kwargs = {'use_DASK' : use_DASK,
                         'DASK_client_retries' : DASK_client_retries,
@@ -3171,7 +3175,6 @@ class FIBSEM_montage_stack:
         Generate Report Plot for transformation summary. ©G.Shtengel 12/2022 gleb.shtengel@gmail.com
         
         Parameters:
-        
 
         '''
         mosaic_shape = kwargs.get('mosaic_shape', (self.ny_tiles, self.nx_tiles))
