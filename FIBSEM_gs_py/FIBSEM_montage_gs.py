@@ -2390,7 +2390,7 @@ class FIBSEM_montage_stack:
         else:
             DASK_client_retries = kwargs.get("DASK_client_retries", 3)
         ftype = kwargs.get("ftype", self.ftype)
-        frame_inds = kwargs.get("frame_inds", np.arange(len(self.fls.ravel())))
+        frame_inds = kwargs.get("frame_inds", np.arange(self.nz_tiles))
         data_dir = kwargs.get('data_dir', self.data_dir)
         thr_min = kwargs.get("thr_min", self.thr_min)
         thr_max = kwargs.get("thr_max", self.thr_max)
@@ -2444,10 +2444,10 @@ class FIBSEM_montage_stack:
 
         frame_inds_ext = np.repeat(np.array(frame_inds), self.nx_tiles*self.ny_tiles)
 
-        WD_fit_coef = np.polyfit(frame_inds, WD, 1)
+        WD_fit_coef = np.polyfit(frame_inds_ext, WD, 1)
         rate_WD = WD_fit_coef[0]*1.0e6
     
-        MV_fit_coef = np.polyfit(frame_inds, MillingYVoltage, 1)
+        MV_fit_coef = np.polyfit(frame_inds_ext, MillingYVoltage, 1)
         rate_MV = MV_fit_coef[0]*Mill_Volt_Rate_um_per_V*-1.0e3
 
         Z_pixel_size_WD = rate_WD
@@ -3201,7 +3201,7 @@ class FIBSEM_montage_stack:
             my_col = plt.get_cmap("gist_rainbow_r")((nxny-k)/(nxny-1))
             tile_positions_xk = tile_positions_x[:, k]
             tile_positions_yk = tile_positions_y[:, k]
-            if k == test_stack.nx_tiles*tile_id[0]+tile_id[1]:
+            if k == self.nx_tiles*tile_id[0]+tile_id[1]:
                 axs[0].plot(fr, tile_positions_xk, color=my_col, marker='x', markersize=4)
                 axs[1].plot(fr, tile_positions_yk, color=my_col, marker='x', markersize=4)
                 axs[2].plot(fr, tile_positions_xk, color='red', label='Tile ({:d},{:d}), X-shift'.format(*tile_id))
