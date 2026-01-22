@@ -2824,7 +2824,7 @@ def bin_crop_mrc_stack(mrc_filename, **kwargs):
     desc = 'Building Parameters Sets'
     params_mult = []
     for j, st_frame in enumerate(tqdm(st_frames, desc=desc)):
-        params = [mrc_filename, dt, st_frame, (min(st_frame+zbin_factor, nz-1)), j, xbin_factor, ybin_factor, zbin_factor, mode, flipY, xi, xa, yi, ya]
+        params = [mrc_filename, dt, st_frame, (min(st_frame+zbin_factor, nz)), j, xbin_factor, ybin_factor, zbin_factor, mode, flipY, xi, xa, yi, ya]
         params_mult.append(params)
     
     print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   New Data Set Shape:  {:d} x {:d} x {:d}'.format(nx_binned, ny_binned, len(st_frames)))

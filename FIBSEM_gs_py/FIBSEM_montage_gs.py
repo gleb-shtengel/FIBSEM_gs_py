@@ -3303,9 +3303,11 @@ class FIBSEM_montage_stack:
         if 'mrc' in fnm_types:
             mrc_filename = os.path.splitext(fnm_montage)[0] + '.mrc'
             fnms_saved.append(mrc_filename)
-            mrc_new = mrcfile.new_mmap(mrc_filename, shape=(self.nz_tiles, self.Ysize, self.Xsize-left_crop), mrc_mode=mrc_mode, overwrite=True)
+            stack_shape = (self.nz_tiles, self.Ysize, self.Xsize-left_crop)
+            mrc_new = mrcfile.new_mmap(mrc_filename, shape = stack_shape, mrc_mode=mrc_mode, overwrite=True)
             mrc_new.voxel_size = voxel_size_angstr
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Saving the registered stack into the file: ', mrc_filename)
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Stack dimensions nz, ny, nx (pixels): {:d} x {:d} x {:d}'.format(*stack_shape))
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Result Voxel Size (Angstroms): {:2f} x {:2f} x {:2f}'.format(voxel_size_angstr.x, voxel_size_angstr.y, voxel_size_angstr.z))
             layer_ids = np.arange(self.nz_tiles)
             params_mult = []
@@ -3325,7 +3327,7 @@ class FIBSEM_montage_stack:
                 for j, params in enumerate(tqdm(params_mult, desc = 'Saving the data stack into MRC file')):
                     mrc_new.data[j, :, :] = assemble_layer(params, deformation_field)[0].astype(dtp)
             mrc_new.close()
-
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Saving Finished')
         return fnms_saved
 
 def assemble_layer(params, deformation_field):
@@ -3354,3 +3356,95 @@ def assemble_layer(params, deformation_field):
         layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*np.product(shape)) 
         layer_mosaic = np.nan_to_num(layer_mosaic / layer_mosaic_weights, nan=-fill_value)
     return layer_mosaic, layer_id
+
+
+def generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs):
+    '''
+    Generate Report Plot for mill rate evaluation from XLSX spreadsheet file. ©G.Shtengel 12/2022 gleb.shtengel@gmail.com
+    
+    Parameters:
+    Mill_Rate_Data_xlsx : str
+        Path to the XLSX spreadsheet file containing the Working Distance (WD), Milling Y Voltage (MV), and FOV center shifts data.
+    
+    kwargs:
+    Mill_Volt_Rate_um_per_V : float
+        Milling Voltage to Z conversion (µm/V). Default is 31.235258870176065.
+    mosaic_shape : tuple or list of of 2 ints
+        Mosaic shape (ny_tiles, nx_tiles). Default is (1,1).
+    tile_id : tuple or list of of 2 ints
+        Y and X indices of the tile for which the WD fs frame will be evaluzted. Default is (0, 0).
+
+    '''
+    mosaic_shape = kwargs.get('mosaic_shape', (1, 1))
+    nxny = np.product(mosaic_shape)
+    tile_id = kwargs.get('tile_id', (0, 0))
+    disp_res = kwargs.get('disp_res', False)
+    if disp_res:
+        print('Loading kwarg Data')
+    saved_kwargs = read_kwargs_xlsx(Mill_Rate_Data_xlsx, 'kwargs Info', **kwargs)
+    data_dir = saved_kwargs.get("data_dir", '')
+    Sample_ID = saved_kwargs.get("Sample_ID", '')
+    Saved_Mill_Volt_Rate_um_per_V = saved_kwargs.get("Mill_Volt_Rate_um_per_V", 31.235258870176065)
+    Mill_Volt_Rate_um_per_V = kwargs.get("Mill_Volt_Rate_um_per_V", Saved_Mill_Volt_Rate_um_per_V)
+    
+    if disp_res:
+        print('Loading Working Distance and Milling Y Voltage Data')
+    try:
+        int_results_all = pd.read_excel(Mill_Rate_Data_xlsx, sheet_name='FIBSEM Data')
+    except:
+        int_results_all = pd.read_excel(Mill_Rate_Data_xlsx, sheet_name='Milling Rate Data')
+        
+    int_results = int_results_all.iloc[mosaic_shape[0]*tile_id[0]+tile_id[1]::nxny, :]
+    fr = int_results['Frame']/nxny
+    WD = int_results['Working Distance (mm)']
+    MillingYVoltage = int_results['Milling Y Voltage (V)']
+
+    if disp_res:
+        print('Generating Plot')
+    fs = 12
+    Mill_Volt_Rate_um_per_V = 31.235258870176065
+
+    fig, axs = plt.subplots(3,1, figsize = (6,10), sharex=True)
+    fig.subplots_adjust(left=0.12, bottom=0.06, right=0.99, top=0.96, wspace=0.05, hspace=0.05)
+    
+    for k in np.arange(nxny):
+        my_col = plt.get_cmap("gist_rainbow_r")((nxny-k)/(nxny-1))
+        WDk = int_results_all.iloc[k::nxny, :]['Working Distance (mm)']
+        if k == mosaic_shape[0]*tile_id[0]+tile_id[1]:
+            axs[0].plot(fr, WDk, color=my_col, marker='x', markersize=4)
+        else:
+            axs[0].plot(fr, WDk, color=my_col)
+    fr_all = np.repeat(np.array(fr), nxny)
+    WD_all = np.array(int_results_all['Working Distance (mm)'])
+    WD_all_fit_coef = np.polyfit(fr_all, WD_all, 1)
+    WD_fit_all = np.polyval(WD_all_fit_coef, fr)
+    axs[0].plot(fr, WD_fit_all, label='All Tiles: Fit, slope = {:.2f} nm/line'.format(WD_all_fit_coef[0]*1.0e6), color='black', linestyle='dashed', linewidth=2)
+    axs[0].legend(fontsize=12, loc = 'lower right')
+    axs[0].grid(True)
+    axs[0].set_ylabel('Working Distance (mm)')
+    axs[0].text(0.40, 0.92, 'All Tiles', transform=axs[0].transAxes, fontsize=12)
+    axs[1].plot(fr, WD, label='WD, Exp. Data', color='blue')
+    axs[1].grid(True)
+    axs[1].set_ylabel('Working Distance (mm)')
+    WD_fit_coef = np.polyfit(fr, WD, 1)
+    WD_fit = np.polyval(WD_fit_coef, fr)
+    axs[1].plot(fr, WD_fit, label='Tile={:d},{:d}: Fit, slope = {:.2f} nm/line'.format(*tile_id, WD_fit_coef[0]*1.0e6), color='red', linestyle='dashed', linewidth=2)
+    axs[1].text(0.40, 0.92, 'Tile={:d},{:d}'.format(*tile_id), transform=axs[1].transAxes, fontsize=12)
+    axs[1].legend(fontsize=12)
+
+    axs[2].plot(fr, MillingYVoltage, label='Mill. Y Volt. Exp. Data', color='green')
+    axs[2].grid(True)
+    axs[2].set_ylabel('Milling Y Voltage (V)')
+    MV_fit_coef = np.polyfit(fr, MillingYVoltage, 1)
+    MV_fit=np.polyval(MV_fit_coef, fr)
+    axs[2].plot(fr, MV_fit, label='Fit, slope = {:.3f} nm/line'.format(MV_fit_coef[0]*Mill_Volt_Rate_um_per_V*-1.0e3), color='orange')
+    axs[2].legend(fontsize=12)
+    axs[2].text(0.02, 0.05, 'Milling Voltage to Z conversion: {:.4f} µm/V'.format(Mill_Volt_Rate_um_per_V), transform=axs[2].transAxes, fontsize=12)
+    axs[2].set_xlabel('Frame')
+    ldm = 70
+    data_dir_short = data_dir if len(data_dir)<ldm else '... '+ data_dir[-ldm:]
+    try:
+        axs[0].text(-0.15, 1.05, Sample_ID + '    ' +  data_dir_short, fontsize = fs-2, transform=axs[0].transAxes)
+    except:
+        axs[0].text(-0.15, 1.05, data_dir_short, fontsize = fs-2, transform=axs[0].transAxes)
+    fig.savefig(os.path.join(data_dir, Mill_Rate_Data_xlsx.replace('.xlsx','_Mill_Rate.png')), dpi=300)
