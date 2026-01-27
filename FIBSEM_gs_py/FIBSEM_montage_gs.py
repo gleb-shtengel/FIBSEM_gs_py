@@ -3201,8 +3201,8 @@ class FIBSEM_montage_stack:
             tile_positions_xk = tile_positions_x[:, k]
             tile_positions_yk = tile_positions_y[:, k]
             if k == self.nx_tiles*tile_id[0]+tile_id[1]:
-                axs[0].plot(frame_inds, tile_positions_xk, color=my_col, marker='x', markersize=4)
-                axs[1].plot(frame_inds, tile_positions_yk, color=my_col, marker='x', markersize=4)
+                axs[0].plot(frame_inds, tile_positions_xk, color=my_col, marker='x', markersize=4, label='Tile ({:d},{:d}), X-shift'.format(*tile_id))
+                axs[1].plot(frame_inds, tile_positions_yk, color=my_col, marker='x', markersize=4, label='Tile ({:d},{:d}), X-shift'.format(*tile_id))
                 axs[2].plot(frame_inds, tile_positions_xk, color='red', label='Tile ({:d},{:d}), X-shift'.format(*tile_id))
                 axs[2].plot(frame_inds, tile_positions_yk, color='blue', label='Tile ({:d},{:d}), Y-shift'.format(*tile_id))
             else:
@@ -3211,11 +3211,11 @@ class FIBSEM_montage_stack:
 
         for ax in axs:
             ax.grid(True)
+            ax.legend(fontsize=12)
 
         axs[0].text(0.40, 0.92, 'All Tiles: X-shift', transform=axs[0].transAxes, fontsize=12)
         axs[0].text(0.0, 1.02, save_fname, transform=axs[0].transAxes, fontsize=6)
         axs[1].text(0.40, 0.92, 'All Tiles: Y-shift', transform=axs[1].transAxes, fontsize=12)
-        axs[2].legend(fontsize=12)
         axs[2].set_xlabel('Frame')
         axs[0].set_ylabel('Realtive X-Shift (pix)')
         axs[1].set_ylabel('Realtive Y-Shift (pix)')
