@@ -34,6 +34,11 @@ from dask.distributed import as_completed
 from IPython.display import IFrame
 from ClusterWrap.clusters import janelia_lsf_cluster
 
+from scipy.signal import savgol_filter
+from scipy.signal import convolve2d
+from scipy.ndimage import gaussian_filter
+from scipy.optimize import curve_fit
+
 from FIBSEM_gs_py.FIBSEM_gs import (FIBSEM_frame,
                         ShiftTransform,
                         XScaleShiftTransform,
