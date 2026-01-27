@@ -2197,9 +2197,12 @@ class FIBSEM_montage_stack:
         nv = L * (M - 1) * N              # Total number of up-down intra-layer pairs
         nl = (L - 1) * M * N              # Total number of inter-layer pairs
         C = nh + nv + nl                  # Total number of of pairs (pair-wise translations)
-        # horiz_trans: np.ndarray (L, M, N-1, 2), translations to right neighbor (x,y)
-        # vert_trans: np.ndarray (L, M-1, N, 2), translations to bottom neighbor (x,y)
-        # layer_trans: np.ndarray (L-1, M, N, 2), translations to upper layer (x,y)
+        if verbose:
+            print('Total number of tiles: ', V)
+            print('Total number of left-right intra-layer pairs: ', nh)
+            print('Total number of up-down intra-layer pairs: ', nv)
+            print('Total number of inter-layer pairs: ', nl)
+            print('Total number of of pairs (pair-wise translations): ', C)
 
         w_sqrt_intra = np.sqrt(self.intralayer_weight)  # because LSQR minimizes ||W^{1/2} (Ax - b)||
         w_sqrt_inter = np.sqrt(self.interlayer_weight)
@@ -2265,6 +2268,7 @@ class FIBSEM_montage_stack:
             print('Individual Z-slice shape (nx_tiles, ny_tiles): {:d} x {:d} tiles'.format(self.nx_tiles, self.ny_tiles))
             print('Number of Z-slices (nz_tiles): {:d}'.format(self.nz_tiles))
             print('Total number of pairwise transformations : {:d}'.format(C))
+            print('Index of the top-left pair in the last Z-layer: ', (L -1)* M * (N - 1))
     
         # initialize the montage size (assuming rectangular shape)
         self.Xsize = self.shape[1] * (self.XResolution - self.Xoverlap) + self.Xoverlap
@@ -2760,7 +2764,6 @@ class FIBSEM_montage_stack:
                 print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intra-layer horisontal matches :', np.mean(self.SIFT_nmatches[0:nh]).astype(np.int64))
                 print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intra-layer vertical matches :', np.mean(self.SIFT_nmatches[nh:nh+nv]).astype(np.int64))
                 print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for inter-layer matches :', np.mean(self.SIFT_nmatches[nh+nv:]).astype(np.int64))
-
                 print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Valid SIFT transformation established: ', self.SIFT_transformation_valid)
         return transformations_results_3D
 
@@ -3441,26 +3444,29 @@ def assemble_layer(params, deformation_field):
 
 def generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs):
     '''
-    Generate Report Plot for mill rate evaluation from XLSX spreadsheet file. ©G.Shtengel 12/2022 gleb.shtengel@gmail.com
+    Generate Report Plot for mill rate evaluation from XLSX spreadsheet file. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
     
     Parameters:
+    ----------
     Mill_Rate_Data_xlsx : str
         Path to the XLSX spreadsheet file containing the Working Distance (WD), Milling Y Voltage (MV), and FOV center shifts data.
     
     kwargs:
+    ----------
     Mill_Volt_Rate_um_per_V : float
         Milling Voltage to Z conversion (µm/V). Default is 31.235258870176065.
     mosaic_shape : tuple or list of of 2 ints
         Mosaic shape (ny_tiles, nx_tiles). Default is (1,1).
     tile_id : tuple or list of of 2 ints
         Y and X indices of the tile for which the WD fs frame will be evaluzted. Default is (0, 0).
-
+    verbose : boolean
+        Display intermediate results. Default is False.
     '''
     mosaic_shape = kwargs.get('mosaic_shape', (1, 1))
     nxny = np.product(mosaic_shape)
     tile_id = kwargs.get('tile_id', (0, 0))
-    disp_res = kwargs.get('disp_res', False)
-    if disp_res:
+    verbose = kwargs.get('verbose', False)
+    if verbose:
         print('Loading kwarg Data')
     saved_kwargs = read_kwargs_xlsx(Mill_Rate_Data_xlsx, 'kwargs Info', **kwargs)
     data_dir = saved_kwargs.get("data_dir", '')
@@ -3468,7 +3474,7 @@ def generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs):
     Saved_Mill_Volt_Rate_um_per_V = saved_kwargs.get("Mill_Volt_Rate_um_per_V", 31.235258870176065)
     Mill_Volt_Rate_um_per_V = kwargs.get("Mill_Volt_Rate_um_per_V", Saved_Mill_Volt_Rate_um_per_V)
     
-    if disp_res:
+    if verbose:
         print('Loading Working Distance and Milling Y Voltage Data')
     try:
         int_results_all = pd.read_excel(Mill_Rate_Data_xlsx, sheet_name='FIBSEM Data')
@@ -3480,11 +3486,9 @@ def generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs):
     WD = int_results['Working Distance (mm)']
     MillingYVoltage = int_results['Milling Y Voltage (V)']
 
-    if disp_res:
+    if verbose:
         print('Generating Plot')
     fs = 12
-    Mill_Volt_Rate_um_per_V = 31.235258870176065
-
     fig, axs = plt.subplots(3,1, figsize = (6,10), sharex=True)
     fig.subplots_adjust(left=0.12, bottom=0.06, right=0.99, top=0.96, wspace=0.05, hspace=0.05)
     
@@ -3529,3 +3533,113 @@ def generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs):
     except:
         axs[0].text(-0.15, 1.05, data_dir_short, fontsize = fs-2, transform=axs[0].transAxes)
     fig.savefig(os.path.join(data_dir, Mill_Rate_Data_xlsx.replace('.xlsx','_Mill_Rate.png')), dpi=300)
+
+
+def generate_report_data_minmax_montage_xlsx(minmax_xlsx_file, **kwargs):
+    '''
+    Generate Report Plot for data Min-Max from XLSX spreadsheet file. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
+    
+    Parameters:
+    ----------
+    minmax_xlsx_file : str
+        Path to the XLSX spreadsheet file containing Min-Max data
+
+    kwargs:
+    ----------
+    mosaic_shape : tuple or list of of 2 ints
+        Mosaic shape (ny_tiles, nx_tiles). Default is (1,1).
+    tile_id : tuple or list of of 2 ints
+        Y and X indices of the tile for which the WD fs frame will be evaluzted. Default is (0, 0).
+    verbose : boolean
+        Display intermediate results. Default is False.
+    '''
+    mosaic_shape = kwargs.get('mosaic_shape', (1, 1))
+    nxny = np.product(mosaic_shape)
+    tile_id = kwargs.get('tile_id', (0, 0))
+    verbose = kwargs.get('verbose', False)
+    if verbose:
+        print('Loading kwarg Data')
+    saved_kwargs = read_kwargs_xlsx(minmax_xlsx_file, 'kwargs Info', **kwargs)
+    data_dir = saved_kwargs.get("data_dir", '')
+    fnm_reg = saved_kwargs.get("fnm_reg", 'Registration_file.mrc')
+    Sample_ID = saved_kwargs.get("Sample_ID", '')
+    thr_min = saved_kwargs.get("thr_min", 0.0)
+    thr_max = saved_kwargs.get("thr_min", 0.0)
+    fit_params_saved = saved_kwargs.get("fit_params", ['SG', 101, 3])
+    fit_params = kwargs.get("fit_params", fit_params_saved)
+    preserve_scales =  saved_kwargs.get("preserve_scales", True)  # If True, the transformation matrix will be adjusted using teh settings defined by fit_params below
+    
+    if verbose:
+        print('Loading MinMax Data')
+    try:
+        int_results_all = pd.read_excel(minmax_xlsx_file, sheet_name='FIBSEM Data')
+    except:
+        int_results_all = pd.read_excel(minmax_xlsx_file, sheet_name='MinMax Data')
+    
+    int_results = int_results_all.iloc[mosaic_shape[0]*tile_id[0]+tile_id[1]::nxny, :]
+    frames = int_results['Frame']/nxny
+    frame_min = np.array(int_results['Min'])
+    frame_max = np.array(int_results['Max'])
+    data_min_glob  = np.min(frame_min)
+    data_max_glob  = np.max(frame_max)
+
+    if verbose:
+        print('Generating Plots')
+    fs = 12
+
+    fig, axs = plt.subplots(3,1, figsize = (6,10), sharex=True)
+    fig.subplots_adjust(left=0.12, bottom=0.06, right=0.99, top=0.96, wspace=0.05, hspace=0.05)
+    
+    for k in np.arange(nxny):
+        my_col = plt.get_cmap("gist_rainbow_r")((nxny-k)/(nxny-1))
+        framek_min = int_results_all.iloc[k::nxny, :]['Min']
+        framek_max = int_results_all.iloc[k::nxny, :]['Max']
+        if k == mosaic_shape[1]*tile_id[0]+tile_id[1]:
+            axs[0].plot(frames, framek_min, color=my_col, marker='x', markersize=4)
+            axs[1].plot(frames, framek_max, color=my_col, marker='x', markersize=4)
+        else:
+            axs[0].plot(frames, framek_min, color=my_col)
+            axs[1].plot(frames, framek_max, color=my_col)
+    axs[1].set_ylabel('All Tiles Minima Values')
+    axs[2].set_ylabel('All Tiles Maxima Values')
+
+    if fit_params[0] != 'None':
+        sv_apert = min([fit_params[1], len(frames)//8*2+1])
+        print('Using fit_params: ', 'SG', sv_apert, fit_params[2])
+        sliding_min = savgol_filter(frame_min.astype(np.double), sv_apert, fit_params[2])
+        sliding_max = savgol_filter(frame_max.astype(np.double), sv_apert, fit_params[2])
+    else:
+        print('Not smoothing the Min/Max data')
+        sliding_min = frame_min.astype(np.double)
+        sliding_max = frame_min.astype(np.double)
+
+    axs[2].plot(frame_min, 'b', linewidth=1, label='Frame Minima')
+    axs[2].plot(sliding_min, 'b', linewidth=2, linestyle = 'dotted', label='Sliding Minima')
+    axs[2].plot(frame_max, 'r', linewidth=1, label='Frame Maxima')
+    axs[2].plot(sliding_max, 'r', linewidth=2, linestyle = 'dotted', label='Sliding Maxima')
+    axs[2].legend()
+    axs[2].grid(True)
+    axs[2].set_xlabel('Frame')
+    axs[2].set_ylabel('Tile ({:d},{:d}) Minima and Maxima Values'.format(*tile_id))
+    dxn = (data_max_glob - data_min_glob)*0.1
+    axs[2].set_ylim((data_min_glob - dxn, data_max_glob+dxn))
+    xminmax = [0, len(frame_min)]
+    y_min = [data_min_glob, data_min_glob]
+    y_max = [data_max_glob, data_max_glob]
+    axs[2].plot(xminmax, y_min, 'b', linestyle = '--')
+    axs[2].plot(xminmax, y_max, 'r', linestyle = '--')
+    axs[2].text(len(frame_min)/20.0, data_min_glob-dxn/1.75, 'data_min_glob={:.1f}'.format(data_min_glob), fontsize = fs-2, c='b')
+    axs[2].text(len(frame_min)/20.0, data_max_glob+dxn/2.25, 'data_max_glob={:.1f}'.format(data_max_glob), fontsize = fs-2, c='r')
+    axs[2].text(len(frame_min)/20.0, data_min_glob+dxn*4.5, 'thr_min={:.1e}'.format(thr_min), fontsize = fs-2, c='b')
+    axs[2].text(len(frame_min)/20.0, data_min_glob+dxn*5.5, 'thr_max={:.1e}'.format(thr_max), fontsize = fs-2, c='r')
+    for ax in axs:
+        ax.grid(True)
+    
+    ldm = 70
+    data_dir_short = data_dir if len(data_dir)<ldm else '... '+ data_dir[-ldm:]
+
+    try:
+        axs[2].text(-0.15, 1.05, Sample_ID + '    ' +  data_dir_short, fontsize = fs-2, transform=axs[2].transAxes)
+    except:
+        axs[2].text(-0.15, 1.05, data_dir_short, fontsize = fs-2, transform=axs[2].transAxes)
+

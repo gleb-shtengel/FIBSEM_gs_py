@@ -5040,8 +5040,6 @@ def generate_report_data_minmax_xlsx(minmax_xlsx_file, **kwargs):
     ax0.set_ylabel('Minima and Maxima Values')
     dxn = (data_max_glob - data_min_glob)*0.1
     ax0.set_ylim((data_min_glob - dxn, data_max_glob+dxn))
-    # if needed, display the data in a narrower range
-    #ax0.set_ylim((-4500, -1500))
     xminmax = [0, len(frame_min)]
     y_min = [data_min_glob, data_min_glob]
     y_max = [data_max_glob, data_max_glob]
@@ -5055,15 +5053,10 @@ def generate_report_data_minmax_xlsx(minmax_xlsx_file, **kwargs):
     data_dir_short = data_dir if len(data_dir)<ldm else '... '+ data_dir[-ldm:]
 
     try:
-        ax0.text(-0.15, 1.05, Sample_ID + '    ' +  data_dir_short, fontsize = fs-2, transform=axs[0].transAxes)
+        ax0.text(-0.15, 1.05, Sample_ID + '    ' +  data_dir_short, fontsize = fs-2, transform=ax0.transAxes)
     except:
         ax0.text(-0.15, 1.05, data_dir_short, fontsize = fs-2, transform=ax0.transAxes)
-    '''
-    try:
-        fig0.suptitle(Sample_ID + '    ' +  data_dir_short, fontsize = fs-2)
-    except:
-        fig0.suptitle(data_dir_short, fontsize = fs-2)
-    '''
+
     fig0.savefig(os.path.join(data_dir, minmax_xlsx_file.replace('.xlsx','_Min_Max.png')), dpi=300)
 
 
