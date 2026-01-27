@@ -3639,7 +3639,8 @@ def generate_report_data_minmax_montage_xlsx(minmax_xlsx_file, **kwargs):
     data_dir_short = data_dir if len(data_dir)<ldm else '... '+ data_dir[-ldm:]
 
     try:
-        axs[2].text(-0.15, 1.05, Sample_ID + '    ' +  data_dir_short, fontsize = fs-2, transform=axs[2].transAxes)
+        axs[0].text(-0.15, 1.05, Sample_ID + '    ' +  data_dir_short, fontsize = fs-2, transform=axs[0].transAxes)
     except:
-        axs[2].text(-0.15, 1.05, data_dir_short, fontsize = fs-2, transform=axs[2].transAxes)
+        axs[0].text(-0.15, 1.05, data_dir_short, fontsize = fs-2, transform=axs[0].transAxes)
+    fig.savefig(os.path.join(data_dir, minmax_xlsx_file.replace('.xlsx','_Min_Max.png')), dpi=300)
 
