@@ -3365,6 +3365,7 @@ class FIBSEM_montage_stack:
             axs[1].axis(False)
             if overlay_tile_grid:
                 overlay_montage_grid(axs[1], self,
+                                tile_positions = self.tile_positions[layer_id],
                                  linewidth=linewidth,
                                  linestyle=linestyle,
                                  edgecolor=color)
@@ -3482,7 +3483,7 @@ class FIBSEM_montage_stack:
             # Save new frame
             with open(layer_mosaic_fname, 'wb') as f:
                 f.write(header_new)
-                self.montage.reshape(-1).astype(dt).tofile(f)
+                layer_mosaic.reshape(-1).astype(dt).tofile(f)
         return layer_mosaic, layer_id, layer_mosaic_weights, xy_limits
 
 
