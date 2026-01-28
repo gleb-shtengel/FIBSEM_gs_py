@@ -3269,6 +3269,24 @@ class FIBSEM_montage_stack:
         DASK_client : DASK client. If set to empty string '' (default), local computations are performed.
         DASK_client_retries : int (default to 3)
             Number of allowed automatic retries if a task fails. Default is object attribute.
+        save_snapshot : boolean
+            If True, build an image that contains the montage and some data. Default is False.
+        snapshot_fname : string
+            The name of the image to perform these operations (default is first  tile name + '_snapshot.png').
+        thr_min : float
+            Lower CDF threshold for determining the minimum data value. Default is 1.0e-3
+        thr_max : float
+            Upper CDF threshold for determining the maximum data value. Default is 1.0e-3
+        nbins : int
+            Number of histogram bins for building the PDF and CDF.
+        overlay_tile_grid : boolean
+            If True (Default), overlays tile grid.
+        dpi : int
+            DPI. Default is 300.
+        save_layer_mosaic_dat : boolean
+            If True, saves existing montage into a new .dat file. Default is False. Only works on .dat files at the moment
+        layer_mosaic_fname : string
+            The name of the image to perform these operations (default is first  tile name + '_layer_mosaic.dat').
         verbose : boolean
             Display intermediate results. Default is False.
         
@@ -3276,12 +3294,25 @@ class FIBSEM_montage_stack:
         if layer_id<-1 or layer_id>self.nz_tiles-1:
             print('layer_id parameter {:d} is out of range: -1 to {:d}'.format(layer_id, self.nz_tiles))
             return np.nan
-
         DASK_client = kwargs.get('DASK_client', '')
         weight_min = kwargs.get('weight_min', 1.0)
         weight_max = kwargs.get('weight_max', 2048.0) 
         fill_value = kwargs.get ('fill_value', -10000) 
         verbose = kwargs.get('verbose', False)
+        save_snapshot = kwargs.get('save_snapshot', False)
+        data_dir = kwargs.get('data_dir', self.data_dir)
+        snapshot_fname = kwargs.get('snapshot_fname',  os.path.splitext(self.fls[layer_id].ravel()[0])[0] + '_snapshot.png'    )
+        overlay_tile_grid = kwargs.get('overlay_tile_grid', True)
+        thr_min = kwargs.get('thr_min', 1.0e-3)
+        thr_max = kwargs.get('thr_max', 1.0e-3)
+        nbins = kwargs.get('nbins', 256)
+        linestyle = kwargs.get('linestyle', 'dashed')
+        linewidth = kwargs.get('linewidth', 0.25)
+        fontsize = kwargs.get('fontsize', 10)
+        color = kwargs.get('color', 'cyan')
+        dpi = kwargs.get('dpi', 300)
+        save_layer_mosaic_dat = kwargs.get('save_layer_mosaic_dat', False)
+        layer_mosaic_fname = kwargs.get('layer_mosaic_fname',  self.fls[layer_id].ravel()[0].replace('0-0-0.dat', 'layer_mosaic.dat'))
         use_DASK, status_update_address = check_DASK(DASK_client, verbose=verbose)
         deformation_field = kwargs.get('deformation_field', np.nan)
         left_crop = kwargs.get('left_crop', 0)
@@ -3325,6 +3356,138 @@ class FIBSEM_montage_stack:
                     layer_mosaic_weights[yi:ya, xi:xa] = layer_mosaic_weights[yi:ya, xi:xa] + weight_out
             layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*np.product(self.shape)) 
             layer_mosaic = np.nan_to_num(layer_mosaic / layer_mosaic_weights, nan=-fill_value)
+
+        if save_snapshot:
+            fig, axs = plt.subplots(2, 1, figsize=(7, 8), gridspec_kw={"height_ratios" : [1.5, 2]})
+            fig.suptitle(snapshot_fname, fontsize = fontsize)
+            fig.subplots_adjust(left=0.01, bottom=0.01, right=0.99, top=0.90, wspace=0.15, hspace=0.1)
+            if not hasattr(self, 'montage'):
+                if verbose:
+                    print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Raw montage have not been created, build it now')
+                self.assemble_montage_raw(verbose=verbose)                        
+            dmin, dmax = get_min_max_thresholds(layer_mosaic, thr_min=thr_min, thr_max=thr_max, nbins=nbins, disp_res=False)
+            axs[1].imshow(layer_mosaic, cmap='Greys', vmin=dmin, vmax=dmax)
+            axs[1].axis(False)
+            if overlay_tile_grid:
+                overlay_montage_grid(axs[1], self,
+                                 linewidth=linewidth,
+                                 linestyle=linestyle,
+                                 edgecolor=color)
+            if hasattr(self, 'EHT'):
+                EHT_text = '{:.3f} kV'.format(self.EHT)
+            else:
+                EHT_text = ''
+            if hasattr(self, 'SEMCurr'):
+                SEMCurr_text = '{:.3f} nA'.format(self.SEMCurr*1.0e9)
+            else:
+                SEMCurr_text = ''
+
+            if hasattr(self, 'ScanRate'):
+                ScanRate_text = '{:.3f} MHz'.format(self.ScanRate/1.0e6)
+            else:
+                ScanRate_text = ''
+            if hasattr(self, 'WD'):
+                WD_text = '{:.3f} mm'.format(self.WD)
+            else:
+                WD_text = ''
+            if hasattr(self, 'MachineID'):
+                MachineID_text = '{:s}'.format(self.MachineID.strip('\x00'))
+            else:
+                MachineID_text = ''
+
+            if self.FileVersion > 8:
+                cell_text = [['Sample ID', '{:s}'.format(self.Sample_ID.strip('\x00')), '',
+                              'Tile Size\n\nShape', '{:d} x {:d}\n\n{:d} x {:d}'.format(self.XResolution, self.YResolution, self.shape[1], self.shape[0]), '',
+                              'Scan Rate', '{:.3f} MHz'.format(self.ScanRate/1.0e6)],
+                            ['Machine ID', '{:s}'.format(self.MachineID.strip('\x00')), '',
+                              'Pixel Size', '{:.1f} nm'.format(self.PixelSize), '',
+                              'Oversampling', '{:d}'.format(self.Oversampling)],
+                             ['FileVersion', '{:d}'.format(self.FileVersion), '',
+                              'Working Dist.', '{:.3f} mm'.format(self.WD), '',
+                              'FIB Focus', '{:.1f}  V'.format(self.FIBFocus)],
+                             ['Bit Depth', '{:d}'.format(8 *(2 - self.EightBit)), '',
+                             'EHT Voltage\n\nSEM Current', '{:.3f} kV \n\n{:.3f} nA'.format(self.EHT, self.SEMCurr*1.0e9), '',
+                             'FIB Probe', '{:d}'.format(self.FIBProb)]]
+            else:
+                if self.FileVersion > 0:
+                    cell_text = [['', '', '',
+                                  'Tile Size\n\nShape', '{:d} x {:d}\n\n{:d} x {:d}'.format(self.XResolution, self.YResolution, self.shape[1], self.shape[0]), '',
+                                  'Scan Rate', '{:.3f} MHz'.format(self.ScanRate/1.0e6)],
+                                ['Machine ID', '{:s}'.format(self.MachineID.strip('\x00')), '',
+                                  'Pixel Size', '{:.1f} nm'.format(self.PixelSize), '',
+                                  'Oversampling', '{:d}'.format(self.Oversampling)],
+                                 ['FileVersion', '{:d}'.format(self.FileVersion), '',
+                                  'Working Dist.', '{:.3f} mm'.format(self.WD), '',
+                                  'FIB Focus', '{:.1f}  V'.format(self.FIBFocus)],
+                                 ['Bit Depth', '{:d}'.format(8 *(2 - self.EightBit)), '',
+                                 'EHT Voltage', '{:.3f} kV'.format(self.EHT), '',
+                                 'FIB Probe', '{:d}'.format(self.FIBProb)]]
+                else:
+                    cell_text = [['', '', '',
+                                  'Tile Size\n\nShape', '{:d} x {:d}\n\n{:d} x {:d}'.format(self.XResolution, self.YResolution, self.shape[1], self.shape[0]), '',
+                                  'Scan Rate', ScanRate_text],
+                                ['Machine ID', MachineID_text, '',
+                                  'Pixel Size', '{:.1f} nm'.format(self.PixelSize), '',
+                                  'Oversampling', ''],
+                                 ['FileVersion', '{:d}'.format(self.FileVersion), '',
+                                  'Working Dist.', WD_text, '',
+                                  'FIB Focus', ''],
+                                 ['Bit Depth', '{:d}'.format(8 *(2 - self.EightBit)), '',
+                                 'EHT Voltage\n\nSEM Current', EHT_text+' \n\n'+SEMCurr_text, '',
+                                 'FIB Probe', '']]
+            llw0=0.3
+            llw1=0.18
+            llw2=0.02
+            clw = [llw1, llw0, llw2, llw1, llw1, llw2, llw1, llw1]
+            axs[0].axis(False)
+            tbl = axs[0].table(cellText=cell_text,
+                               colWidths=clw,
+                               cellLoc='center',
+                               colLoc='center',
+                               bbox = [0.02, 0, 0.96, 1.0],
+                               #bbox = [0.45, 1.02, 2.8, 0.55],
+                               zorder=10)
+            
+            fig.savefig(snapshot_name, dpi=dpi)
+        
+        if save_layer_mosaic_dat:
+            '''
+            Save existing montage into a new .dat file. Only works on .dat files at the moment. ©G.Shtengel 11/2025 gleb.shtengel@gmail.com
+            '''
+            YResolution_new = self.Ysize
+            XResolution_new = self.Xsize - left_crop
+            if verbose:
+                print('Output Frame Size: {:d} x {:d} pixels'.format(XResolution_new, YResolution_new))
+                print('Data will be saved into the file: ', layer_mosaic_fname)
+                print('Will use fill value = {:d}'.format(fill_value))
+
+            # Update the header with new frame size information
+            fr = FIBSEM_frame(self.fls[layer_id].ravel()[0], read_header_only=True)
+            header = fr.header
+            header_new = bytearray(header)
+            XResolution_new_string =  pack('>L', XResolution_new)
+            header_new[100:104] = XResolution_new_string
+            YResolution_new_string =  pack('>L', YResolution_new)
+            header_new[104:108] = YResolution_new_string
+            ChanNum_new = 1
+            ChanNum_new_string =  pack('b', ChanNum_new)
+            header_new[32:33] = ChanNum_new_string
+            AI2_new = 0
+            AI2_new_string =  pack('b', AI2_new)
+            header_new[152:153] = AI2_new_string
+            '''
+            FirstPixelX_new_string =  pack('>l', FirstPixelX_new)
+            header_new[70:74] = FirstPixelX_new_string
+            FirstPixelY_new_string =  pack('>l', FirstPixelY_new)
+            header_new[74:78] = FirstPixelY_new_string
+            '''
+            # Create new Raw data array
+            dt = np.dtype(np.int16).newbyteorder('>')
+
+            # Save new frame
+            with open(layer_mosaic_fname, 'wb') as f:
+                f.write(header_new)
+                self.montage.reshape(-1).astype(dt).tofile(f)
         return layer_mosaic, layer_id, layer_mosaic_weights, xy_limits
 
 
@@ -3432,10 +3595,41 @@ class FIBSEM_montage_stack:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Saving Finished')
         return fnms_saved
 
+
 def assemble_layer(params, deformation_field):
-
+    '''
+    Assembles layer. Worker function called by assemble_layer_mosaic and save_stack. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
+    
+    Parameters:
+    ----------
+    params : list
+        params = [layer_id, fls_layer, tr_matr_layer, weight_min, weight_max, fill_value, shape, Xsize, Ysize, left_crop, verbose]
+        layer_id : int
+            Layer ID should be a value bewteen -1 and self.nz_tiles-1. -1 means the last layer will be assembled.
+        fls_layer : list
+            List of files for individual tiles.
+        tr_matr_layer : list
+            List of transformation matrices for individual tiles.
+        weight_min : float
+            vmin for weight.
+        weight_max : float
+            vmax for weight.
+        fill_value : int
+            The value to assign to pixels outside the transformed image bounds.
+        shape : list of two ints
+            mosaic shape (ny_tiles, nx_tiles).
+        Xsize : int
+            Overall Mosaic width (pixels).
+        Ysize : int
+            Overall Mosaic height (pixels).
+        left_crop : int 
+            Cropping value for cropping the image from the left side (used along with deformation_filed or on its own).
+        verbose : boolean
+            Display intermediate results.
+    deformation_field : 2D array
+        Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
+    '''
     layer_id, fls_layer, tr_matr_layer, weight_min, weight_max, fill_value, shape, Xsize, Ysize, left_crop, verbose = params
-
     layer_mosaic = np.zeros((Ysize, Xsize-left_crop), dtype=float)
     layer_mosaic_weights = np.zeros((Ysize, Xsize-left_crop), dtype=float)
     tile_params_mult = []
