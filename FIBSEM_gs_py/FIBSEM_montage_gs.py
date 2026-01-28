@@ -3182,27 +3182,38 @@ class FIBSEM_montage_stack:
         '''
         Generate Report Plot for transformation summary. ©G.Shtengel 12/2022 gleb.shtengel@gmail.com
         
-        Parameters:
+        kwargs:
+        ----------
+        save_png : boolean
+            If True (default), the plot is saved into PNG file.
+        dpi : int
+            DPI for PNG. Default is 300.
+        save_fname : string
+            File name to save the PNG image. Default is os.path.join(data_dir, 'Relative_Tile_Shifts.png').
+        verbose : boolean
+            Display intermediate results. Default is False.
 
         '''
         mosaic_shape = kwargs.get('mosaic_shape', (self.ny_tiles, self.nx_tiles))
         nxny = np.product(mosaic_shape)
         tile_id = kwargs.get('tile_id', (0, 0))
         verbose = kwargs.get('verbose', False)
+        save_png = kwargs.get('save_png', True)
+        dpi = kwargs.get('dpi', 300)
+        if save_png:
+            save_fname = kwargs.get ('save_fname', os.path.join(data_dir, 'Relative_Tile_Shifts.png'))
+        else:
+            save_fname = 'Image not saved'
         data_dir = kwargs.get('data_dir', self.data_dir)
         Sample_ID = kwargs.get('Sample_ID', self.Sample_ID)
-        Saved_Mill_Volt_Rate_um_per_V = kwargs.get("Mill_Volt_Rate_um_per_V", 31.235258870176065)
-        Mill_Volt_Rate_um_per_V = kwargs.get("Mill_Volt_Rate_um_per_V", Saved_Mill_Volt_Rate_um_per_V)
         frame_inds = kwargs.get('data_dir', np.arange(self.nz_tiles))
-        save_fname = kwargs.get('save_fname', os.path.join(data_dir, 'Relative_Tile_Shifts.png'))
-
         tile_positions_x = self.tile_positions[frame_inds, :, 0] - self.tile_positions[0, :, 0]
         tile_positions_y = self.tile_positions[frame_inds, :, 1] - self.tile_positions[0, :, 1]
 
         if verbose:
             print('Generating Plot')
         fig, axs = plt.subplots(3,1, figsize = (6,10), sharex=True)
-        fig.subplots_adjust(left=0.12, bottom=0.04, right=0.99, top=0.97, wspace=0.05, hspace=0.03)
+        fig.subplots_adjust(left=0.12, bottom=0.06, right=0.99, top=0.97, wspace=0.05, hspace=0.03)
 
         for k in np.arange(nxny):
             my_col = plt.get_cmap("gist_rainbow_r")((nxny-k)/(nxny-1))
@@ -3222,13 +3233,15 @@ class FIBSEM_montage_stack:
             ax.legend(fontsize=12, loc='lower right')
 
         axs[0].text(0.40, 0.92, 'All Tiles: X-shift', transform=axs[0].transAxes, fontsize=12)
-        axs[0].text(0.0, 1.02, save_fname, transform=axs[0].transAxes, fontsize=6)
+        axs[0].text(0.2, 1.03, Sample_ID, transform=axs[0].transAxes, fontsize=12)
         axs[1].text(0.40, 0.92, 'All Tiles: Y-shift', transform=axs[1].transAxes, fontsize=12)
         axs[2].set_xlabel('Frame')
         axs[0].set_ylabel('Realtive X-Shift (pix)')
         axs[1].set_ylabel('Realtive Y-Shift (pix)')
         axs[2].set_ylabel('Realtive Shift (pix)')
-        fig.savefig(save_fname, dpi=300)
+        if save_png:
+            axs[2].text(-0.1, -0.18, save_fname, transform=axs[2].transAxes, fontsize=6)
+            fig.savefig(save_fname, dpi=dpi)
         return save_fname
 
 
@@ -3237,6 +3250,7 @@ class FIBSEM_montage_stack:
         Assemble layer montage based on transformation matrices for each tile. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
 
         Parameters:
+        ----------
         layer_id : int
             Layer ID should be a value bewteen -1 and self.nz_tiles-1. -1 means the last layer will be assembled.
         
@@ -3346,7 +3360,6 @@ class FIBSEM_montage_stack:
             Display intermediate results. Default is False.
         
         '''
-
         DASK_client = kwargs.get('DASK_client', '')
         fnm_montage = kwargs.get('fnm_montage', self.fnm_montage)
         fnm_types = kwargs.get("fnm_types", ['mrc'])
@@ -3464,21 +3477,36 @@ def generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs):
         Mosaic shape (ny_tiles, nx_tiles). Default is (1,1).
     tile_id : tuple or list of of 2 ints
         Y and X indices of the tile for which the WD fs frame will be evaluzted. Default is (0, 0).
+    save_png : boolean
+        If True (default), the plot is saved into PNG file.
+    dpi : int
+        DPI for PNG. Default is 300.
+    save_fname : string
+        File name to save the PNG image. Default is os.path.join(data_dir, Mill_Rate_Data_xlsx.replace('.xlsx','_Mill_Rate.png')).
     verbose : boolean
         Display intermediate results. Default is False.
     '''
+    saved_kwargs = read_kwargs_xlsx(Mill_Rate_Data_xlsx, 'kwargs Info', **kwargs)
     mosaic_shape = kwargs.get('mosaic_shape', (1, 1))
     nxny = np.product(mosaic_shape)
     tile_id = kwargs.get('tile_id', (0, 0))
+    data_dir = saved_kwargs.get("data_dir", '')
+    ldm = 70
+    data_dir_short = data_dir if len(data_dir)<ldm else '... '+ data_dir[-ldm:]
     verbose = kwargs.get('verbose', False)
+    save_png = kwargs.get('save_png', True)
+    dpi = kwargs.get('dpi', 300)
+    if save_png:
+        save_fname = kwargs.get ('save_fname', os.path.join(data_dir, Mill_Rate_Data_xlsx.replace('.xlsx','_Mill_Rate.png')))
+    else:
+        save_fname = 'Image not saved'
     if verbose:
         print('Loading kwarg Data')
-    saved_kwargs = read_kwargs_xlsx(Mill_Rate_Data_xlsx, 'kwargs Info', **kwargs)
-    data_dir = saved_kwargs.get("data_dir", '')
-    Sample_ID = saved_kwargs.get("Sample_ID", '')
+    if verbose:
+        print('Loading kwarg Data')
+    Sample_ID = kwargs.get('Sample_ID', saved_kwargs.get('Sample_ID', ''))
     Saved_Mill_Volt_Rate_um_per_V = saved_kwargs.get("Mill_Volt_Rate_um_per_V", 31.235258870176065)
     Mill_Volt_Rate_um_per_V = kwargs.get("Mill_Volt_Rate_um_per_V", Saved_Mill_Volt_Rate_um_per_V)
-    
     if verbose:
         print('Loading Working Distance and Milling Y Voltage Data')
     try:
@@ -3495,7 +3523,7 @@ def generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs):
         print('Generating Plot')
     fs = 12
     fig, axs = plt.subplots(3,1, figsize = (6,10), sharex=True)
-    fig.subplots_adjust(left=0.12, bottom=0.06, right=0.99, top=0.96, wspace=0.05, hspace=0.05)
+    fig.subplots_adjust(left=0.15, bottom=0.06, right=0.99, top=0.97, wspace=0.05, hspace=0.05)
     
     for k in np.arange(nxny):
         my_col = plt.get_cmap("gist_rainbow_r")((nxny-k)/(nxny-1))
@@ -3513,6 +3541,7 @@ def generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs):
     axs[0].grid(True)
     axs[0].set_ylabel('Working Distance (mm)')
     axs[0].text(0.40, 0.92, 'All Tiles', transform=axs[0].transAxes, fontsize=12)
+    axs[0].text(0.2, 1.04, Sample_ID, fontsize = fs, transform=axs[0].transAxes)
     axs[1].plot(fr, WD, label='WD, Exp. Data', color='blue')
     axs[1].grid(True)
     axs[1].set_ylabel('Working Distance (mm)')
@@ -3531,13 +3560,11 @@ def generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs):
     axs[2].legend(fontsize=12)
     axs[2].text(0.02, 0.05, 'Milling Voltage to Z conversion: {:.4f} µm/V'.format(Mill_Volt_Rate_um_per_V), transform=axs[2].transAxes, fontsize=12)
     axs[2].set_xlabel('Frame')
-    ldm = 70
-    data_dir_short = data_dir if len(data_dir)<ldm else '... '+ data_dir[-ldm:]
-    try:
-        axs[0].text(-0.15, 1.05, Sample_ID + '    ' +  data_dir_short, fontsize = fs-2, transform=axs[0].transAxes)
-    except:
-        axs[0].text(-0.15, 1.05, data_dir_short, fontsize = fs-2, transform=axs[0].transAxes)
-    fig.savefig(os.path.join(data_dir, Mill_Rate_Data_xlsx.replace('.xlsx','_Mill_Rate.png')), dpi=300)
+    
+    if save_png:
+        axs[2].text(-0.12, -0.17, save_fname, fontsize = 5, transform=axs[2].transAxes)
+        fig.savefig(save_fname, dpi=dpi)
+    return save_fname
 
 
 def generate_report_data_minmax_montage_xlsx(minmax_xlsx_file, **kwargs):
@@ -3555,19 +3582,37 @@ def generate_report_data_minmax_montage_xlsx(minmax_xlsx_file, **kwargs):
         Mosaic shape (ny_tiles, nx_tiles). Default is (1,1).
     tile_id : tuple or list of of 2 ints
         Y and X indices of the tile for which the WD fs frame will be evaluzted. Default is (0, 0).
+    save_png : boolean
+        If True (default), the plot is saved into PNG file.
+    dpi : int
+        DPI for PNG. Default is 300.
+    save_fname : string
+        File name to save the PNG image. Default is os.path.join(data_dir, minmax_xlsx_file.replace('.xlsx','_Min_Max.png')).
     verbose : boolean
         Display intermediate results. Default is False.
+
+    Returns:
+    save_fname
     '''
+    saved_kwargs = read_kwargs_xlsx(minmax_xlsx_file, 'kwargs Info', **kwargs)
     mosaic_shape = kwargs.get('mosaic_shape', (1, 1))
     nxny = np.product(mosaic_shape)
     tile_id = kwargs.get('tile_id', (0, 0))
+    data_dir = saved_kwargs.get("data_dir", '')
+    ldm = 70
+    data_dir_short = data_dir if len(data_dir)<ldm else '... '+ data_dir[-ldm:]
     verbose = kwargs.get('verbose', False)
+    save_png = kwargs.get('save_png', True)
+    dpi = kwargs.get('dpi', 300)
+    if save_png:
+        save_fname = kwargs.get ('save_fname', os.path.join(data_dir, minmax_xlsx_file.replace('.xlsx','_Min_Max.png')))
+    else:
+        save_fname = 'Image not saved'
     if verbose:
         print('Loading kwarg Data')
-    saved_kwargs = read_kwargs_xlsx(minmax_xlsx_file, 'kwargs Info', **kwargs)
-    data_dir = saved_kwargs.get("data_dir", '')
-    fnm_reg = saved_kwargs.get("fnm_reg", 'Registration_file.mrc')
-    Sample_ID = saved_kwargs.get("Sample_ID", '')
+    if verbose:
+        print('Loading kwarg Data')
+    Sample_ID = kwargs.get('Sample_ID', saved_kwargs.get('Sample_ID', ''))
     thr_min = saved_kwargs.get("thr_min", 0.0)
     thr_max = saved_kwargs.get("thr_min", 0.0)
     fit_params_saved = saved_kwargs.get("fit_params", ['SG', 101, 3])
@@ -3593,7 +3638,7 @@ def generate_report_data_minmax_montage_xlsx(minmax_xlsx_file, **kwargs):
     fs = 12
 
     fig, axs = plt.subplots(3,1, figsize = (6,10), sharex=True)
-    fig.subplots_adjust(left=0.12, bottom=0.06, right=0.99, top=0.96, wspace=0.05, hspace=0.05)
+    fig.subplots_adjust(left=0.15, bottom=0.06, right=0.99, top=0.97, wspace=0.05, hspace=0.05)
     
     for k in np.arange(nxny):
         my_col = plt.get_cmap("gist_rainbow_r")((nxny-k)/(nxny-1))
@@ -3618,6 +3663,7 @@ def generate_report_data_minmax_montage_xlsx(minmax_xlsx_file, **kwargs):
         sliding_min = frame_min.astype(np.double)
         sliding_max = frame_min.astype(np.double)
 
+    axs[0].text(0.2, 1.04, Sample_ID, fontsize = fs, transform=axs[0].transAxes)
     axs[2].plot(frame_min, 'b', linewidth=1, label='Frame Minima')
     axs[2].plot(sliding_min, 'b', linewidth=2, linestyle = 'dotted', label='Sliding Minima')
     axs[2].plot(frame_max, 'r', linewidth=1, label='Frame Maxima')
@@ -3639,13 +3685,7 @@ def generate_report_data_minmax_montage_xlsx(minmax_xlsx_file, **kwargs):
     axs[2].text(len(frame_min)/20.0, data_min_glob+dxn*5.5, 'thr_max={:.1e}'.format(thr_max), fontsize = fs-2, c='r')
     for ax in axs:
         ax.grid(True)
-    
-    ldm = 70
-    data_dir_short = data_dir if len(data_dir)<ldm else '... '+ data_dir[-ldm:]
-
-    try:
-        axs[0].text(-0.15, 1.05, Sample_ID + '    ' +  data_dir_short, fontsize = fs-2, transform=axs[0].transAxes)
-    except:
-        axs[0].text(-0.15, 1.05, data_dir_short, fontsize = fs-2, transform=axs[0].transAxes)
-    fig.savefig(os.path.join(data_dir, minmax_xlsx_file.replace('.xlsx','_Min_Max.png')), dpi=300)
-
+    if save_png:
+        axs[2].text(-0.12, -0.17, save_fname, fontsize = 5, transform=axs[2].transAxes)
+        fig.savefig(save_fname, dpi=dpi)
+    return save_fname
