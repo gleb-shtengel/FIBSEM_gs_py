@@ -2077,7 +2077,6 @@ class FIBSEM_montage_stack:
         save_res_png  : boolean
             Save PNG images of the intermediate processing statistics and final registration quality check. Default is True.
         '''
-
         memory_profiling = kwargs.get('memory_profiling', False)
         verbose = kwargs.get('verbose', True)
         if memory_profiling:
@@ -2296,8 +2295,6 @@ class FIBSEM_montage_stack:
                         format_bytes(vms_after - vms_before),
                         format_bytes(shared_after - shared_before),
                         elapsed_time))
-
-
         if kwargs.get("recall_parameters", False):
             dump_filename = kwargs.get("dump_filename", '')
             try:
@@ -2772,6 +2769,7 @@ class FIBSEM_montage_stack:
                 print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Valid SIFT transformation established: ', self.SIFT_transformation_valid)
         return transformations_results_3D
 
+
     def test_SIFT(self, index_pair, pair_margins, **kwargs):
         ftype = kwargs.get("ftype", self.ftype)
         thr_min = kwargs.get("thr_min", self.thr_min)
@@ -2953,6 +2951,7 @@ class FIBSEM_montage_stack:
                 fig.savefig(save_filename, dpi=dpi)
 
         return fnm_deformed1, fnm_deformed2, transformations_result
+
 
     def determine_transformations_ECC(self, **kwargs):
         '''
@@ -3272,7 +3271,7 @@ class FIBSEM_montage_stack:
         save_snapshot : boolean
             If True, build an image that contains the montage and some data. Default is False.
         snapshot_fname : string
-            The name of the image to perform these operations (default is first  tile name + '_snapshot.png').
+            The name of the image to perform these operations (default is self.fls[layer_id].ravel()[0].replace('0-0-0.dat', 'lsnapshot.png')).
         thr_min : float
             Lower CDF threshold for determining the minimum data value. Default is 1.0e-3
         thr_max : float
@@ -3286,7 +3285,7 @@ class FIBSEM_montage_stack:
         save_layer_mosaic_dat : boolean
             If True, saves existing montage into a new .dat file. Default is False. Only works on .dat files at the moment
         layer_mosaic_fname : string
-            The name of the image to perform these operations (default is first  tile name + '_layer_mosaic.dat').
+            The name of the image to perform these operations (default is self.fls[layer_id].ravel()[0].replace('0-0-0.dat', 'layer_mosaic.dat')).
         verbose : boolean
             Display intermediate results. Default is False.
         
@@ -3301,7 +3300,7 @@ class FIBSEM_montage_stack:
         verbose = kwargs.get('verbose', False)
         save_snapshot = kwargs.get('save_snapshot', False)
         data_dir = kwargs.get('data_dir', self.data_dir)
-        snapshot_fname = kwargs.get('snapshot_fname',  os.path.splitext(self.fls[layer_id].ravel()[0])[0] + '_snapshot.png'    )
+        snapshot_fname = kwargs.get('snapshot_fname',  self.fls[layer_id].ravel()[0].replace('0-0-0.dat', 'lsnapshot.png'))
         overlay_tile_grid = kwargs.get('overlay_tile_grid', True)
         thr_min = kwargs.get('thr_min', 1.0e-3)
         thr_max = kwargs.get('thr_max', 1.0e-3)
@@ -3360,11 +3359,7 @@ class FIBSEM_montage_stack:
         if save_snapshot:
             fig, axs = plt.subplots(2, 1, figsize=(7, 8), gridspec_kw={"height_ratios" : [1.5, 2]})
             fig.suptitle(snapshot_fname, fontsize = fontsize)
-            fig.subplots_adjust(left=0.01, bottom=0.01, right=0.99, top=0.90, wspace=0.15, hspace=0.1)
-            if not hasattr(self, 'montage'):
-                if verbose:
-                    print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Raw montage have not been created, build it now')
-                self.assemble_montage_raw(verbose=verbose)                        
+            fig.subplots_adjust(left=0.01, bottom=0.01, right=0.99, top=0.90, wspace=0.15, hspace=0.1)                  
             dmin, dmax = get_min_max_thresholds(layer_mosaic, thr_min=thr_min, thr_max=thr_max, nbins=nbins, disp_res=False)
             axs[1].imshow(layer_mosaic, cmap='Greys', vmin=dmin, vmax=dmax)
             axs[1].axis(False)
