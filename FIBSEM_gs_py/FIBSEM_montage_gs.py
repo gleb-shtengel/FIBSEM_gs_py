@@ -2891,7 +2891,7 @@ class FIBSEM_montage_stack:
             print('SIFT_contrastThreshold={:.3f},  SIFT_sigma={:.3f}'.format(SIFT_contrastThreshold, SIFT_sigma))
             print('RANSAC_initial_fraction = {:.4f}, max_iter={:d}'.format(RANSAC_initial_fraction, max_iter))
             print('drmax={:.3f}'.format(drmax))
-            print('# of keypoints = {:d} and {:d}, # of matches ={:d}'.format(n_kpts1, n_kpts2, n_matches))
+            print('# of keypoints = {:d} and {:d}, # of matches = {:d}'.format(n_kpts1, n_kpts2, n_matches))
 
             fs=12
             symsize = 2
@@ -3312,7 +3312,7 @@ class FIBSEM_montage_stack:
         dpi = kwargs.get('dpi', 300)
         save_layer_mosaic_dat = kwargs.get('save_layer_mosaic_dat', False)
         layer_mosaic_fname = kwargs.get('layer_mosaic_fname',  self.fls[layer_id].ravel()[0].replace('0-0-0.dat', 'layer_mosaic.dat'))
-        use_DASK, status_update_address = check_DASK(DASK_client, verbose=verbose)
+        use_DASK, status_update_address = check_DASK(DASK_client, verbose=True)
         deformation_field = kwargs.get('deformation_field', np.nan)
         left_crop = kwargs.get('left_crop', 0)
         if hasattr(self, "DASK_client_retries"):
