@@ -1940,7 +1940,7 @@ class FIBSEM_montage:
 class FIBSEM_montage_stack: 
     '''
     A class representing a stack of FIB-SEM montages - multiple z-panes consisting of multiple tiles.
-    ©G.Shtengel 12/2025 gleb.shtengel@gmail.com
+    ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
     Contains the info/settings on the FIB-SEM montage and the procedures that can be performed on it.
     '''
     
@@ -3300,14 +3300,14 @@ class FIBSEM_montage_stack:
         verbose = kwargs.get('verbose', False)
         save_snapshot = kwargs.get('save_snapshot', False)
         data_dir = kwargs.get('data_dir', self.data_dir)
-        snapshot_fname = kwargs.get('snapshot_fname',  self.fls[layer_id].ravel()[0].replace('0-0-0.dat', 'lsnapshot.png'))
+        snapshot_fname = kwargs.get('snapshot_fname',  self.fls[layer_id].ravel()[0].replace('0-0-0.dat', 'snapshot.png'))
         overlay_tile_grid = kwargs.get('overlay_tile_grid', True)
         thr_min = kwargs.get('thr_min', 1.0e-3)
         thr_max = kwargs.get('thr_max', 1.0e-3)
         nbins = kwargs.get('nbins', 256)
         linestyle = kwargs.get('linestyle', 'dashed')
         linewidth = kwargs.get('linewidth', 0.25)
-        fontsize = kwargs.get('fontsize', 10)
+        fontsize = kwargs.get('fontsize', 6)
         color = kwargs.get('color', 'cyan')
         dpi = kwargs.get('dpi', 300)
         save_layer_mosaic_dat = kwargs.get('save_layer_mosaic_dat', False)
@@ -3444,7 +3444,7 @@ class FIBSEM_montage_stack:
                                #bbox = [0.45, 1.02, 2.8, 0.55],
                                zorder=10)
             
-            fig.savefig(snapshot_name, dpi=dpi)
+            fig.savefig(snapshot_fname, dpi=dpi)
         
         if save_layer_mosaic_dat:
             '''
