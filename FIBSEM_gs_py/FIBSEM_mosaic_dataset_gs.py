@@ -357,6 +357,296 @@ def find_Transform_ECC_DASK(params, deformation_field):
     return warp_matrix, error_code
 
 
+def assemble_layer(params, deformation_field):
+    '''
+    Assembles layer. Worker function called by assemble_layer_mosaic and save_stack. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
+    
+    Parameters:
+    ----------
+    params : list
+        params = [layer_id, fls_layer, tr_matr_layer, weight_min, weight_max, fill_value, shape, Xsize, Ysize, left_crop, verbose]
+        layer_id : int
+            Layer ID should be a value bewteen -1 and self.nz_tiles-1. -1 means the last layer will be assembled.
+        fls_layer : list
+            List of files for individual tiles.
+        tr_matr_layer : list
+            List of transformation matrices for individual tiles.
+        weight_min : float
+            vmin for weight.
+        weight_max : float
+            vmax for weight.
+        fill_value : int
+            The value to assign to pixels outside the transformed image bounds.
+        shape : list of two ints
+            mosaic shape (ny_tiles, nx_tiles).
+        Xsize : int
+            Overall Mosaic width (pixels).
+        Ysize : int
+            Overall Mosaic height (pixels).
+        left_crop : int 
+            Cropping value for cropping the image from the left side (used along with deformation_filed or on its own).
+        verbose : boolean
+            Display intermediate results.
+    deformation_field : 2D array
+        Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
+    '''
+    layer_id, fls_layer, tr_matr_layer, weight_min, weight_max, fill_value, shape, Xsize, Ysize, left_crop, verbose = params
+    layer_mosaic = np.zeros((Ysize, Xsize-left_crop), dtype=float)
+    layer_mosaic_weights = np.zeros((Ysize, Xsize-left_crop), dtype=float)
+    tile_params_mult = []
+    xy_limits = []
+    for fl, (j, tr_matr_single) in zip(tqdm(fls_layer, desc = 'Building tile parameter sets', display = verbose), enumerate(tr_matr_layer)):
+        tile_params_mult.append([j, fl, tr_matr_single, Ysize, Xsize, weight_min, weight_max, left_crop])
+    if len(tile_params_mult)>0:
+        for tile_params in tqdm(tile_params_mult, desc = 'Building mosaic for layer_id={:d}'.format(layer_id), display = verbose):
+            if verbose:
+                print('Performing transform_tile with the following parameters:')
+                print(tile_params)
+            tile_out, weight_out, xi, xa, yi,  ya = transform_tile(tile_params, deformation_field)
+            xy_limits.append([xi, xa, yi, ya])
+            if verbose:
+                print('Output is:')
+                print('tile_out.shape=', tile_out.shape, 'weight_out.shape=', weight_out.shape)
+                print('xi={:d}, xa={:d}, yi={:d},  ya={:d}'.format(xi, xa, yi,  ya))
+            layer_mosaic[yi:ya, xi:xa] = layer_mosaic[yi:ya, xi:xa] + tile_out
+            layer_mosaic_weights[yi:ya, xi:xa] = layer_mosaic_weights[yi:ya, xi:xa] + weight_out
+        layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*np.product(shape)) 
+        layer_mosaic = np.nan_to_num(layer_mosaic / layer_mosaic_weights, nan=-fill_value)
+    return layer_mosaic, layer_id
+
+
+def generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs):
+    '''
+    Generate Report Plot for mill rate evaluation from XLSX spreadsheet file. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
+    
+    Parameters:
+    ----------
+    Mill_Rate_Data_xlsx : str
+        Path to the XLSX spreadsheet file containing the Working Distance (WD), Milling Y Voltage (MV), and FOV center shifts data.
+    
+    kwargs:
+    ----------
+    Mill_Volt_Rate_um_per_V : float
+        Milling Voltage to Z conversion (µm/V). Default is 31.235258870176065.
+    mosaic_shape : tuple or list of of 2 ints
+        Mosaic shape (ny_tiles, nx_tiles). Default is (1,1).
+    tile_id : tuple or list of of 2 ints
+        Y and X indices of the tile for which the WD fs frame will be evaluzted. Default is (0, 0).
+    save_png : boolean
+        If True (default), the plot is saved into PNG file.
+    dpi : int
+        DPI for PNG. Default is 300.
+    save_fname : string
+        File name to save the PNG image. Default is os.path.join(data_dir, Mill_Rate_Data_xlsx.replace('.xlsx','_Mill_Rate.png')).
+    verbose : boolean
+        Display intermediate results. Default is False.
+    '''
+    saved_kwargs = read_kwargs_xlsx(Mill_Rate_Data_xlsx, 'kwargs Info', **kwargs)
+    mosaic_shape = kwargs.get('mosaic_shape', (1, 1))
+    nxny = np.product(mosaic_shape)
+    tile_id = kwargs.get('tile_id', (0, 0))
+    data_dir = saved_kwargs.get("data_dir", '')
+    ldm = 70
+    data_dir_short = data_dir if len(data_dir)<ldm else '... '+ data_dir[-ldm:]
+    verbose = kwargs.get('verbose', False)
+    save_png = kwargs.get('save_png', True)
+    dpi = kwargs.get('dpi', 300)
+    if save_png:
+        save_fname = kwargs.get ('save_fname', os.path.join(data_dir, Mill_Rate_Data_xlsx.replace('.xlsx','_Mill_Rate.png')))
+    else:
+        save_fname = 'Image not saved'
+    if verbose:
+        print('Loading kwarg Data')
+    if verbose:
+        print('Loading kwarg Data')
+    Sample_ID = kwargs.get('Sample_ID', saved_kwargs.get('Sample_ID', ''))
+    Saved_Mill_Volt_Rate_um_per_V = saved_kwargs.get("Mill_Volt_Rate_um_per_V", 31.235258870176065)
+    Mill_Volt_Rate_um_per_V = kwargs.get("Mill_Volt_Rate_um_per_V", Saved_Mill_Volt_Rate_um_per_V)
+    if verbose:
+        print('Loading Working Distance and Milling Y Voltage Data')
+    try:
+        int_results_all = pd.read_excel(Mill_Rate_Data_xlsx, sheet_name='FIBSEM Data')
+    except:
+        int_results_all = pd.read_excel(Mill_Rate_Data_xlsx, sheet_name='Milling Rate Data')
+        
+    int_results = int_results_all.iloc[mosaic_shape[0]*tile_id[0]+tile_id[1]::nxny, :]
+    fr = int_results['Frame']/nxny
+    WD = int_results['Working Distance (mm)']
+    MillingYVoltage = int_results['Milling Y Voltage (V)']
+
+    if verbose:
+        print('Generating Plot')
+    fs = 12
+    fig, axs = plt.subplots(3,1, figsize = (6,10), sharex=True)
+    fig.subplots_adjust(left=0.15, bottom=0.06, right=0.99, top=0.97, wspace=0.05, hspace=0.05)
+    
+    for k in np.arange(nxny):
+        my_col = plt.get_cmap("gist_rainbow_r")((nxny-k)/(nxny-1))
+        WDk = int_results_all.iloc[k::nxny, :]['Working Distance (mm)']
+        if k == mosaic_shape[1]*tile_id[0]+tile_id[1]:
+            axs[0].plot(fr, WDk, color=my_col, marker='x', markersize=4)
+        else:
+            axs[0].plot(fr, WDk, color=my_col)
+    fr_all = np.repeat(np.array(fr), nxny)
+    WD_all = np.array(int_results_all['Working Distance (mm)'])
+    WD_all_fit_coef = np.polyfit(fr_all, WD_all, 1)
+    WD_fit_all = np.polyval(WD_all_fit_coef, fr)
+    axs[0].plot(fr, WD_fit_all, label='All Tiles: Fit, slope = {:.2f} nm/line'.format(WD_all_fit_coef[0]*1.0e6), color='black', linestyle='dashed', linewidth=2)
+    axs[0].legend(fontsize=12, loc = 'lower right')
+    axs[0].grid(True)
+    axs[0].set_ylabel('Working Distance (mm)')
+    axs[0].text(0.40, 0.92, 'All Tiles', transform=axs[0].transAxes, fontsize=12)
+    axs[0].text(0.2, 1.04, Sample_ID, fontsize = fs, transform=axs[0].transAxes)
+    axs[1].plot(fr, WD, label='WD, Exp. Data', color='blue')
+    axs[1].grid(True)
+    axs[1].set_ylabel('Working Distance (mm)')
+    WD_fit_coef = np.polyfit(fr, WD, 1)
+    WD_fit = np.polyval(WD_fit_coef, fr)
+    axs[1].plot(fr, WD_fit, label='Tile={:d},{:d}: Fit, slope = {:.2f} nm/line'.format(*tile_id, WD_fit_coef[0]*1.0e6), color='red', linestyle='dashed', linewidth=2)
+    axs[1].text(0.40, 0.92, 'Tile={:d},{:d}'.format(*tile_id), transform=axs[1].transAxes, fontsize=12)
+    axs[1].legend(fontsize=12)
+
+    axs[2].plot(fr, MillingYVoltage, label='Mill. Y Volt. Exp. Data', color='green')
+    axs[2].grid(True)
+    axs[2].set_ylabel('Milling Y Voltage (V)')
+    MV_fit_coef = np.polyfit(fr, MillingYVoltage, 1)
+    MV_fit=np.polyval(MV_fit_coef, fr)
+    axs[2].plot(fr, MV_fit, label='Fit, slope = {:.3f} nm/line'.format(MV_fit_coef[0]*Mill_Volt_Rate_um_per_V*-1.0e3), color='orange')
+    axs[2].legend(fontsize=12)
+    axs[2].text(0.02, 0.05, 'Milling Voltage to Z conversion: {:.4f} µm/V'.format(Mill_Volt_Rate_um_per_V), transform=axs[2].transAxes, fontsize=12)
+    axs[2].set_xlabel('Frame')
+    
+    if save_png:
+        axs[2].text(-0.12, -0.17, save_fname, fontsize = 5, transform=axs[2].transAxes)
+        fig.savefig(save_fname, dpi=dpi)
+    return save_fname
+
+
+def generate_report_data_minmax_montage_xlsx(minmax_xlsx_file, **kwargs):
+    '''
+    Generate Report Plot for data Min-Max from XLSX spreadsheet file. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
+    
+    Parameters:
+    ----------
+    minmax_xlsx_file : str
+        Path to the XLSX spreadsheet file containing Min-Max data
+
+    kwargs:
+    ----------
+    mosaic_shape : tuple or list of of 2 ints
+        Mosaic shape (ny_tiles, nx_tiles). Default is (1,1).
+    tile_id : tuple or list of of 2 ints
+        Y and X indices of the tile for which the WD fs frame will be evaluzted. Default is (0, 0).
+    save_png : boolean
+        If True (default), the plot is saved into PNG file.
+    dpi : int
+        DPI for PNG. Default is 300.
+    save_fname : string
+        File name to save the PNG image. Default is os.path.join(data_dir, minmax_xlsx_file.replace('.xlsx','_Min_Max.png')).
+    verbose : boolean
+        Display intermediate results. Default is False.
+
+    Returns:
+    save_fname
+    '''
+    saved_kwargs = read_kwargs_xlsx(minmax_xlsx_file, 'kwargs Info', **kwargs)
+    mosaic_shape = kwargs.get('mosaic_shape', (1, 1))
+    nxny = np.product(mosaic_shape)
+    tile_id = kwargs.get('tile_id', (0, 0))
+    data_dir = saved_kwargs.get("data_dir", '')
+    ldm = 70
+    data_dir_short = data_dir if len(data_dir)<ldm else '... '+ data_dir[-ldm:]
+    verbose = kwargs.get('verbose', False)
+    save_png = kwargs.get('save_png', True)
+    dpi = kwargs.get('dpi', 300)
+    if save_png:
+        save_fname = kwargs.get ('save_fname', os.path.join(data_dir, minmax_xlsx_file.replace('.xlsx','_Min_Max.png')))
+    else:
+        save_fname = 'Image not saved'
+    if verbose:
+        print('Loading kwarg Data')
+    if verbose:
+        print('Loading kwarg Data')
+    Sample_ID = kwargs.get('Sample_ID', saved_kwargs.get('Sample_ID', ''))
+    thr_min = saved_kwargs.get("thr_min", 0.0)
+    thr_max = saved_kwargs.get("thr_min", 0.0)
+    fit_params_saved = saved_kwargs.get("fit_params", ['SG', 101, 3])
+    fit_params = kwargs.get("fit_params", fit_params_saved)
+    preserve_scales =  saved_kwargs.get("preserve_scales", True)  # If True, the transformation matrix will be adjusted using teh settings defined by fit_params below
+    
+    if verbose:
+        print('Loading MinMax Data')
+    try:
+        int_results_all = pd.read_excel(minmax_xlsx_file, sheet_name='FIBSEM Data')
+    except:
+        int_results_all = pd.read_excel(minmax_xlsx_file, sheet_name='MinMax Data')
+    
+    int_results = int_results_all.iloc[mosaic_shape[0]*tile_id[0]+tile_id[1]::nxny, :]
+    frames = int_results['Frame']/nxny
+    frame_min = np.array(int_results['Min'])
+    frame_max = np.array(int_results['Max'])
+    data_min_glob  = np.min(frame_min)
+    data_max_glob  = np.max(frame_max)
+
+    if verbose:
+        print('Generating Plots')
+    fs = 12
+
+    fig, axs = plt.subplots(3,1, figsize = (6,10), sharex=True)
+    fig.subplots_adjust(left=0.15, bottom=0.06, right=0.99, top=0.97, wspace=0.05, hspace=0.05)
+    
+    for k in np.arange(nxny):
+        my_col = plt.get_cmap("gist_rainbow_r")((nxny-k)/(nxny-1))
+        framek_min = int_results_all.iloc[k::nxny, :]['Min']
+        framek_max = int_results_all.iloc[k::nxny, :]['Max']
+        if k == mosaic_shape[1]*tile_id[0]+tile_id[1]:
+            axs[0].plot(frames, framek_min, color=my_col, marker='x', markersize=4)
+            axs[1].plot(frames, framek_max, color=my_col, marker='x', markersize=4)
+        else:
+            axs[0].plot(frames, framek_min, color=my_col)
+            axs[1].plot(frames, framek_max, color=my_col)
+    axs[1].set_ylabel('All Tiles Minima Values')
+    axs[2].set_ylabel('All Tiles Maxima Values')
+
+    if fit_params[0] != 'None':
+        sv_apert = min([fit_params[1], len(frames)//8*2+1])
+        print('Using fit_params: ', 'SG', sv_apert, fit_params[2])
+        sliding_min = savgol_filter(frame_min.astype(np.double), sv_apert, fit_params[2])
+        sliding_max = savgol_filter(frame_max.astype(np.double), sv_apert, fit_params[2])
+    else:
+        print('Not smoothing the Min/Max data')
+        sliding_min = frame_min.astype(np.double)
+        sliding_max = frame_min.astype(np.double)
+
+    axs[0].text(0.2, 1.04, Sample_ID, fontsize = fs, transform=axs[0].transAxes)
+    axs[2].plot(frame_min, 'b', linewidth=1, label='Frame Minima')
+    axs[2].plot(sliding_min, 'b', linewidth=2, linestyle = 'dotted', label='Sliding Minima')
+    axs[2].plot(frame_max, 'r', linewidth=1, label='Frame Maxima')
+    axs[2].plot(sliding_max, 'r', linewidth=2, linestyle = 'dotted', label='Sliding Maxima')
+    axs[2].legend()
+    axs[2].grid(True)
+    axs[2].set_xlabel('Frame')
+    axs[2].set_ylabel('Tile ({:d},{:d}) Minima and Maxima Values'.format(*tile_id))
+    dxn = (data_max_glob - data_min_glob)*0.1
+    axs[2].set_ylim((data_min_glob - dxn, data_max_glob+dxn))
+    xminmax = [0, len(frame_min)]
+    y_min = [data_min_glob, data_min_glob]
+    y_max = [data_max_glob, data_max_glob]
+    axs[2].plot(xminmax, y_min, 'b', linestyle = '--')
+    axs[2].plot(xminmax, y_max, 'r', linestyle = '--')
+    axs[2].text(len(frame_min)/20.0, data_min_glob-dxn/1.75, 'data_min_glob={:.1f}'.format(data_min_glob), fontsize = fs-2, c='b')
+    axs[2].text(len(frame_min)/20.0, data_max_glob+dxn/2.25, 'data_max_glob={:.1f}'.format(data_max_glob), fontsize = fs-2, c='r')
+    axs[2].text(len(frame_min)/20.0, data_min_glob+dxn*4.5, 'thr_min={:.1e}'.format(thr_min), fontsize = fs-2, c='b')
+    axs[2].text(len(frame_min)/20.0, data_min_glob+dxn*5.5, 'thr_max={:.1e}'.format(thr_max), fontsize = fs-2, c='r')
+    for ax in axs:
+        ax.grid(True)
+    if save_png:
+        axs[2].text(-0.12, -0.17, save_fname, fontsize = 5, transform=axs[2].transAxes)
+        fig.savefig(save_fname, dpi=dpi)
+    return save_fname
+
+
+
 class FIBSEM_mosaic_dataset: 
     '''
     A class representing a stack of FIB-SEM mosaics (montages) - multiple z-panes consisting of multiple tiles.
@@ -492,7 +782,7 @@ class FIBSEM_mosaic_dataset:
     save_parameters(**kwargs):
         Save transformation attributes and parameters (including transformation matrices)
 
-    evaluate_FIBSEM_statistics(**kwargs):
+    evaluate_FIBSEM_statistics(**kwargs)
         Evaluates parameters of FIBSEM data set (data Min/Max, Working Distance, Milling Y Voltage, FOV center positions).
 
     extract_keypoints(**kwargs):
@@ -501,42 +791,25 @@ class FIBSEM_mosaic_dataset:
     determine_transformations_SIFT(self, **kwargs)
         Determine transformation matrices for frame pairs using SIFT. 
     
-    SIFT_evaluation(index_pair, pair_margins, **kwargs):
+    SIFT_evaluation(index_pair, pair_margins, **kwargs)
         Evaluate SIFT performance on a given index_pair.
 
+    determine_transformations_ECC(**kwargs)
+        Determine transformation matrices for frame pairs using ECC. Uses find_Transform_ECC(img1, img2, **kwargs).
 
-
-
+    solve_stack_stitching(**kwargs)
+        Solve mosaic stack stitching (perform bundle optimization).
     
+    generate_transformation_report(**kwargs)
+        Generate Report Plot for transformation summary.
 
-    convert_raw_data_to_tif_files(**kwargs):
-        Convert binary ".dat" files into ".tif" files
+    assemble_layer_mosaic(layer_id, **kwargs)
+        Assemble layer mosaic based on transformation matrices for each tile. Options to save snapshot, save mosaic as FIBSEM_frame (dat file) or as PNG.
 
-    process_transformation_matrix(**kwargs):
-        Calculate cumulative transformation matrix
-
-    calculate_residual_deformation_fields(**kwargs):
-        Calculates residual deformation fields for transformation IN ADDITION to that determined by transformation_matrix (above)
-
-    check_for_nomatch_frames(thr_npt, **kwargs):
-        Check for frames with low number of Key-Point matches,m exclude them and re-calculate the cumulative transformation matrix
-
-    transform_and_save(**kwargs):
-        Transform the frames using the cumulative transformation matrix and save the data set into .mrc file
-
-    show_eval_box(**kwargs):
-        Show the box used for evaluating the registration quality
-
-    estimate_SNRs(**kwargs):
-        Estimate SNRs in Image A and Image B based on single-image SNR calculation.
-
-    evaluate_ImgB_fractions(ImgB_fractions, frame_inds, **kwargs):
-        Calculate NCC and SNR vs Image B fraction over a set of frames.
-
-    estimate_resolution_blobs_2D(**kwargs)
-        Estimate transitions in the image, uses select_blobs_LoG_analyze_transitions(frame_eval, **kwargs).
+    save_stack(**kwargs)
+        Assemble all layers based on transformation matrices for each tile and save them into stack.
+    
     '''
-
     
     def __init__(self, fls, **kwargs):
         '''
@@ -1725,7 +1998,7 @@ class FIBSEM_mosaic_dataset:
 
     def solve_stack_stitching(self, **kwargs):
         '''
-        Solve montage stack stitching (perform bundle optimization). ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
+        Solve mosaic stack stitching (perform bundle optimization). ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
         
         kwargs:
         ---------
@@ -1911,7 +2184,7 @@ class FIBSEM_mosaic_dataset:
 
     def assemble_layer_mosaic(self, layer_id, **kwargs):
         '''
-        Assemble layer montage based on transformation matrices for each tile. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
+        Assemble layer mosaic based on transformation matrices for each tile. Options to save snapshot, save mosaic as FIBSEM_frame (dat file) or as PNG. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
 
         Parameters:
         ----------
@@ -2275,292 +2548,3 @@ class FIBSEM_mosaic_dataset:
             mrc_new.close()
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Saving Finished')
         return fnms_saved
-
-
-def assemble_layer(params, deformation_field):
-    '''
-    Assembles layer. Worker function called by assemble_layer_mosaic and save_stack. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
-    
-    Parameters:
-    ----------
-    params : list
-        params = [layer_id, fls_layer, tr_matr_layer, weight_min, weight_max, fill_value, shape, Xsize, Ysize, left_crop, verbose]
-        layer_id : int
-            Layer ID should be a value bewteen -1 and self.nz_tiles-1. -1 means the last layer will be assembled.
-        fls_layer : list
-            List of files for individual tiles.
-        tr_matr_layer : list
-            List of transformation matrices for individual tiles.
-        weight_min : float
-            vmin for weight.
-        weight_max : float
-            vmax for weight.
-        fill_value : int
-            The value to assign to pixels outside the transformed image bounds.
-        shape : list of two ints
-            mosaic shape (ny_tiles, nx_tiles).
-        Xsize : int
-            Overall Mosaic width (pixels).
-        Ysize : int
-            Overall Mosaic height (pixels).
-        left_crop : int 
-            Cropping value for cropping the image from the left side (used along with deformation_filed or on its own).
-        verbose : boolean
-            Display intermediate results.
-    deformation_field : 2D array
-        Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
-    '''
-    layer_id, fls_layer, tr_matr_layer, weight_min, weight_max, fill_value, shape, Xsize, Ysize, left_crop, verbose = params
-    layer_mosaic = np.zeros((Ysize, Xsize-left_crop), dtype=float)
-    layer_mosaic_weights = np.zeros((Ysize, Xsize-left_crop), dtype=float)
-    tile_params_mult = []
-    xy_limits = []
-    for fl, (j, tr_matr_single) in zip(tqdm(fls_layer, desc = 'Building tile parameter sets', display = verbose), enumerate(tr_matr_layer)):
-        tile_params_mult.append([j, fl, tr_matr_single, Ysize, Xsize, weight_min, weight_max, left_crop])
-    if len(tile_params_mult)>0:
-        for tile_params in tqdm(tile_params_mult, desc = 'Building mosaic for layer_id={:d}'.format(layer_id), display = verbose):
-            if verbose:
-                print('Performing transform_tile with the following parameters:')
-                print(tile_params)
-            tile_out, weight_out, xi, xa, yi,  ya = transform_tile(tile_params, deformation_field)
-            xy_limits.append([xi, xa, yi, ya])
-            if verbose:
-                print('Output is:')
-                print('tile_out.shape=', tile_out.shape, 'weight_out.shape=', weight_out.shape)
-                print('xi={:d}, xa={:d}, yi={:d},  ya={:d}'.format(xi, xa, yi,  ya))
-            layer_mosaic[yi:ya, xi:xa] = layer_mosaic[yi:ya, xi:xa] + tile_out
-            layer_mosaic_weights[yi:ya, xi:xa] = layer_mosaic_weights[yi:ya, xi:xa] + weight_out
-        layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*np.product(shape)) 
-        layer_mosaic = np.nan_to_num(layer_mosaic / layer_mosaic_weights, nan=-fill_value)
-    return layer_mosaic, layer_id
-
-
-def generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs):
-    '''
-    Generate Report Plot for mill rate evaluation from XLSX spreadsheet file. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
-    
-    Parameters:
-    ----------
-    Mill_Rate_Data_xlsx : str
-        Path to the XLSX spreadsheet file containing the Working Distance (WD), Milling Y Voltage (MV), and FOV center shifts data.
-    
-    kwargs:
-    ----------
-    Mill_Volt_Rate_um_per_V : float
-        Milling Voltage to Z conversion (µm/V). Default is 31.235258870176065.
-    mosaic_shape : tuple or list of of 2 ints
-        Mosaic shape (ny_tiles, nx_tiles). Default is (1,1).
-    tile_id : tuple or list of of 2 ints
-        Y and X indices of the tile for which the WD fs frame will be evaluzted. Default is (0, 0).
-    save_png : boolean
-        If True (default), the plot is saved into PNG file.
-    dpi : int
-        DPI for PNG. Default is 300.
-    save_fname : string
-        File name to save the PNG image. Default is os.path.join(data_dir, Mill_Rate_Data_xlsx.replace('.xlsx','_Mill_Rate.png')).
-    verbose : boolean
-        Display intermediate results. Default is False.
-    '''
-    saved_kwargs = read_kwargs_xlsx(Mill_Rate_Data_xlsx, 'kwargs Info', **kwargs)
-    mosaic_shape = kwargs.get('mosaic_shape', (1, 1))
-    nxny = np.product(mosaic_shape)
-    tile_id = kwargs.get('tile_id', (0, 0))
-    data_dir = saved_kwargs.get("data_dir", '')
-    ldm = 70
-    data_dir_short = data_dir if len(data_dir)<ldm else '... '+ data_dir[-ldm:]
-    verbose = kwargs.get('verbose', False)
-    save_png = kwargs.get('save_png', True)
-    dpi = kwargs.get('dpi', 300)
-    if save_png:
-        save_fname = kwargs.get ('save_fname', os.path.join(data_dir, Mill_Rate_Data_xlsx.replace('.xlsx','_Mill_Rate.png')))
-    else:
-        save_fname = 'Image not saved'
-    if verbose:
-        print('Loading kwarg Data')
-    if verbose:
-        print('Loading kwarg Data')
-    Sample_ID = kwargs.get('Sample_ID', saved_kwargs.get('Sample_ID', ''))
-    Saved_Mill_Volt_Rate_um_per_V = saved_kwargs.get("Mill_Volt_Rate_um_per_V", 31.235258870176065)
-    Mill_Volt_Rate_um_per_V = kwargs.get("Mill_Volt_Rate_um_per_V", Saved_Mill_Volt_Rate_um_per_V)
-    if verbose:
-        print('Loading Working Distance and Milling Y Voltage Data')
-    try:
-        int_results_all = pd.read_excel(Mill_Rate_Data_xlsx, sheet_name='FIBSEM Data')
-    except:
-        int_results_all = pd.read_excel(Mill_Rate_Data_xlsx, sheet_name='Milling Rate Data')
-        
-    int_results = int_results_all.iloc[mosaic_shape[0]*tile_id[0]+tile_id[1]::nxny, :]
-    fr = int_results['Frame']/nxny
-    WD = int_results['Working Distance (mm)']
-    MillingYVoltage = int_results['Milling Y Voltage (V)']
-
-    if verbose:
-        print('Generating Plot')
-    fs = 12
-    fig, axs = plt.subplots(3,1, figsize = (6,10), sharex=True)
-    fig.subplots_adjust(left=0.15, bottom=0.06, right=0.99, top=0.97, wspace=0.05, hspace=0.05)
-    
-    for k in np.arange(nxny):
-        my_col = plt.get_cmap("gist_rainbow_r")((nxny-k)/(nxny-1))
-        WDk = int_results_all.iloc[k::nxny, :]['Working Distance (mm)']
-        if k == mosaic_shape[1]*tile_id[0]+tile_id[1]:
-            axs[0].plot(fr, WDk, color=my_col, marker='x', markersize=4)
-        else:
-            axs[0].plot(fr, WDk, color=my_col)
-    fr_all = np.repeat(np.array(fr), nxny)
-    WD_all = np.array(int_results_all['Working Distance (mm)'])
-    WD_all_fit_coef = np.polyfit(fr_all, WD_all, 1)
-    WD_fit_all = np.polyval(WD_all_fit_coef, fr)
-    axs[0].plot(fr, WD_fit_all, label='All Tiles: Fit, slope = {:.2f} nm/line'.format(WD_all_fit_coef[0]*1.0e6), color='black', linestyle='dashed', linewidth=2)
-    axs[0].legend(fontsize=12, loc = 'lower right')
-    axs[0].grid(True)
-    axs[0].set_ylabel('Working Distance (mm)')
-    axs[0].text(0.40, 0.92, 'All Tiles', transform=axs[0].transAxes, fontsize=12)
-    axs[0].text(0.2, 1.04, Sample_ID, fontsize = fs, transform=axs[0].transAxes)
-    axs[1].plot(fr, WD, label='WD, Exp. Data', color='blue')
-    axs[1].grid(True)
-    axs[1].set_ylabel('Working Distance (mm)')
-    WD_fit_coef = np.polyfit(fr, WD, 1)
-    WD_fit = np.polyval(WD_fit_coef, fr)
-    axs[1].plot(fr, WD_fit, label='Tile={:d},{:d}: Fit, slope = {:.2f} nm/line'.format(*tile_id, WD_fit_coef[0]*1.0e6), color='red', linestyle='dashed', linewidth=2)
-    axs[1].text(0.40, 0.92, 'Tile={:d},{:d}'.format(*tile_id), transform=axs[1].transAxes, fontsize=12)
-    axs[1].legend(fontsize=12)
-
-    axs[2].plot(fr, MillingYVoltage, label='Mill. Y Volt. Exp. Data', color='green')
-    axs[2].grid(True)
-    axs[2].set_ylabel('Milling Y Voltage (V)')
-    MV_fit_coef = np.polyfit(fr, MillingYVoltage, 1)
-    MV_fit=np.polyval(MV_fit_coef, fr)
-    axs[2].plot(fr, MV_fit, label='Fit, slope = {:.3f} nm/line'.format(MV_fit_coef[0]*Mill_Volt_Rate_um_per_V*-1.0e3), color='orange')
-    axs[2].legend(fontsize=12)
-    axs[2].text(0.02, 0.05, 'Milling Voltage to Z conversion: {:.4f} µm/V'.format(Mill_Volt_Rate_um_per_V), transform=axs[2].transAxes, fontsize=12)
-    axs[2].set_xlabel('Frame')
-    
-    if save_png:
-        axs[2].text(-0.12, -0.17, save_fname, fontsize = 5, transform=axs[2].transAxes)
-        fig.savefig(save_fname, dpi=dpi)
-    return save_fname
-
-
-def generate_report_data_minmax_montage_xlsx(minmax_xlsx_file, **kwargs):
-    '''
-    Generate Report Plot for data Min-Max from XLSX spreadsheet file. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
-    
-    Parameters:
-    ----------
-    minmax_xlsx_file : str
-        Path to the XLSX spreadsheet file containing Min-Max data
-
-    kwargs:
-    ----------
-    mosaic_shape : tuple or list of of 2 ints
-        Mosaic shape (ny_tiles, nx_tiles). Default is (1,1).
-    tile_id : tuple or list of of 2 ints
-        Y and X indices of the tile for which the WD fs frame will be evaluzted. Default is (0, 0).
-    save_png : boolean
-        If True (default), the plot is saved into PNG file.
-    dpi : int
-        DPI for PNG. Default is 300.
-    save_fname : string
-        File name to save the PNG image. Default is os.path.join(data_dir, minmax_xlsx_file.replace('.xlsx','_Min_Max.png')).
-    verbose : boolean
-        Display intermediate results. Default is False.
-
-    Returns:
-    save_fname
-    '''
-    saved_kwargs = read_kwargs_xlsx(minmax_xlsx_file, 'kwargs Info', **kwargs)
-    mosaic_shape = kwargs.get('mosaic_shape', (1, 1))
-    nxny = np.product(mosaic_shape)
-    tile_id = kwargs.get('tile_id', (0, 0))
-    data_dir = saved_kwargs.get("data_dir", '')
-    ldm = 70
-    data_dir_short = data_dir if len(data_dir)<ldm else '... '+ data_dir[-ldm:]
-    verbose = kwargs.get('verbose', False)
-    save_png = kwargs.get('save_png', True)
-    dpi = kwargs.get('dpi', 300)
-    if save_png:
-        save_fname = kwargs.get ('save_fname', os.path.join(data_dir, minmax_xlsx_file.replace('.xlsx','_Min_Max.png')))
-    else:
-        save_fname = 'Image not saved'
-    if verbose:
-        print('Loading kwarg Data')
-    if verbose:
-        print('Loading kwarg Data')
-    Sample_ID = kwargs.get('Sample_ID', saved_kwargs.get('Sample_ID', ''))
-    thr_min = saved_kwargs.get("thr_min", 0.0)
-    thr_max = saved_kwargs.get("thr_min", 0.0)
-    fit_params_saved = saved_kwargs.get("fit_params", ['SG', 101, 3])
-    fit_params = kwargs.get("fit_params", fit_params_saved)
-    preserve_scales =  saved_kwargs.get("preserve_scales", True)  # If True, the transformation matrix will be adjusted using teh settings defined by fit_params below
-    
-    if verbose:
-        print('Loading MinMax Data')
-    try:
-        int_results_all = pd.read_excel(minmax_xlsx_file, sheet_name='FIBSEM Data')
-    except:
-        int_results_all = pd.read_excel(minmax_xlsx_file, sheet_name='MinMax Data')
-    
-    int_results = int_results_all.iloc[mosaic_shape[0]*tile_id[0]+tile_id[1]::nxny, :]
-    frames = int_results['Frame']/nxny
-    frame_min = np.array(int_results['Min'])
-    frame_max = np.array(int_results['Max'])
-    data_min_glob  = np.min(frame_min)
-    data_max_glob  = np.max(frame_max)
-
-    if verbose:
-        print('Generating Plots')
-    fs = 12
-
-    fig, axs = plt.subplots(3,1, figsize = (6,10), sharex=True)
-    fig.subplots_adjust(left=0.15, bottom=0.06, right=0.99, top=0.97, wspace=0.05, hspace=0.05)
-    
-    for k in np.arange(nxny):
-        my_col = plt.get_cmap("gist_rainbow_r")((nxny-k)/(nxny-1))
-        framek_min = int_results_all.iloc[k::nxny, :]['Min']
-        framek_max = int_results_all.iloc[k::nxny, :]['Max']
-        if k == mosaic_shape[1]*tile_id[0]+tile_id[1]:
-            axs[0].plot(frames, framek_min, color=my_col, marker='x', markersize=4)
-            axs[1].plot(frames, framek_max, color=my_col, marker='x', markersize=4)
-        else:
-            axs[0].plot(frames, framek_min, color=my_col)
-            axs[1].plot(frames, framek_max, color=my_col)
-    axs[1].set_ylabel('All Tiles Minima Values')
-    axs[2].set_ylabel('All Tiles Maxima Values')
-
-    if fit_params[0] != 'None':
-        sv_apert = min([fit_params[1], len(frames)//8*2+1])
-        print('Using fit_params: ', 'SG', sv_apert, fit_params[2])
-        sliding_min = savgol_filter(frame_min.astype(np.double), sv_apert, fit_params[2])
-        sliding_max = savgol_filter(frame_max.astype(np.double), sv_apert, fit_params[2])
-    else:
-        print('Not smoothing the Min/Max data')
-        sliding_min = frame_min.astype(np.double)
-        sliding_max = frame_min.astype(np.double)
-
-    axs[0].text(0.2, 1.04, Sample_ID, fontsize = fs, transform=axs[0].transAxes)
-    axs[2].plot(frame_min, 'b', linewidth=1, label='Frame Minima')
-    axs[2].plot(sliding_min, 'b', linewidth=2, linestyle = 'dotted', label='Sliding Minima')
-    axs[2].plot(frame_max, 'r', linewidth=1, label='Frame Maxima')
-    axs[2].plot(sliding_max, 'r', linewidth=2, linestyle = 'dotted', label='Sliding Maxima')
-    axs[2].legend()
-    axs[2].grid(True)
-    axs[2].set_xlabel('Frame')
-    axs[2].set_ylabel('Tile ({:d},{:d}) Minima and Maxima Values'.format(*tile_id))
-    dxn = (data_max_glob - data_min_glob)*0.1
-    axs[2].set_ylim((data_min_glob - dxn, data_max_glob+dxn))
-    xminmax = [0, len(frame_min)]
-    y_min = [data_min_glob, data_min_glob]
-    y_max = [data_max_glob, data_max_glob]
-    axs[2].plot(xminmax, y_min, 'b', linestyle = '--')
-    axs[2].plot(xminmax, y_max, 'r', linestyle = '--')
-    axs[2].text(len(frame_min)/20.0, data_min_glob-dxn/1.75, 'data_min_glob={:.1f}'.format(data_min_glob), fontsize = fs-2, c='b')
-    axs[2].text(len(frame_min)/20.0, data_max_glob+dxn/2.25, 'data_max_glob={:.1f}'.format(data_max_glob), fontsize = fs-2, c='r')
-    axs[2].text(len(frame_min)/20.0, data_min_glob+dxn*4.5, 'thr_min={:.1e}'.format(thr_min), fontsize = fs-2, c='b')
-    axs[2].text(len(frame_min)/20.0, data_min_glob+dxn*5.5, 'thr_max={:.1e}'.format(thr_max), fontsize = fs-2, c='r')
-    for ax in axs:
-        ax.grid(True)
-    if save_png:
-        axs[2].text(-0.12, -0.17, save_fname, fontsize = 5, transform=axs[2].transAxes)
-        fig.savefig(save_fname, dpi=dpi)
-    return save_fname
