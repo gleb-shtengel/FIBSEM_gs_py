@@ -362,7 +362,181 @@ class FIBSEM_mosaic_dataset:
     A class representing a stack of FIB-SEM mosaics (montages) - multiple z-panes consisting of multiple tiles.
     ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
     Contains the info/settings on the FIB-SEM montage and the procedures that can be performed on it.
+
+     Attributes
+    ----------
+    fls : array of str
+        filenames for the individual data frames in the set
+    data_dir : str
+        data directory (path)
+    index_pairs : np.array(col_ind).reshape((row, 2)) array of pairs of absolute (in 1D sense of fls.ravel()) tile indecis. Auto-determined during initialization.
+
+    Sample_ID : str
+            Sample ID
+    ftype : int
+        file type (0 - Shan Xu's .dat, 1 - tif)
+    PixelSize : float
+        pixel size in nm. This is inherited from FIBSEM_frame object. Default is 8.0
+    voxel_size : rec.array(( float,  float,  float), dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4')])
+        voxel size in nm. Default is isotropic (PixelSize, PixelSize, PixelSize)
+    Scaling : 2D array of floats
+        scaling parameters allowing to convert I16 data into actual electron counts 
+    fnm_reg : str
+        filename for the final registered dataset
+    use_DASK : boolean
+        use python DASK package to parallelize the computation or not (False is used mostly for debug purposes).
+    thr_min : float
+        CDF threshold for determining the minimum data value
+    thr_max : float
+        CDF threshold for determining the maximum data value
+    nbins : int
+        number of histogram bins for building the PDF and CDF
+    sliding_minmax : boolean
+        if True - data min and max will be taken from data_min_sliding and data_max_sliding arrays
+        if False - same data_min_glob and data_max_glob will be used for all files
+    TransformType : object reference
+        Transformation model used by SIFT for determining the transformation matrix from Key-Point pairs.
+        Choose from the following options:
+            ShiftTransform - only x-shift and y-shift
+            XScaleShiftTransform  -  x-scale, x-shift, y-shift
+            ScaleShiftTransform - x-scale, y-scale, x-shift, y-shift
+            AffineTransform -  full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift)
+            RegularizedAffineTransform - full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift) with regularization on deviation from ShiftTransform
+    l2_matrix : 2D float array
+        matrix of regularization (shrinkage) parameters
+    targ_vector = 1D float array
+        target vector for regularization
+    solver : str
+        Solver used for SIFT ('RANSAC' or 'LinReg')
+    RANSAC_initial_fraction : float
+        Fraction of data points for initial RANSAC iteration step. Default is 0.005.
+    drmax : float
+        In the case of 'RANSAC' - Maximum distance for a data point to be classified as an inlier.
+        In the case of 'LinReg' - outlier threshold for iterative regression
+    max_iter : int
+        Max number of iterations in the iterative procedure above (RANSAC or LinReg)
+    BFMatcher : boolean
+        If True, the BF Matcher is used for keypont matching, otherwise FLANN will be used
+    save_matches : boolean
+        If True, matches will be saved into individual files
+    SIFT_nfeatures : int
+        SIFT library default is 0. The number of best features to retain.
+        The features are ranked by their scores (measured in SIFT algorithm as the local contrast)
+    SIFT_nOctaveLayers : int
+        SIFT library default  is 3. The number of layers in each octave.
+        3 is the value used in D. Lowe paper. The number of octaves is computed automatically from the image resolution.
+    SIFT_contrastThreshold : double
+        SIFT library default  is 0.04. The contrast threshold used to filter out weak features in semi-uniform (low-contrast) regions.
+        The larger the threshold, the less features are produced by the detector.
+        The contrast threshold will be divided by nOctaveLayers when the filtering is applied.
+        When nOctaveLayers is set to default and if you want to use the value used in
+        D. Lowe paper (0.03), set this argument to 0.09.
+    SIFT_edgeThreshold : double
+        SIFT library default  is 10. The threshold used to filter out edge-like features.
+        Note that the its meaning is different from the contrastThreshold,
+        i.e. the larger the edgeThreshold, the less features are filtered out
+        (more features are retained).
+    SIFT_sigma : double
+        SIFT library default is 1.6.  The sigma of the Gaussian applied to the input image at the octave #0.
+        If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
+    save_res_png  : boolean
+        Save PNG images of the intermediate processing statistics and final registration quality check
+    dtp : Data Type
+        Python data type for saving. Default is np.int16, the other option currently is np.uint8.
+    zbin_factor : int
+        binning factor in z-direction (milling direction). Data will be binned when saving the final result. Default is 1.
+    flipY : boolean
+        If True, the data will be flipped along Y-axis. Default is False.
+    preserve_scales : boolean
+        If True, the cumulative transformation matrix will be adjusted using the settings defined by fit_params below.
+    fit_params : list
+        Example: ['SG', 501, 3]  - perform the above adjustment using Savitzky-Golay (SG) filter with parameters - window size 501, polynomial order 3.
+        Other options are:
+            ['LF'] - use linear fit with forces start points Sxx and Syy = 1 and Sxy and Syx = 0
+            ['PF', 2]  - use polynomial fit (in this case of order 2)
+    interpolation : int
+        The order of interpolation as defined in cv2. The options are:
+                                                                #    cv2.INTER_AREA    Uses pixel area relation for resampling, which effectively minimizes distortion and avoids aliasing artifacts, yielding high-quality results for reduced image sizes.
+                                                                #    cv2.INTER_CUBIC    Uses bicubic interpolation (based on 4x4 neighboring pixels) to produce smooth, high-quality results. It is slower than INTER_LINEAR.
+                                                                #    cv2.INTER_LINEAR   Uses bilinear interpolation (based on 2x2 neighboring pixels), offering a good balance of speed and visual quality for most general resizing tasks.
+                                                                #    cv2.INTER_NEAREST  Uses the nearest neighbor, picking the value of the closest pixel. It is quick but results in a blocky, pixelated output, and is generally used for specific cases like segmentation masks.
+                                                                #    cv2.INTER_LANCZOS4  Uses a Lanczos kernel with an 8x8 neighborhood, providing the best quality, but it is the slowest method.
+    subtract_linear_fit : [boolean, boolean]
+        List of two Boolean values for two directions: X- and Y-.
+        If True, the linear slopes along X- and Y- directions (respectively)
+        will be subtracted from the cumulative shifts.
+        This is performed after the optimal frame-to-frame shifts are recalculated for preserve_scales = True.
+    pad_edges : boolean
+        If True, the data will be padded before transformation to avoid clipping.
+    perform_deformation : boolean
+        If True - the data is deformed (in addition to tyransformation defined above) using the deformation field data defined below
+    deformation_type : str
+        Options are:
+            'post_1DY'  - Default. Deformation is performed AFTER the matrix transformation using 1D deformation field with only Y-coordinate components (all pixels along X-axis are deformed the same way).
+            'prior_1DY' - Deformation is performed PRIOR to the matrix transformation using 1D deformation field with only Y-coordinate components (all pixels along X-axis are deformed the same way).
+            'post_1DX'  - Deformation is performed AFTER the matrix transformation using 1D deformation field with only X-coordinate components (all pixels along Y-axis are deformed the same way).
+            'prior_1DX' - Deformation is performed PRIOR to the matrix transformation using 1D deformation field with only X-coordinate components (all pixels along Y-axis are deformed the same way).
+            'post_2D'   - Deformation is performed AFTER the matrix transformation using 2D deformation field.
+            'prior_2D'  - Deformation is performed PRIOR to the matrix transformation using 2D deformation field.
+    deformation_sigma :  list of 1 or two floats.
+        Gaussian width of smoothing (units of pixels). Default is 50.
+    ImgB_fraction : float
+            fractional ratio of Image B to be used for constructing the fused image:
+            ImageFused = ImageA * (1.0-ImgB_fraction) + ImageB * ImgB_fraction
+    evaluation_box : list of 4 int
+            evaluation_box = [top, height, left, width] boundaries of the box used for evaluating the image registration.
+            if evaluation_box is not set or evaluation_box = [0, 0, 0, 0], the entire image is used.
+
+    Methods
+    -------
+    save_parameters(**kwargs):
+        Save transformation attributes and parameters (including transformation matrices)
+
+    evaluate_FIBSEM_statistics(**kwargs):
+        Evaluates parameters of FIBSEM data set (data Min/Max, Working Distance, Milling Y Voltage, FOV center positions).
+
+    extract_keypoints(**kwargs):
+        Extract Key-Points and Descriptors
+
+    determine_transformations_SIFT(self, **kwargs)
+        Determine transformation matrices for frame pairs using SIFT. 
+    
+    SIFT_evaluation(index_pair, pair_margins, **kwargs):
+        Evaluate SIFT performance on a given index_pair.
+
+
+
+
+    
+
+    convert_raw_data_to_tif_files(**kwargs):
+        Convert binary ".dat" files into ".tif" files
+
+    process_transformation_matrix(**kwargs):
+        Calculate cumulative transformation matrix
+
+    calculate_residual_deformation_fields(**kwargs):
+        Calculates residual deformation fields for transformation IN ADDITION to that determined by transformation_matrix (above)
+
+    check_for_nomatch_frames(thr_npt, **kwargs):
+        Check for frames with low number of Key-Point matches,m exclude them and re-calculate the cumulative transformation matrix
+
+    transform_and_save(**kwargs):
+        Transform the frames using the cumulative transformation matrix and save the data set into .mrc file
+
+    show_eval_box(**kwargs):
+        Show the box used for evaluating the registration quality
+
+    estimate_SNRs(**kwargs):
+        Estimate SNRs in Image A and Image B based on single-image SNR calculation.
+
+    evaluate_ImgB_fractions(ImgB_fractions, frame_inds, **kwargs):
+        Calculate NCC and SNR vs Image B fraction over a set of frames.
+
+    estimate_resolution_blobs_2D(**kwargs)
+        Estimate transitions in the image, uses select_blobs_LoG_analyze_transitions(frame_eval, **kwargs).
     '''
+
     
     def __init__(self, fls, **kwargs):
         '''
@@ -370,7 +544,7 @@ class FIBSEM_mosaic_dataset:
 
         Parameters:
         ----------
-        fls : 2D array of str
+        fls : 3D array of str
             Filenames for the individual data frames in the stack of montages.
 
         kwargs:
@@ -467,15 +641,13 @@ class FIBSEM_mosaic_dataset:
             Max number of iterations in the iterative procedure above (RANSAC or LinReg). Default is 1000.
         SIFT_nmatches_min : int
             Min number of matches for the transformation to be considered valid. Delault is 5.
-        int_order : int
-            The order of interpolation (when transforming the data).
-                The order has to be in the range 0-5:
-                    0: Nearest-neighbor
-                    1: Bi-linear (default)
-                    2: Bi-quadratic
-                    3: Bi-cubic
-                    4: Bi-quartic
-                    5: Bi-quintic
+        interpolation : int
+            The order of interpolation as defined in cv2. The options are:
+                                                                    #    cv2.INTER_AREA    Uses pixel area relation for resampling, which effectively minimizes distortion and avoids aliasing artifacts, yielding high-quality results for reduced image sizes.
+                                                                    #    cv2.INTER_CUBIC    Uses bicubic interpolation (based on 4x4 neighboring pixels) to produce smooth, high-quality results. It is slower than INTER_LINEAR.
+                                                                    #    cv2.INTER_LINEAR   Uses bilinear interpolation (based on 2x2 neighboring pixels), offering a good balance of speed and visual quality for most general resizing tasks.
+                                                                    #    cv2.INTER_NEAREST  Uses the nearest neighbor, picking the value of the closest pixel. It is quick but results in a blocky, pixelated output, and is generally used for specific cases like segmentation masks.
+                                                                    #    cv2.INTER_LANCZOS4  Uses a Lanczos kernel with an 8x8 neighborhood, providing the best quality, but it is the slowest method.
         dtp : Data Type
             Python data type for saving. Default is np.int16.
         pad_edges : boolean
@@ -510,7 +682,6 @@ class FIBSEM_mosaic_dataset:
         self.interlayer_weight = kwargs.get('interlayer_weight', 100.0)
         self.add_reverse_edges = kwargs.get('add_reverse_edges', False)
         test_frame = FIBSEM_frame(self.fls.ravel()[0], ftype = self.ftype, calculate_scaled_images=False, read_header_only=True)
-
         self.MachineID = test_frame.MachineID
         self.FileVersion = test_frame.FileVersion
         self.ScanRate = test_frame.ScanRate
@@ -565,18 +736,14 @@ class FIBSEM_mosaic_dataset:
         self.save_res_png  = kwargs.get("save_res_png", True)
         self.fnm_types = kwargs.get("fnm_types", ['mrc'])
         self.flipY = kwargs.get("flipY", False)                     # If True, the registered data will be flipped along Y axis
-                                                                    # window size 701, polynomial order 3
-        self.int_order = kwargs.get("int_order", False)             #     The order of interpolation. The order has to be in the range 0-5:
-                                                                    #    - 0: Nearest-neighbor
-                                                                    #    - 1: Bi-linear (default)
-                                                                    #    - 2: Bi-quadratic
-                                                                    #    - 3: Bi-cubic
-                                                                    #    - 4: Bi-quartic
-                                                                    #    - 5: Bi-quintic
-        self.pad_edges =  kwargs.get("pad_edges", True)
-        self.perform_deformation = kwargs.get("perform_deformation", False)
-        self.deformation_type = kwargs.get("deformation_type", 'post_1DY')
-        self.deformation_sigma = kwargs.get('deformation_sigma', 50)
+
+        self.interpolation = kwargs.get("interpolation", cv2.INTER_LINEAR)             #     The order of interpolation. The options are:
+                                                                    #    cv2.INTER_AREA    Uses pixel area relation for resampling, which effectively minimizes distortion and avoids aliasing artifacts, yielding high-quality results for reduced image sizes.
+                                                                    #    cv2.INTER_CUBIC    Uses bicubic interpolation (based on 4x4 neighboring pixels) to produce smooth, high-quality results. It is slower than INTER_LINEAR.
+                                                                    #    cv2.INTER_LINEAR   Uses bilinear interpolation (based on 2x2 neighboring pixels), offering a good balance of speed and visual quality for most general resizing tasks.
+                                                                    #    cv2.INTER_NEAREST  Uses the nearest neighbor, picking the value of the closest pixel. It is quick but results in a blocky, pixelated output, and is generally used for specific cases like segmentation masks.
+                                                                    #    cv2.INTER_LANCZOS4  Uses a Lanczos kernel with an 8x8 neighborhood, providing the best quality, but it is the slowest method.
+
         try:
             build_fnm_montage = os.path.splitext(os.path.split(self.fls.ravel()[0])[1])[0][0:-5] + 'montage_stack.mrc'
         except:
@@ -676,7 +843,7 @@ class FIBSEM_mosaic_dataset:
 
         self.A_csr = csr_matrix((data, (row_ind, col_ind)), shape=(C, V)) # sparse matrix
 
-        self.pair_indices = np.array(col_ind).reshape((row, 2))   # absolute (in 1D sense) tile indecis for each pair
+        self.index_pairs = np.array(col_ind).reshape((row, 2))   # absolute (in 1D sense) tile indecis for each pair
         self.pair_margins = [[self.YResolution, 2*self.Xoverlap] for x in np.arange(nh)] + [[2*self.Yoverlap, self.XResolution] for x in np.arange(nv)] + [[self.YResolution, self.XResolution] for x in np.arange(nl)]
         eye3x3 = np.eye(3,3)
         self.ECC_transformation_matrices = np.repeat(eye3x3[np.newaxis, :, :], C, axis=0)
@@ -952,7 +1119,7 @@ class FIBSEM_mosaic_dataset:
              Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
         deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
         interpolation : int
-            Interpolation type as defined in CV2 (if deformation_field is not np.nan) . Default is cv2.INTER_LINEAR.
+            Interpolation type as defined in CV2. Default is object attribute (default for that is cv2.INTER_LINEAR).
         fill_value = 0.0
             Fill value for outside pixeld in cv2.remap. Default is 0.
         use_existing_data : boolean
@@ -982,7 +1149,7 @@ class FIBSEM_mosaic_dataset:
         SIFT_edgeThreshold = kwargs.get("SIFT_edgeThreshold", self.SIFT_edgeThreshold)
         SIFT_sigma = kwargs.get("SIFT_sigma", self.SIFT_sigma)
         deformation_field = kwargs.get('deformation_field', np.nan)
-        interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
+        interpolation = kwargs.get('interpolation', self.interpolation)
         fill_value = kwargs.get('fill_value', 0)
         use_existing_data = kwargs.get('use_existing_data', False)
 
@@ -1015,7 +1182,7 @@ class FIBSEM_mosaic_dataset:
 
     def determine_transformations_SIFT(self, **kwargs):
         '''
-        Determine transformation matrices for frame pairs using SIFT. ©G.Shtengel 10/2021 gleb.shtengel@gmail.com
+        Determine transformation matrices for frame pairs using SIFT. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
         
         kwargs:
         ---------
@@ -1024,7 +1191,7 @@ class FIBSEM_mosaic_dataset:
             Number of allowed automatic retries if a task fails. Default is object attribute.
         ftype : int
             File type (0 - Shan Xu's .dat, 1 - tif). Default is object attribute.
-        pair_margins : arraiy of tuples of 2 ints
+        pair_margins : array of tuples of 2 ints
             Parts of images to be used. It is assumed that first image (img1) in each target_pair is to the left and above of the second image (img2).
             Subsets img1[-ymargin:, :] and  img2[0:ymargin, :] or img1[:, -xmargin:] and  img2[:, 0:xmargin] will be used for correlation.
             Default is full images, so image_margins = (self.YResolution, self.XResolution)
@@ -1126,7 +1293,7 @@ class FIBSEM_mosaic_dataset:
             params_SIFT = []
             fnms_kpts = self.fnms_kpts.ravel()
 
-            for index_pair, pair_margins  in zip(tqdm(self.pair_indices, desc='Setting up SIFT parameter list', display=verbose), self.pair_margins):
+            for index_pair, pair_margins  in zip(tqdm(self.index_pairs, desc='Setting up SIFT parameter list', display=verbose), self.pair_margins):
                 dt_kwargs = {'ftype' : ftype,
                         'TransformType' : TransformType,
                         'l2_matrix' : l2_matrix,
@@ -1197,8 +1364,87 @@ class FIBSEM_mosaic_dataset:
         return transformations_results_3D
 
 
-    def test_SIFT(self, index_pair, pair_margins, **kwargs):
+    def SIFT_evaluation(self, index_pair, pair_margins, **kwargs):
+        '''
+        Evaluate SIFT performance on a given index_pair. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
+        
+        Parameters:
+        index_pair : tuple of 2 ints
+            Pair of absolute (in 1D sense of fls.ravel()) tile indecis.
+        pair_margins : tuples of 2 ints
+            Parts of images to be used. It is assumed that first image (img1) in each target_pair is to the left and above of the second image (img2).
+            Subsets img1[-ymargin:, :] and  img2[0:ymargin, :] or img1[:, -xmargin:] and  img2[:, 0:xmargin] will be used for correlation.
+            Default is full images, so image_margins = (self.YResolution, self.XResolution)
+
+        kwargs:
+        ---------
+        ftype : int
+            File type (0 - Shan Xu's .dat, 1 - tif). Default is object attribute.
+        left_crop : int
+            Cropping value for cropping the image from the left side (used along with deformation_filed or on its own). Default is 0 - no cropping.
+        deformation_field : 3D array
+            Deformation field for distortion corrections to be executed before SIFT. Default is np.nan - no distortion correction
+        thr_min : float
+            CDF threshold for determining the minimum data value. Default is object attribute.
+        thr_max : float
+            CDF threshold for determining the maximum data value. Default is object attribute.
+        
+        nbins : int
+            Number of histogram bins for building the PDF and CDF. Default is object attribute.
+        data_minmax : list of 5 parameters
+            minmax_xlsx : str
+                path to Excel file with Min/Max data.
+            data_min_glob : float   
+                min data value for I8 conversion (open CV SIFT requires I8).
+            data_min_sliding : float array
+                min data values (one per file) for I8 conversion.
+            data_max_sliding : float array
+                max data values (one per file) for I8 conversion.
+            data_minmax_glob : 2D float array
+                min and max data values without sliding averaging.
+        SIFT_nfeatures : int
+            The number of best features to retain. Default is object attribute. SIFT library default is 0 (all features retained).
+            The features are ranked by their scores (measured in SIFT algorithm as the local contrast)
+        SIFT_nOctaveLayers : int
+            The number of layers in each octave. Default is object attribute. SIFT library default is 3.
+            3 is the value used in D. Lowe paper. The number of octaves is computed automatically from the image resolution.
+        SIFT_contrastThreshold : double
+            The contrast threshold used to filter out weak features in semi-uniform (low-contrast) regions. Default is object attribute. SIFT library default is 0.04.
+            The larger the threshold, the less features are produced by the detector.
+            The contrast threshold will be divided by nOctaveLayers when the filtering is applied.
+            When nOctaveLayers is set to default and if you want to use the value used in
+            D. Lowe paper (0.03), set this argument to 0.09.
+        SIFT_edgeThreshold : double
+            The threshold used to filter out edge-like features. Default is object attribute. SIFT library default is 10.
+            Note that its meaning is different from the contrastThreshold,
+            i.e. the larger the edgeThreshold, the less features are filtered out (more features are retained).
+        SIFT_sigma : double
+            The sigma of the Gaussian applied to the input image at the octave #0. Default is object attribute. SIFT library default is 1.6.
+            If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
+        TransformType : object reference
+            Transformation model used for determining the transformation matrix from Key-Point pairs. Default is object attribute.
+            Choose from the following options:
+                ShiftTransform - only x-shift and y-shift
+                XScaleShiftTransform  -  x-scale, x-shift, y-shift
+                ScaleShiftTransform - x-scale, y-scale, x-shift, y-shift
+                AffineTransform -  full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift)
+                RegularizedAffineTransform - full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift) with regularization on deviation from ShiftTransform
+        interpolation : int
+            Interpolation type as defined in CV2. Default is object attribute (default for that is cv2.INTER_LINEAR).
+        fill_value = 0.0
+            Fill value for outside pixeld in cv2.remap. Default is 0.
+
+        Returns : fnm_deformed1, fnm_deformed2, transformations_result
+        '''
         ftype = kwargs.get("ftype", self.ftype)
+        left_crop = kwargs.get('left_crop', 0)
+        deformation_field = kwargs.get('deformation_field', np.nan)
+        perform_deformation = np.any(np.invert(np.isnan(deformation_field)))
+        if perform_deformation:
+            perform_deformation_text = 'True'
+        else:
+            perform_deformation_text = 'False'
+
         thr_min = kwargs.get("thr_min", self.thr_min)
         thr_max = kwargs.get("thr_max", self.thr_max)
         nbins = kwargs.get("nbins", self.nbins)
@@ -1208,16 +1454,6 @@ class FIBSEM_mosaic_dataset:
         SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", self.SIFT_contrastThreshold)
         SIFT_edgeThreshold = kwargs.get("SIFT_edgeThreshold", self.SIFT_edgeThreshold)
         SIFT_sigma = kwargs.get("SIFT_sigma", self.SIFT_sigma)
-        left_crop = kwargs.get('left_crop', 0)
-        deformation_field = kwargs.get('deformation_field', np.nan)
-        perform_deformation = np.any(np.invert(np.isnan(deformation_field)))
-        if perform_deformation:
-            perform_deformation_text = 'True'
-        else:
-            perform_deformation_text = 'False'
-        interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
-        fill_value = kwargs.get('fill_value', 0)
-
         TransformType = kwargs.get("TransformType", self.TransformType)
         l2_matrix = kwargs.get("l2_matrix", self.l2_matrix)
         targ_vector = kwargs.get("targ_vector", self.targ_vector)
@@ -1235,6 +1471,8 @@ class FIBSEM_mosaic_dataset:
             matcher = 'BFMatcher'
         else:
             matcher = 'FLANN'
+        interpolation = kwargs.get('interpolation', self.interpolation)
+        fill_value = kwargs.get('fill_value', 0)
         save_matches = kwargs.get("save_matches", self.save_matches)
         save_res_png  = kwargs.get("save_res_png", True )
         start = kwargs.get('start', 'edges')
@@ -1392,7 +1630,7 @@ class FIBSEM_mosaic_dataset:
             Number of allowed automatic retries if a task fails. Default is object attribute.
         ftype : int
             File type (0 - Shan Xu's .dat, 1 - tif). Default is object attribute.
-        pair_margins : arraiy of tuples of 2 ints
+        pair_margins : array of tuples of 2 ints
             Parts of images to be used. It is assumed that first image (img1) in each target_pair is to the left and above of the second image (img2).
             Subsets img1[-ymargin:, :] and  img2[0:ymargin, :] or img1[:, -xmargin:] and  img2[:, 0:xmargin] will be used for correlation.
             Default is full images, so image_margins = (self.YResolution, self.XResolution)
@@ -1446,7 +1684,7 @@ class FIBSEM_mosaic_dataset:
         params_ECC = []
         fls = self.fls.ravel()
 
-        for index_pair, pair_margins  in zip(tqdm(self.pair_indices, desc='Setting up ECC parameter list', display=verbose), self.pair_margins):
+        for index_pair, pair_margins  in zip(tqdm(self.index_pairs, desc='Setting up ECC parameter list', display=verbose), self.pair_margins):
             dt_kwargs = {'ftype' : ftype,
                      'motion' : motion,
                      'criteria' : criteria,
@@ -1626,11 +1864,11 @@ class FIBSEM_mosaic_dataset:
         verbose = kwargs.get('verbose', False)
         save_png = kwargs.get('save_png', True)
         dpi = kwargs.get('dpi', 300)
+        data_dir = kwargs.get('data_dir', self.data_dir)
         if save_png:
             save_fname = kwargs.get ('save_fname', os.path.join(data_dir, 'Relative_Tile_Shifts.png'))
         else:
             save_fname = 'Image not saved'
-        data_dir = kwargs.get('data_dir', self.data_dir)
         Sample_ID = kwargs.get('Sample_ID', self.Sample_ID)
         frame_inds = kwargs.get('data_dir', np.arange(self.nz_tiles))
         tile_positions_x = self.tile_positions[frame_inds, :, 0] - self.tile_positions[0, :, 0]
