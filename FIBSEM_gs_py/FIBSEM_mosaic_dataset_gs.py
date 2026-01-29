@@ -235,6 +235,7 @@ def remap_tile(img, deformation_field, **kwargs):
     
     return image_deformed, shift_x, shift_y
 
+
 def find_Transform_ECC(img1, img2, **kwargs):
     '''
     Find Transformation using cv2.findTransformECC on parts of images with approximately known and small image overlaps.
@@ -570,7 +571,7 @@ def generate_report_SEM_param_montage_xlsx(FIBSEM_Data_xlsx, **kwargs):
     save_png = kwargs.get('save_png', True)
     dpi = kwargs.get('dpi', 300)
     if save_png:
-        save_fname = kwargs.get ('save_fname', os.path.join(data_dir, Mill_Rate_Data_xlsx.replace('.xlsx','_Mill_Rate.png')))
+        save_fname = kwargs.get ('save_fname', os.path.join(data_dir, FIBSEM_Data_xlsx.replace('.xlsx','_Mill_Rate.png')))
     else:
         save_fname = 'Image not saved'
     if verbose:
@@ -579,9 +580,9 @@ def generate_report_SEM_param_montage_xlsx(FIBSEM_Data_xlsx, **kwargs):
     if verbose:
         print('Loading FIBSEM Data')
     try:
-        int_results_all = pd.read_excel(Mill_Rate_Data_xlsx, sheet_name='FIBSEM Data')
+        int_results_all = pd.read_excel(FIBSEM_Data_xlsx, sheet_name='FIBSEM Data')
     except:
-        int_results_all = pd.read_excel(Mill_Rate_Data_xlsx, sheet_name='Milling Rate Data')
+        int_results_all = pd.read_excel(FIBSEM_Data_xlsx, sheet_name='Milling Rate Data')
         
     int_results = int_results_all.iloc[mosaic_shape[0]*tile_id[0]+tile_id[1]::nxny, :]
     fr = int_results['Frame']/nxny
@@ -589,13 +590,13 @@ def generate_report_SEM_param_montage_xlsx(FIBSEM_Data_xlsx, **kwargs):
     if verbose:
         print('Generating Plot')
     fs = 12
-    fig, axs = plt.subplots(3,1, figsize = (6,10), sharex=True)
-    fig.subplots_adjust(left=0.15, bottom=0.06, right=0.99, top=0.97, wspace=0.05, hspace=0.05)
-    
+    fig, axs = plt.subplots(3,1, figsize = (6,10), gridspec_kw={"height_ratios" : [1.5, 1.5, 2]})
+    fig.subplots_adjust(left=0.15, bottom=0.06, right=0.99, top=0.97, wspace=0.05, hspace=0.25)
+
     for k in np.arange(nxny):
         my_col = plt.get_cmap("gist_rainbow_r")((nxny-k)/(nxny-1))
         for j, SEM_key in enumerate(SEM_keys):
-            SEM = int_results_all.iloc[k::nxny, :][SEM_key]
+            SEMk = int_results_all.iloc[k::nxny, :][SEM_key]
             if k == mosaic_shape[1]*tile_id[0]+tile_id[1]:
                 axs[0].plot(fr, SEMk, color=my_col, marker='x', markersize=4, linestyle = linestyles[j])
             else:
@@ -603,6 +604,7 @@ def generate_report_SEM_param_montage_xlsx(FIBSEM_Data_xlsx, **kwargs):
 
     axs[0].grid(True)
     axs[0].set_ylabel(Yaxis_title)
+    axs[0].set_xlabel('Frame')
     axs[0].text(0.40, 0.92, 'All Tiles', transform=axs[0].transAxes, fontsize=12)
     axs[0].text(0.2, 1.04, Sample_ID, fontsize = fs, transform=axs[0].transAxes)
     for j, SEM_key in enumerate(SEM_keys):
@@ -610,18 +612,43 @@ def generate_report_SEM_param_montage_xlsx(FIBSEM_Data_xlsx, **kwargs):
         axs[1].plot(fr, SEMi, label=SEM_key + ', Exp. Data, Tile={:d},{:d}'.format(*tile_id), linestyle = linestyles[j], color='blue')
     axs[1].grid(True)
     axs[1].set_ylabel(Yaxis_title)
+    axs[1].set_xlabel('Frame')
     axs[1].text(0.40, 0.92, 'Tile={:d},{:d}'.format(*tile_id), transform=axs[1].transAxes, fontsize=12)
-    axs[1].legend(fontsize=12)
+    axs[1].legend(fontsize=12, loc = 'lower right')
 
-    axs[2].plot(fr, MillingYVoltage, label='Mill. Y Volt. Exp. Data', color='green')
-    axs[2].grid(True)
-    axs[2].set_ylabel('Milling Y Voltage (V)')
-    MV_fit_coef = np.polyfit(fr, MillingYVoltage, 1)
-    MV_fit=np.polyval(MV_fit_coef, fr)
-    axs[2].plot(fr, MV_fit, label='Fit, slope = {:.3f} nm/line'.format(MV_fit_coef[0]*Mill_Volt_Rate_um_per_V*-1.0e3), color='orange')
-    axs[2].legend(fontsize=12)
-    axs[2].text(0.02, 0.05, 'Milling Voltage to Z conversion: {:.4f} µm/V'.format(Mill_Volt_Rate_um_per_V), transform=axs[2].transAxes, fontsize=12)
-    axs[2].set_xlabel('Frame')
+    nz = int(len(int_results_all)/nxny)
+    ny, nx = mosaic_shape
+    all_params = []
+
+    for j, SEM_key in enumerate(SEM_keys):
+        SEMk = np.array(int_results_all[SEM_key]).reshape(nz, ny, nx)
+        all_params.append(SEMk[frame_id])
+
+    all_params = np.array(all_params)
+    All_strs = []
+    for j in np.arange(ny):
+        for i in np.arange(nx):
+            loc_str = ''
+            for k, SEM_param in enumerate(SEM_params):
+                if k==0:
+                    loc_str = loc_str + SEM_param + '={:.6f}'.format(all_params[k,j,i])
+                else:
+                    loc_str = loc_str + '\n' + SEM_param + '={:.6f}'.format(all_params[k,j,i])
+            All_strs.append(loc_str)
+    All_strs = np.array(All_strs).reshape(mosaic_shape)
+
+    axs[2].axis(False)
+    if frame_id==-1:
+        frame_id = nz-1
+    axs[2].set_title('MAP od SEM parameters over the Tiles, Frame={:d}'.format(frame_id), fontsize=10)
+    llw1 = 0.9 / mosaic_shape[1]
+    clw = [llw1 for k in np.arange(mosaic_shape[1])]
+    tbl = axs[2].table(cellText = All_strs,
+                   colWidths=clw,
+                   cellLoc='center',
+                   colLoc='center',
+                   bbox = [0.02, 0, 0.96, 1.0],
+                   zorder=10)
     
     if save_png:
         axs[2].text(-0.12, -0.17, save_fname, fontsize = 5, transform=axs[2].transAxes)

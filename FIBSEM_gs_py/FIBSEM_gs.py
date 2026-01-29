@@ -8005,6 +8005,7 @@ def evaluate_FIBSEM_frame(params):
             number of histogram bins for building the PDF and CDF
 
     Returns:
+        dmin, dmax, WD, MillingYVoltage, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolution, YResolution, SEMStiX, SEMStiY, SEMAlnX, SEMAlnY, ex_error
         dmin, dmax: (float) minimum and maximum values of the data range.
         WD, MillingYVoltage, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolution, YResolution - SEM parameters 
     '''
@@ -8316,10 +8317,10 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
             SEMSpecimenI = results_s2[:, 8]
             XResolutions = results_s2[:, 9].astype(int)
             YResolutions = results_s2[:, 10].astype(int)
-            SEMStiX = results_s2[:, 12]
-            SEMStiY = results_s2[:, 13]
-            SEMAlnX = results_s2[:, 14]
-            SEMAlnY = results_s2[:, 15]
+            SEMStiX = results_s2[:, 11]
+            SEMStiY = results_s2[:, 12]
+            SEMAlnX = results_s2[:, 13]
+            SEMAlnY = results_s2[:, 14]
 
     if verbose:
         print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Saving the FIBSEM dataset statistics (Min/Max, Mill Rate, FOV Shifts into the file: ', FIBSEM_Data_xlsx_path)
