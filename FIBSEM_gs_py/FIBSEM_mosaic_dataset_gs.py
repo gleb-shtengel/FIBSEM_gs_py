@@ -457,8 +457,6 @@ def generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs):
         save_fname = 'Image not saved'
     if verbose:
         print('Loading kwarg Data')
-    if verbose:
-        print('Loading kwarg Data')
     Sample_ID = kwargs.get('Sample_ID', saved_kwargs.get('Sample_ID', ''))
     Saved_Mill_Volt_Rate_um_per_V = saved_kwargs.get("Mill_Volt_Rate_um_per_V", 31.235258870176065)
     Mill_Volt_Rate_um_per_V = kwargs.get("Mill_Volt_Rate_um_per_V", Saved_Mill_Volt_Rate_um_per_V)
@@ -522,6 +520,115 @@ def generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs):
     return save_fname
 
 
+def generate_report_SEM_param_montage_xlsx(FIBSEM_Data_xlsx, **kwargs):
+    '''
+    Generate Report Plot for mill rate evaluation from XLSX spreadsheet file. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
+    
+    Parameters:
+    ----------
+    FIBSEM_Data_xlsx : str
+        Path to the XLSX spreadsheet file containing the Working Distance (WD), Milling Y Voltage (MV), and FOV center shifts data.
+    
+    kwargs:
+    ----------
+    SEM_params : list of str
+        SEM parameters to analyze. Options are: 'WD', 'SEMStiX', 'SEMStiY', 'SEMAlnX', 'SEMAlnY'. Default is ['SEMStiX', 'SEMStiY'].
+    mosaic_shape : tuple or list of of 2 ints
+        Mosaic shape (ny_tiles, nx_tiles). Default is (1,1).
+    tile_id : tuple or list of of 2 ints
+        Y and X indices of the tile for which the WD fs frame will be evaluzted. Default is (0, 0).
+    frame_id : int
+        ID of the frame to show the SEM parameter map over the tile mosaic.
+    save_png : boolean
+        If True (default), the plot is saved into PNG file.
+    dpi : int
+        DPI for PNG. Default is 300.
+    save_fname : string
+        File name to save the PNG image. Default is os.path.join(data_dir, Mill_Rate_Data_xlsx.replace('.xlsx','_Mill_Rate.png')).
+    verbose : boolean
+        Display intermediate results. Default is False.
+    '''
+    saved_kwargs = read_kwargs_xlsx(FIBSEM_Data_xlsx, 'kwargs Info', **kwargs)
+    SEM_params = kwargs.get('SEM_params', ['SEMStiX', 'SEMStiY'])
+    linestyles = kwargs.get('linestyles', ['-', ':', '--', '-.', '-'])
+    SEM_keys = []
+    Yaxis_title = ''
+    for SEM_param in SEM_params:
+        Yaxis_title = Yaxis_title + SEM_param + ', '
+        if SEM_param == 'WD':
+            SEM_keys.append('Working Distance (mm)')
+        else:
+            SEM_keys.append(SEM_param)
+    mosaic_shape = kwargs.get('mosaic_shape', (1, 1))
+    nxny = np.product(mosaic_shape)
+    tile_id = kwargs.get('tile_id', (0, 0))
+    frame_id =  kwargs.get('frame_id', -1)
+    data_dir = saved_kwargs.get("data_dir", '')
+    ldm = 70
+    data_dir_short = data_dir if len(data_dir)<ldm else '... '+ data_dir[-ldm:]
+    verbose = kwargs.get('verbose', False)
+    save_png = kwargs.get('save_png', True)
+    dpi = kwargs.get('dpi', 300)
+    if save_png:
+        save_fname = kwargs.get ('save_fname', os.path.join(data_dir, Mill_Rate_Data_xlsx.replace('.xlsx','_Mill_Rate.png')))
+    else:
+        save_fname = 'Image not saved'
+    if verbose:
+        print('Loading kwarg Data')
+    Sample_ID = kwargs.get('Sample_ID', saved_kwargs.get('Sample_ID', ''))
+    if verbose:
+        print('Loading FIBSEM Data')
+    try:
+        int_results_all = pd.read_excel(Mill_Rate_Data_xlsx, sheet_name='FIBSEM Data')
+    except:
+        int_results_all = pd.read_excel(Mill_Rate_Data_xlsx, sheet_name='Milling Rate Data')
+        
+    int_results = int_results_all.iloc[mosaic_shape[0]*tile_id[0]+tile_id[1]::nxny, :]
+    fr = int_results['Frame']/nxny
+
+    if verbose:
+        print('Generating Plot')
+    fs = 12
+    fig, axs = plt.subplots(3,1, figsize = (6,10), sharex=True)
+    fig.subplots_adjust(left=0.15, bottom=0.06, right=0.99, top=0.97, wspace=0.05, hspace=0.05)
+    
+    for k in np.arange(nxny):
+        my_col = plt.get_cmap("gist_rainbow_r")((nxny-k)/(nxny-1))
+        for j, SEM_key in enumerate(SEM_keys):
+            SEM = int_results_all.iloc[k::nxny, :][SEM_key]
+            if k == mosaic_shape[1]*tile_id[0]+tile_id[1]:
+                axs[0].plot(fr, SEMk, color=my_col, marker='x', markersize=4, linestyle = linestyles[j])
+            else:
+                axs[0].plot(fr, SEMk, color=my_col, linestyle = linestyles[j])
+
+    axs[0].grid(True)
+    axs[0].set_ylabel(Yaxis_title)
+    axs[0].text(0.40, 0.92, 'All Tiles', transform=axs[0].transAxes, fontsize=12)
+    axs[0].text(0.2, 1.04, Sample_ID, fontsize = fs, transform=axs[0].transAxes)
+    for j, SEM_key in enumerate(SEM_keys):
+        SEMi = int_results[SEM_key]
+        axs[1].plot(fr, SEMi, label=SEM_key + ', Exp. Data, Tile={:d},{:d}'.format(*tile_id), linestyle = linestyles[j], color='blue')
+    axs[1].grid(True)
+    axs[1].set_ylabel(Yaxis_title)
+    axs[1].text(0.40, 0.92, 'Tile={:d},{:d}'.format(*tile_id), transform=axs[1].transAxes, fontsize=12)
+    axs[1].legend(fontsize=12)
+
+    axs[2].plot(fr, MillingYVoltage, label='Mill. Y Volt. Exp. Data', color='green')
+    axs[2].grid(True)
+    axs[2].set_ylabel('Milling Y Voltage (V)')
+    MV_fit_coef = np.polyfit(fr, MillingYVoltage, 1)
+    MV_fit=np.polyval(MV_fit_coef, fr)
+    axs[2].plot(fr, MV_fit, label='Fit, slope = {:.3f} nm/line'.format(MV_fit_coef[0]*Mill_Volt_Rate_um_per_V*-1.0e3), color='orange')
+    axs[2].legend(fontsize=12)
+    axs[2].text(0.02, 0.05, 'Milling Voltage to Z conversion: {:.4f} µm/V'.format(Mill_Volt_Rate_um_per_V), transform=axs[2].transAxes, fontsize=12)
+    axs[2].set_xlabel('Frame')
+    
+    if save_png:
+        axs[2].text(-0.12, -0.17, save_fname, fontsize = 5, transform=axs[2].transAxes)
+        fig.savefig(save_fname, dpi=dpi)
+    return save_fname
+
+
 def generate_report_data_minmax_montage_xlsx(minmax_xlsx_file, **kwargs):
     '''
     Generate Report Plot for data Min-Max from XLSX spreadsheet file. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
@@ -563,8 +670,6 @@ def generate_report_data_minmax_montage_xlsx(minmax_xlsx_file, **kwargs):
         save_fname = kwargs.get ('save_fname', os.path.join(data_dir, minmax_xlsx_file.replace('.xlsx','_Min_Max.png')))
     else:
         save_fname = 'Image not saved'
-    if verbose:
-        print('Loading kwarg Data')
     if verbose:
         print('Loading kwarg Data')
     Sample_ID = kwargs.get('Sample_ID', saved_kwargs.get('Sample_ID', ''))

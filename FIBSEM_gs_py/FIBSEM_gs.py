@@ -8029,6 +8029,22 @@ def evaluate_FIBSEM_frame(params):
             except:
                 WD = 0
             try:
+                SEMStiX = frame.SEMStiX
+            except:
+                SEMStiX = 0
+            try:
+                SEMStiY = frame.SEMStiY
+            except:
+                SEMStiY = 0
+            try:
+                SEMAlnX = frame.SEMAlnX
+            except:
+                SEMAlnX = 0
+            try:
+                SEMAlnY = frame.SEMAlnY
+            except:
+                SEMAlnY = 0
+            try:
                 MillingYVoltage = frame.MillingYVoltage
             except:
                 MillingYVoltage = 0
@@ -8070,6 +8086,10 @@ def evaluate_FIBSEM_frame(params):
             SEMSpecimenI = 0
             XResolution = frame.XResolution
             YResolution = frame.YResolution
+            SEMStiX = 0
+            SEMStiY = 0
+            SEMAlnX = 0
+            SEMAlnY = 0
     except Exception as err:
         dmin = 0
         dmax = 0
@@ -8083,8 +8103,12 @@ def evaluate_FIBSEM_frame(params):
         ex_error = err
         XResolution = 0
         YResolution = 0
+        SEMStiX = 0
+        SEMStiY = 0
+        SEMAlnX = 0
+        SEMAlnY = 0
 
-    return dmin, dmax, WD, MillingYVoltage, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolution, YResolution, ex_error
+    return dmin, dmax, WD, MillingYVoltage, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolution, YResolution, SEMStiX, SEMStiY, SEMAlnX, SEMAlnY, ex_error
 
 
 def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
@@ -8131,7 +8155,7 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
         Default is False. If True and the data exists (saved into XLSX), use that.   
 
     Returns:
-    list of 14 parameters: FIBSEM_Data_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding, mill_rate_WD, mill_rate_MV, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolutions, YResolutions
+    list of 14 parameters: FIBSEM_Data_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding, mill_rate_WD, mill_rate_MV, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolutions, YResolutions, SEMStiX, SEMStiY, SEMAlnX, SEMAlnY, errors_s2
         FIBSEM_Data_xlsx : str
             path to Excel file with the FIBSEM data
         data_min_glob : float   
@@ -8251,7 +8275,7 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
 
         else:
             params_s2 = [[fl, kwargs] for fl in np.array(fls)[frame_inds]]
-            results_s2 = np.zeros((len(frame_inds), 11))
+            results_s2 = np.zeros((len(frame_inds), 15))
             errors_s2 = []
             if use_DASK:
                 if verbose:
@@ -8259,15 +8283,15 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
                 futures = DASK_client.map(evaluate_FIBSEM_frame, params_s2, retries = DASK_client_retries)
                 results_temp = np.array(DASK_client.gather(futures))
                 for j, res_temp in enumerate(tqdm(results_temp, desc='Converting the Results', display = verbose)):
-                    results_s2[j, :] = res_temp[0:11]
-                    errors_s2.append(res_temp[11])
+                    results_s2[j, :] = res_temp[0:15]
+                    errors_s2.append(res_temp[15])
             else:
                 if verbose:
                     print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Using Local Computation')
                 for j, param_s2 in enumerate(tqdm(params_s2, desc='Evaluating FIB-SEM frames (data min/max, mill rate, FOV shifts): ', display = verbose)):
                     res_temp = evaluate_FIBSEM_frame(param_s2)
-                    results_s2[j, :] = res_temp[0:11]
-                    errors_s2.append(res_temp[11])
+                    results_s2[j, :] = res_temp[0:15]
+                    errors_s2.append(res_temp[15])
 
             data_minmax_glob = results_s2[:, 0:2]
             data_min_glob, trash = get_min_max_thresholds(data_minmax_glob[:, 0], thr_min = thr_min, thr_max = thr_max, nbins = nbins, disp_res=False)
@@ -8292,12 +8316,16 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
             SEMSpecimenI = results_s2[:, 8]
             XResolutions = results_s2[:, 9].astype(int)
             YResolutions = results_s2[:, 10].astype(int)
+            SEMStiX = results_s2[:, 12]
+            SEMStiY = results_s2[:, 13]
+            SEMAlnX = results_s2[:, 14]
+            SEMAlnY = results_s2[:, 15]
 
     if verbose:
         print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Saving the FIBSEM dataset statistics (Min/Max, Mill Rate, FOV Shifts into the file: ', FIBSEM_Data_xlsx_path)
         # Create a Pandas Excel writer using XlsxWriter as the engine.
     xlsx_writer = pd.ExcelWriter(FIBSEM_Data_xlsx_path, engine='xlsxwriter')
-    columns=['Frame', 'Min', 'Max', 'Sliding Min', 'Sliding Max', 'Working Distance (mm)', 'Milling Y Voltage (V)', 'FOV X Center (Pix)', 'FOV Y Center (Pix)', 'XResolutions', 'YResolutions', 'Scan Rate (Hz)', 'EHT (kV)', 'SEMSpecimenI (nA)', 'Error Code']
+    columns=['Frame', 'Min', 'Max', 'Sliding Min', 'Sliding Max', 'Working Distance (mm)', 'Milling Y Voltage (V)', 'FOV X Center (Pix)', 'FOV Y Center (Pix)', 'XResolutions', 'YResolutions', 'Scan Rate (Hz)', 'EHT (kV)', 'SEMSpecimenI (nA)', 'SEMStiX', 'SEMStiY', 'SEMAlnX', 'SEMAlnY', 'Error Code']
     minmax_df = pd.DataFrame(np.vstack((frame_inds.T,
         data_minmax_glob.T,
         data_min_sliding.T,
@@ -8311,6 +8339,10 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
         ScanRate.T,
         EHT.T,
         SEMSpecimenI.T,
+        SEMStiX.T,
+        SEMStiY.T,
+        SEMAlnX.T,
+        SEMAlnY.T,
         np.array(errors_s2).T)).T, columns = columns, index = None)
     minmax_df.to_excel(xlsx_writer, index=None, sheet_name='FIBSEM Data')
     kwargs_info = pd.DataFrame([kwargs]).T   # prepare to be save in transposed format
@@ -8318,7 +8350,7 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
     #xlsx_writer.save()
     xlsx_writer.close()
            
-    return [FIBSEM_Data_xlsx_path, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding, mill_rate_WD, mill_rate_MV, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolutions, YResolutions, errors_s2]
+    return [FIBSEM_Data_xlsx_path, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding, mill_rate_WD, mill_rate_MV, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolutions, YResolutions, SEMStiX, SEMStiY, SEMAlnX, SEMAlnY, errors_s2]
 
 
 # Routines to extract Key-Points and Descriptors
