@@ -1192,6 +1192,7 @@ class FIBSEM_mosaic_dataset:
         self.voxel_size = np.rec.array((self.PixelSize,  self.PixelSize,  self.PixelSize), dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4')])
         self.DetA = test_frame.DetA
         self.DetB = test_frame.DetB
+        self.Notes = test_frame.Notes
         self.ImgB_fraction = kwargs.get("ImgB_fraction", 0.0)
         if self.DetB == 'None':
             ImgB_fraction = 0.0
@@ -2525,10 +2526,9 @@ class FIBSEM_mosaic_dataset:
                 layer_mosaics.append(layer_mosaic)
 
         if save_snapshot:
-
             if ifDetB:
                 try:
-                    dminB, dmaxB = get_min_max_thresholds(layer_mosaics[1], thr_min=thr_min, thr_max=thr_max, nbins=nbins, disp_res=False)
+                    vminB, vmaxB = get_min_max_thresholds(layer_mosaics[1], thr_min=thr_min, thr_max=thr_max, nbins=nbins, disp_res=False)
                     fig, axs = plt.subplots(3, 1, figsize=(11,8))
                 except:
                     ifDetB = False
@@ -2536,14 +2536,14 @@ class FIBSEM_mosaic_dataset:
             if not ifDetB:
                 fig, axs = plt.subplots(2, 1, figsize=(7,8))
             fig.subplots_adjust(left=0.01, bottom=0.01, right=0.99, top=0.90, wspace=0.15, hspace=0.1)
-            dminA, dmaxA = get_min_max_thresholds(layer_mosaics[0], thr_min=thr_min, thr_max=thr_max, nbins=nbins, disp_res=False)
-            axs[1].imshow(layer_mosaics[0], cmap='Greys', vmin=dminA, vmax=dmaxA)
+            vminA, vmaxA = get_min_max_thresholds(layer_mosaics[0], thr_min=thr_min, thr_max=thr_max, nbins=nbins, disp_res=False)
+            axs[1].imshow(layer_mosaics[0], cmap='Greys', vmin=vminA, vmax=vmaxA)
             if ifDetB:
-                axs[2].imshow(layer_mosaics[1], cmap='Greys', vmin=dminB, vmax=dmaxB)
+                axs[2].imshow(layer_mosaics[1], cmap='Greys', vmin=vminB, vmax=vmaxB)
             try:
                 ttls = [self.Notes.strip('\x00'),
-                    'Detector A:  '+ self.DetA.strip('\x00') + ',  Data Range:  {:.1f} ÷ {:.1f} with thr_min={:.1e}, thr_max={:.1e}'.format(dminA, dmaxA, thr_min, thr_max) + '    (Brightness: {:.1f}, Contrast: {:.1f})'.format(self.BrightnessA, self.ContrastA),
-                    'Detector B:  '+ self.DetB.strip('\x00') + ',  Data Range:  {:.1f} ÷ {:.1f} with thr_min={:.1e}, thr_max={:.1e}'.format(dminB, dmaxB, thr_min, thr_max) + '    (Brightness: {:.1f}, Contrast: {:.1f})'.format(self.BrightnessB, self.ContrastB)]
+                    'Detector A:  '+ self.DetA.strip('\x00') + ',  Data Range:  {:.1f} ÷ {:.1f} with thr_min={:.1e}, thr_max={:.1e}'.format(vminA, vmaxA, thr_min, thr_max) + '    (Brightness: {:.1f}, Contrast: {:.1f})'.format(self.BrightnessA, self.ContrastA),
+                    'Detector B:  '+ self.DetB.strip('\x00') + ',  Data Range:  {:.1f} ÷ {:.1f} with thr_min={:.1e}, thr_max={:.1e}'.format(vminB, vmaxB, thr_min, thr_max) + '    (Brightness: {:.1f}, Contrast: {:.1f})'.format(self.BrightnessB, self.ContrastB)]
             except:
                 ttls = ['', 'Detector A', '']
             for j, ax in enumerate(axs):
@@ -2680,8 +2680,15 @@ class FIBSEM_mosaic_dataset:
                 sy = sx / layer_mosaic.shape[1] * layer_mosaic.shape[0]
                 fig, ax = plt.subplots(1,1, figsize=(sx,sy))
                 fig.subplots_adjust(left=0.0, bottom=0.0, right=1.0, top=1.0, wspace=0.01, hspace=0.01)
-                vmin, vmax = get_min_max_thresholds(layer_mosaic, disp_res = False)
-                print('Actual the data range values: vmin={:.2f}, vmax={:.2f}'.format(vmin, vmax))
+                if j == 0:
+                    vmin = vminA
+                    vmax = vmaxA
+                    det_str = 'Detector A:  '+ self.DetA.strip('\x00')
+                else:
+                    vmin = vminB
+                    vmax = vmaxB
+                    det_str = 'Detector B:  '+ self.DetB.strip('\x00')
+                print(det_str + ', actual the data range values: vmin={:.2f}, vmax={:.2f}'.format(vmin, vmax))
                 ax.imshow(layer_mosaic, cmap='Greys', vmin = vmin, vmax = vmax)
                 ax.axis(False)
                 overlay_montage_grid(ax, self,
