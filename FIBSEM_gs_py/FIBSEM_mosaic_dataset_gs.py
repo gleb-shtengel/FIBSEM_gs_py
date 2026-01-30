@@ -2673,7 +2673,7 @@ class FIBSEM_mosaic_dataset:
                 for layer_mosaic in layer_mosaics:
                     layer_mosaic.reshape(-1).astype(dt).tofile(f)
 
-        if save_to_images:
+        if save_images:
             imf1, imf2 = os.path.splitext(image_fname)
             for j, layer_mosaic in enumerate(layer_mosaics):
                 sx = 15.0
