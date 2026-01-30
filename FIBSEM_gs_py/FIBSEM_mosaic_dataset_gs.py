@@ -2699,7 +2699,7 @@ class FIBSEM_mosaic_dataset:
                         vmin = vminB
                         vmax = vmaxB
                     det_str = 'Detector B:  '+ self.DetB.strip('\x00')
-                print(det_str + ', actual the data range values: vmin={:.2f}, vmax={:.2f}'.format(vmin, vmax))
+                print(det_str + ', data range: vmin={:.2f}, vmax={:.2f}'.format(vmin, vmax))
                 ax.imshow(layer_mosaic, cmap='Greys', vmin = vmin, vmax = vmax)
                 ax.axis(False)
                 overlay_montage_grid(ax, self,
