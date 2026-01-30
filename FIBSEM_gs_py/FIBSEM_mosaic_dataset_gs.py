@@ -89,9 +89,10 @@ def transform_tile(tile_params, deformation_field):
     
     Parameters:
     -----------
-    tile_params : list :  j, fl, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max
+    tile_params : list :  j, fl, image_name, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max
         j : int, tile ID
         fl : str, filename for the tile
+        image_name : str, image name ('RawImageA' or 'RawImageB')
         tr_matr_single : 3x3 array : transformation matrix
         montage_xsz : int : montage x-size in pixels
         montage_ysz : int : montage y-size in pixels
@@ -102,9 +103,12 @@ def transform_tile(tile_params, deformation_field):
         Deformation field for distortion corrections to be executed before ECC. Default is np.nan - no distortion correction
     
     '''
-    j, fl, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max, left_crop = tile_params
+    j, fl, image_name, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max, left_crop = tile_params
     fr = FIBSEM_frame(fl)
-    tile_initial = fr.RawImageA
+    if image_name == 'RawImageB':
+        tile_initial = fr.RawImageB
+    else:
+        tile_initial = fr.RawImageA
     perform_deformation = not np.all(np.isnan(deformation_field))
     if perform_deformation:
         df0 = convert_tr_matr_into_deformation_field(tr_matr_single, (fr.YResolution, fr.XResolution)).astype(np.float32)
@@ -365,11 +369,13 @@ def assemble_layer(params, deformation_field):
     Parameters:
     ----------
     params : list
-        params = [layer_id, fls_layer, tr_matr_layer, weight_min, weight_max, fill_value, shape, Xsize, Ysize, left_crop, verbose]
+        params = [layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, shape, Xsize, Ysize, left_crop, verbose]
         layer_id : int
             Layer ID should be a value bewteen -1 and self.nz_tiles-1. -1 means the last layer will be assembled.
         fls_layer : list
             List of files for individual tiles.
+        image_name : str
+            Image name ('RawImageA' or 'RawImageB').
         tr_matr_layer : list
             List of transformation matrices for individual tiles.
         weight_min : float
@@ -391,13 +397,13 @@ def assemble_layer(params, deformation_field):
     deformation_field : 2D array
         Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
     '''
-    layer_id, fls_layer, tr_matr_layer, weight_min, weight_max, fill_value, shape, Xsize, Ysize, left_crop, verbose = params
+    layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, shape, Xsize, Ysize, left_crop, verbose = params
     layer_mosaic = np.zeros((Ysize, Xsize-left_crop), dtype=float)
     layer_mosaic_weights = np.zeros((Ysize, Xsize-left_crop), dtype=float)
     tile_params_mult = []
     xy_limits = []
     for fl, (j, tr_matr_single) in zip(tqdm(fls_layer, desc = 'Building tile parameter sets', display = verbose), enumerate(tr_matr_layer)):
-        tile_params_mult.append([j, fl, tr_matr_single, Ysize, Xsize, weight_min, weight_max, left_crop])
+        tile_params_mult.append([j, fl, image_name, tr_matr_single, Ysize, Xsize, weight_min, weight_max, left_crop])
     if len(tile_params_mult)>0:
         for tile_params in tqdm(tile_params_mult, desc = 'Building mosaic for layer_id={:d}'.format(layer_id), display = verbose):
             if verbose:
@@ -598,7 +604,8 @@ def generate_report_SEM_param_montage_xlsx(FIBSEM_Data_xlsx, **kwargs):
         for j, SEM_key in enumerate(SEM_keys):
             SEMk = int_results_all.iloc[k::nxny, :][SEM_key]
             if k == mosaic_shape[1]*tile_id[0]+tile_id[1]:
-                axs[0].plot(fr, SEMk, color=my_col, marker='x', markersize=4, linestyle = linestyles[j])
+                label = SEM_key + ', Tile={:d},{:d}'.format(*tile_id)
+                axs[0].plot(fr, SEMk, color=my_col, marker='x', markersize=4, linestyle = linestyles[j], label = label)
             else:
                 axs[0].plot(fr, SEMk, color=my_col, linestyle = linestyles[j])
 
@@ -607,14 +614,17 @@ def generate_report_SEM_param_montage_xlsx(FIBSEM_Data_xlsx, **kwargs):
     axs[0].set_xlabel('Frame')
     axs[0].text(0.40, 0.92, 'All Tiles', transform=axs[0].transAxes, fontsize=12)
     axs[0].text(0.2, 1.04, Sample_ID, fontsize = fs, transform=axs[0].transAxes)
+    axs[0].legend(fontsize=10, loc = 'lower right')
+
     for j, SEM_key in enumerate(SEM_keys):
         SEMi = int_results[SEM_key]
-        axs[1].plot(fr, SEMi, label=SEM_key + ', Exp. Data, Tile={:d},{:d}'.format(*tile_id), linestyle = linestyles[j], color='blue')
+        my_col = plt.get_cmap("gist_rainbow_r")((len(SEM_keys) + 1 - j)/len(SEM_keys))
+        axs[1].plot(fr, SEMi, label=SEM_key + ', Tile={:d},{:d}'.format(*tile_id), linestyle = linestyles[j], color=my_col)
     axs[1].grid(True)
     axs[1].set_ylabel(Yaxis_title)
     axs[1].set_xlabel('Frame')
     axs[1].text(0.40, 0.92, 'Tile={:d},{:d}'.format(*tile_id), transform=axs[1].transAxes, fontsize=12)
-    axs[1].legend(fontsize=12, loc = 'lower right')
+    axs[1].legend(fontsize=10, loc = 'lower right')
 
     nz = int(len(int_results_all)/nxny)
     ny, nx = mosaic_shape
@@ -2360,6 +2370,10 @@ class FIBSEM_mosaic_dataset:
             Display intermediate results. Default is False.
         
         '''
+        ifDetB = (self.DetB != 'None')
+        image_names = ['RawImageA']
+        if ifDetB:
+            image_names.append('RawImageB')
         if layer_id<-1 or layer_id>self.nz_tiles-1:
             print('layer_id parameter {:d} is out of range: -1 to {:d}'.format(layer_id, self.nz_tiles))
             return np.nan
@@ -2393,55 +2407,78 @@ class FIBSEM_mosaic_dataset:
         else:
             DASK_client_retries = kwargs.get("DASK_client_retries", 3) 
 
-        layer_mosaic = np.zeros((self.Ysize, self.Xsize-left_crop), dtype=float)
+        layer_mosaics = []
         layer_mosaic_weights = np.zeros((self.Ysize, self.Xsize-left_crop), dtype=float)
-        tile_params_mult = []
-        xy_limits = []
-        for fl, (j, tr_matr_single) in zip(tqdm(self.fls[layer_id].ravel(), desc = 'Building tile parameter sets', display = verbose), enumerate(self.tr_matr[layer_id])):
-            tile_params_mult.append([j, fl, tr_matr_single, self.Ysize, self.Xsize, weight_min, weight_max, left_crop])
-        if len(tile_params_mult)>0:
-            if use_DASK:
-                if verbose:
-                    print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Started DASK Computation')
-                shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)
-                futures = DASK_client.map(transform_tile, tile_params_mult, deformation_field=shared_data_future)
-                for future in as_completed(futures):
-                    tile_out, weight_out, xi, xa, yi, ya = future.result()
-                    xy_limits.append([xi, xa, yi, ya])
-                    layer_mosaic[yi:ya, xi:xa] = layer_mosaic[yi:ya, xi:xa] + tile_out
-                    layer_mosaic_weights[yi:ya, xi:xa] = layer_mosaic_weights[yi:ya, xi:xa] + weight_out
-                    future.cancel()
-                if verbose:
-                    print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Finished post-DASK Computation')
-            else:
-                for tile_params in tqdm(tile_params_mult, desc = 'Building mosaic for layer_id={:d}'.format(layer_id), display = verbose):
+        for iname_name in image_names:
+            layer_mosaic = np.zeros((self.Ysize, self.Xsize-left_crop), dtype=float)
+            tile_params_mult = []
+            xy_limits = []
+            for fl, (j, tr_matr_single) in zip(tqdm(self.fls[layer_id].ravel(), desc = 'Building tile parameter sets', display = verbose), enumerate(self.tr_matr[layer_id])):
+                tile_params_mult.append([j, fl, image_name, tr_matr_single, self.Ysize, self.Xsize, weight_min, weight_max, left_crop])
+            if len(tile_params_mult)>0:
+                if use_DASK:
                     if verbose:
-                        print('Performing transform_tile with the following parameters:')
-                        print(tile_params)
-                    tile_out, weight_out, xi, xa, yi,  ya = transform_tile(tile_params, deformation_field)
-                    xy_limits.append([xi, xa, yi, ya])
+                        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Started DASK Computation')
+                    shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)
+                    futures = DASK_client.map(transform_tile, tile_params_mult, deformation_field=shared_data_future)
+                    for future in as_completed(futures):
+                        tile_out, weight_out, xi, xa, yi, ya = future.result()
+                        xy_limits.append([xi, xa, yi, ya])
+                        layer_mosaic[yi:ya, xi:xa] = layer_mosaic[yi:ya, xi:xa] + tile_out
+                        layer_mosaic_weights[yi:ya, xi:xa] = layer_mosaic_weights[yi:ya, xi:xa] + weight_out
+                        future.cancel()
                     if verbose:
-                        print('Output is:')
-                        print('tile_out.shape=', tile_out.shape, 'weight_out.shape=', weight_out.shape)
-                        print('xi={:d}, xa={:d}, yi={:d},  ya={:d}'.format(xi, xa, yi,  ya))
-                    layer_mosaic[yi:ya, xi:xa] = layer_mosaic[yi:ya, xi:xa] + tile_out
-                    layer_mosaic_weights[yi:ya, xi:xa] = layer_mosaic_weights[yi:ya, xi:xa] + weight_out
-            layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*np.product(self.shape)) 
-            layer_mosaic = np.nan_to_num(layer_mosaic / layer_mosaic_weights, nan=-fill_value)
+                        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Finished post-DASK Computation')
+                else:
+                    for tile_params in tqdm(tile_params_mult, desc = 'Building mosaic for layer_id={:d}'.format(layer_id), display = verbose):
+                        if verbose:
+                            print('Performing transform_tile with the following parameters:')
+                            print(tile_params)
+                        tile_out, weight_out, xi, xa, yi,  ya = transform_tile(tile_params, deformation_field)
+                        xy_limits.append([xi, xa, yi, ya])
+                        if verbose:
+                            print('Output is:')
+                            print('tile_out.shape=', tile_out.shape, 'weight_out.shape=', weight_out.shape)
+                            print('xi={:d}, xa={:d}, yi={:d},  ya={:d}'.format(xi, xa, yi,  ya))
+                        layer_mosaic[yi:ya, xi:xa] = layer_mosaic[yi:ya, xi:xa] + tile_out
+                        layer_mosaic_weights[yi:ya, xi:xa] = layer_mosaic_weights[yi:ya, xi:xa] + weight_out
+                layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*np.product(self.shape)) 
+                layer_mosaic = np.nan_to_num(layer_mosaic / layer_mosaic_weights, nan=-fill_value)
+                layer_mosaics.append(layer_mosaic)
 
         if save_snapshot:
-            fig, axs = plt.subplots(2, 1, figsize=(7, 8), gridspec_kw={"height_ratios" : [1.5, 2]})
-            fig.suptitle(snapshot_fname, fontsize = fontsize)
-            fig.subplots_adjust(left=0.01, bottom=0.01, right=0.99, top=0.90, wspace=0.15, hspace=0.1)                  
-            dmin, dmax = get_min_max_thresholds(layer_mosaic, thr_min=thr_min, thr_max=thr_max, nbins=nbins, disp_res=False)
-            axs[1].imshow(layer_mosaic, cmap='Greys', vmin=dmin, vmax=dmax)
-            axs[1].axis(False)
-            if overlay_tile_grid:
-                overlay_montage_grid(axs[1], self,
+
+            if ifDetB:
+                try:
+                    dminB, dmaxB = get_min_max_thresholds(layer_mosaics[1], thr_min=thr_min, thr_max=thr_max, nbins=nbins, disp_res=False)
+                    fig, axs = plt.subplots(3, 1, figsize=(11,8))
+                except:
+                    ifDetB = False
+                    pass
+            if not ifDetB:
+                fig, axs = plt.subplots(2, 1, figsize=(7,8))
+            fig.subplots_adjust(left=0.01, bottom=0.01, right=0.99, top=0.90, wspace=0.15, hspace=0.1)
+            dminA, dmaxA = get_min_max_thresholds(layer_mosaics[0], thr_min=thr_min, thr_max=thr_max, nbins=nbins, disp_res=False)
+            axs[1].imshow(layer_mosaics[0], cmap='Greys', vmin=dminA, vmax=dmaxA)
+            if ifDetB:
+                axs[2].imshow(layer_mosaics[1], cmap='Greys', vmin=dminB, vmax=dmaxB)
+            try:
+                ttls = [self.Notes.strip('\x00'),
+                    'Detector A:  '+ self.DetA.strip('\x00') + ',  Data Range:  {:.1f} ÷ {:.1f} with thr_min={:.1e}, thr_max={:.1e}'.format(dminA, dmaxA, thr_min, thr_max) + '    (Brightness: {:.1f}, Contrast: {:.1f})'.format(self.BrightnessA, self.ContrastA),
+                    'Detector B:  '+ self.DetB.strip('\x00') + ',  Data Range:  {:.1f} ÷ {:.1f} with thr_min={:.1e}, thr_max={:.1e}'.format(dminB, dmaxB, thr_min, thr_max) + '    (Brightness: {:.1f}, Contrast: {:.1f})'.format(self.BrightnessB, self.ContrastB)]
+            except:
+                ttls = ['', 'Detector A', '']
+            for j, ax in enumerate(axs):
+                ax.axis(False)
+                ax.set_title(ttls[j], fontsize=10)
+                if overlay_tile_grid:
+                        overlay_montage_grid(ax, self,
                                 tile_positions = self.tile_positions[layer_id],
                                  linewidth=linewidth,
                                  linestyle=linestyle,
                                  edgecolor=color)
+            fig.suptitle(snapshot_fname, fontsize = fontsize)
+
             if hasattr(self, 'EHT'):
                 EHT_text = '{:.3f} kV'.format(self.EHT)
             else:
@@ -2538,12 +2575,12 @@ class FIBSEM_mosaic_dataset:
             header_new[100:104] = XResolution_new_string
             YResolution_new_string =  pack('>L', YResolution_new)
             header_new[104:108] = YResolution_new_string
-            ChanNum_new = 1
-            ChanNum_new_string =  pack('b', ChanNum_new)
-            header_new[32:33] = ChanNum_new_string
-            AI2_new = 0
-            AI2_new_string =  pack('b', AI2_new)
-            header_new[152:153] = AI2_new_string
+            #ChanNum_new = 1
+            #ChanNum_new_string =  pack('b', ChanNum_new)
+            #header_new[32:33] = ChanNum_new_string
+            #AI2_new = 0
+            #AI2_new_string =  pack('b', AI2_new)
+            #header_new[152:153] = AI2_new_string
             '''
             FirstPixelX_new_string =  pack('>l', FirstPixelX_new)
             header_new[70:74] = FirstPixelX_new_string
@@ -2556,7 +2593,8 @@ class FIBSEM_mosaic_dataset:
             # Save new frame
             with open(dat_fname, 'wb') as f:
                 f.write(header_new)
-                layer_mosaic.reshape(-1).astype(dt).tofile(f)
+                for layer_mosaic in layer_mosaics:
+                    layer_mosaic.reshape(-1).astype(dt).tofile(f)
 
         if save_to_png:
             sx = 15.0
