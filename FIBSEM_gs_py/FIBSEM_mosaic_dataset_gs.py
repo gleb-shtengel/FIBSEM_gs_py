@@ -2351,7 +2351,7 @@ class FIBSEM_mosaic_dataset:
         save_snapshot : boolean
             If True, build an image that contains the montage and some data. Default is False.
         snapshot_fname : string
-            The name of the image to perform these operations (default is self.fls[layer_id].ravel()[0].replace('0-0-0.dat', 'lsnapshot.png')).
+            The name of the image to perform these operations (default is self.fls[layer_id].ravel()[0].replace('0-0-0.dat', 'snapshot.png')).
         thr_min : float
             Lower CDF threshold for determining the minimum data value. Default is 1.0e-3
         thr_max : float
@@ -2366,6 +2366,10 @@ class FIBSEM_mosaic_dataset:
             If True, saves existing montage into a new .dat file. Default is False. Only works on .dat files at the moment
         dat_fname : string
             The name of the image to perform these operations (default is self.fls[layer_id].ravel()[0].replace('0-0-0.dat', 'layer_mosaic.dat')).
+        save_images : boolean
+            If True, saves existing mosaic(s) into a .jpg or .png file(s)
+        image_fname : string
+            The name of the image to perform these operations (default is self.fls[layer_id].ravel()[0].replace('0-0-0.dat', 'layer_mosaic.jpg')).
         verbose : boolean
             Display intermediate results. Default is False.
         
@@ -2390,8 +2394,8 @@ class FIBSEM_mosaic_dataset:
         snapshot_fname = kwargs.get('snapshot_fname',  self.fls[layer_id].ravel()[0].replace('0-0-0.dat', 'snapshot.png'))
         save_to_dat = kwargs.get('save_to_dat', False)
         dat_fname = kwargs.get('dat_fname',  self.fls[layer_id].ravel()[0].replace('0-0-0.dat', 'layer_mosaic.dat'))
-        save_to_png = kwargs.get('save_to_png', False)
-        png_fname = kwargs.get('png_fname',  self.fls[layer_id].ravel()[0].replace('0-0-0.dat', 'layer_mosaic.png'))
+        save_images = kwargs.get('save_images', False)
+        image_fname = kwargs.get('image_fname',  self.fls[layer_id].ravel()[0].replace('0-0-0.dat', 'layer_mosaic.jpg'))
         overlay_tile_grid = kwargs.get('overlay_tile_grid', True)
         thr_min = kwargs.get('thr_min', 1.0e-3)
         thr_max = kwargs.get('thr_max', 1.0e-3)
@@ -2596,21 +2600,27 @@ class FIBSEM_mosaic_dataset:
                 for layer_mosaic in layer_mosaics:
                     layer_mosaic.reshape(-1).astype(dt).tofile(f)
 
-        if save_to_png:
-            sx = 15.0
-            sy = sx / layer_mosaic.shape[1] * layer_mosaic.shape[0]
-            fig, ax = plt.subplots(1,1, figsize=(sx,sy))
-            fig.subplots_adjust(left=0.0, bottom=0.0, right=1.0, top=1.0, wspace=0.01, hspace=0.01)
-            vmin, vmax = get_min_max_thresholds(layer_mosaic, disp_res = False)
-            print('Actual the data range values: vmin={:.2f}, vmax={:.2f}'.format(vmin, vmax))
-            ax.imshow(layer_mosaic, cmap='Greys', vmin = vmin, vmax = vmax)
-            ax.axis(False)
-            overlay_montage_grid(ax, self,
-                                 tile_positions = self.tile_positions[layer_id],
-                                 left_crop = left_crop,
-                                 tile_positions_actual = True,
-                                 linewidth=0.1, color = 'red')
-            fig.savefig(png_fname, dpi=dpi)
+        if save_to_images:
+            imf1, imf2 = os.path.splitext(image_fname)
+            for j, layer_mosaic in enumerate(layer_mosaics):
+                sx = 15.0
+                sy = sx / layer_mosaic.shape[1] * layer_mosaic.shape[0]
+                fig, ax = plt.subplots(1,1, figsize=(sx,sy))
+                fig.subplots_adjust(left=0.0, bottom=0.0, right=1.0, top=1.0, wspace=0.01, hspace=0.01)
+                vmin, vmax = get_min_max_thresholds(layer_mosaic, disp_res = False)
+                print('Actual the data range values: vmin={:.2f}, vmax={:.2f}'.format(vmin, vmax))
+                ax.imshow(layer_mosaic, cmap='Greys', vmin = vmin, vmax = vmax)
+                ax.axis(False)
+                overlay_montage_grid(ax, self,
+                                     tile_positions = self.tile_positions[layer_id],
+                                     left_crop = left_crop,
+                                     tile_positions_actual = True,
+                                     linewidth=0.1, color = 'red')
+                if j == 1:
+                    image_fname_loc = imf1 + '_' + self.DetB.strip('\x00') + imf2
+                else:
+                    image_fname_loc = imf1 + '_' + self.DetA.strip('\x00') + imf2
+                fig.savefig(image_fname_loc, dpi=dpi)
 
         return layer_mosaic, layer_id, layer_mosaic_weights, xy_limits
 
