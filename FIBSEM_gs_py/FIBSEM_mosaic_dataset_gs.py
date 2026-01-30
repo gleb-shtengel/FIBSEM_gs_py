@@ -1196,6 +1196,11 @@ class FIBSEM_mosaic_dataset:
         self.ImgB_fraction = kwargs.get("ImgB_fraction", 0.0)
         if self.DetB == 'None':
             ImgB_fraction = 0.0
+        self.BrightnessA = test_frame.BrightnessA 
+        self.BrightnessB = test_frame.BrightnessB
+        self.ContrastA = test_frame.ContrastA
+        self.ContrastB = test_frame.ContrastB
+        self.BrightnessB = test_frame
         self.Sample_ID = kwargs.get("Sample_ID", test_frame.Sample_ID)
         self.EightBit = kwargs.get("EightBit", 1)
         self.DASK_client_retries = kwargs.get("DASK_client_retries", 3)
