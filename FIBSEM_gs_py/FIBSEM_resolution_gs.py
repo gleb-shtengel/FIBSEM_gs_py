@@ -1488,7 +1488,8 @@ def analyze_edge_transitions_image(image, **kwargs):
     Y = centers[:,0]
     X = centers[:,1]
 
-    results =[]
+    results = []
+    img_vals_all = []
     kwargs_loc = {'bounds' : bounds,
                   'pixel_size' : pixel_size,
                   'disp_res' : False,
@@ -1506,9 +1507,11 @@ def analyze_edge_transitions_image(image, **kwargs):
         res = estimate_edge_transition(image, center, center_grad,
                                   **kwargs_loc)
         results.append(res[0:2])
+        img_vals_all.append(res[3])
     if verbose:
         print('Analyzed transtions: ', len(results))
     results = np.array(results)
+    img_vals_all = np.array(img_vals_all)
     error_flags = results[:, 0]
     transition_distances = results[:, 1]
     if verbose:
@@ -1538,11 +1541,6 @@ def analyze_edge_transitions_image(image, **kwargs):
         p_opt, p_cov = cf(sin2x_fun, theta, transition_distances_selected, p0=(tr_std, 0.0, tr_mean))
     except:
         p_opt = [1.0, 1.0, 1.0]
-    '''
-    tr_fit = sin2x_fun(theta_ordered, *p_opt)
-    trX_fit = tr_fit*np.cos(theta_ordered)
-    trY_fit = tr_fit*np.sin(theta_ordered)
-    '''
 
     if verbose:
         print('Saving the results into the file: ', results_file_xlsx)
@@ -1551,6 +1549,8 @@ def analyze_edge_transitions_image(image, **kwargs):
     columns=['X', 'Y', 'X grad', 'Y grad', 'error_flag', trans_str]
     res_summary = pd.DataFrame(np.vstack((X, Y, X_grads, Y_grads, error_flags, transition_distances)).T, columns = columns, index = None)
     res_summary.to_excel(xlsx_writer, index=None, sheet_name='Transition analysis results')
+    img_vals_pd = pd.DataFrame(img_vals_all)
+    img_vals_pd.to_excel(xlsx_writer, index=None, sheet_name='Transitions Intensity Profiles')
     kwargs['Transition Mean (pix)'] = tr_mean
     kwargs['Transition STD (pix)'] = tr_std
     kwargs['Assymetry'] = np.abs(p_opt[0]/p_opt[2])
@@ -1823,17 +1823,18 @@ def plot_edge_transition_analysis_details(image, results_xlsx, **kwargs):
     def_kernel = def_kernel/def_kernel.sum()
     kernel = saved_kwargs.get("kernel", def_kernel)
     perform_smoothing = saved_kwargs.get('perform_smoothing', False)
+    fontsize = kwargs.get('fontsize', 12)
+    dpi = kwargs.get('dpi', 300)
 
     int_results = pd.read_excel(results_xlsx, sheet_name='Transition analysis results')
     X = int_results['X']
     Y = int_results['Y']
     X_grads = int_results['X grad']
     Y_grads = int_results['Y grad']
-    
     error_flags = int_results['error_flag']
-
     X_selected = X[error_flags==0]
     Y_selected = Y[error_flags==0]
+    ntr = len(X_selected)
     X_grads_selected = X_grads[error_flags==0]
     Y_grads_selected = Y_grads[error_flags==0]
     cosXs_selected = X_grads_selected/np.sqrt(X_grads_selected*X_grads_selected+Y_grads_selected*Y_grads_selected)
@@ -1844,6 +1845,8 @@ def plot_edge_transition_analysis_details(image, results_xlsx, **kwargs):
     transition_distances_selected = np.array(transition_distances[error_flags==0]).astype(float)
     tr_mean = np.mean(transition_distances_selected)
     tr_std = np.std(transition_distances_selected)
+    
+    img_vals_all = np.array(pd.read_excel(results_xlsx, sheet_name='Transitions Intensity Profiles'))
     
     # arnitraty ellips fit - replaced below with a fit forced to becentered at 0,0.
     #a_points = np.array([(cX*tr, cY*tr) for cX, cY, tr in zip(cosXs_selected, cosYs_selected, transition_distances_selected)])
@@ -1863,31 +1866,41 @@ def plot_edge_transition_analysis_details(image, results_xlsx, **kwargs):
     theta_ordered = np.sort(theta)
 
     ysz, xsz = image.shape
-    
-    fig, axs = plt.subplots(2, 2, figsize=(15,10))
-    fig.subplots_adjust(left=0.01, bottom=0.05, right=0.99, top=0.90, wspace=0.10, hspace=0.20)
-    axs[0,0].imshow(image, cmap='Greys_r')
-    axs[0,0].plot(X, Y, linestyle='none', color='yellow', marker = 'o', markersize=1)
-    axs[0,0].plot(X_selected, Y_selected, linestyle='none', color='lime', marker = 'o', markersize=1)
-    axs[0,0].scatter(X_selected[0:3], Y_selected[0:3], color='red', facecolors='none', marker = 'o', s=50)
-    axs[0,0].scatter(X_selected[-4:-1], Y_selected[-4:-1], color='white', facecolors='none', marker = 'o', s=50)
-    axs[0,0].axis(False)
-    axs[0,0].set_title('Image with Edge points determined by ' + edge_detector + ' Edge Detector')
-    axs[0,1].text(0.5, 1.1, top_text, transform=axs[0,0].transAxes)
-    axs[1,0].imshow(abs_grad)
-    axs[1,0].plot(X, Y, linestyle='none', color='yellow', marker = 'o', markersize=1)
     # center point is (section_length-1)//2
     dist_pix = np.arange(-section_length//2+1,section_length//2+1)
-    for X, Y, cosX, cosY in zip(X_selected, Y_selected, cosXs_selected, cosYs_selected):
+    
+    fig, axs = plt.subplots(2, 2, figsize=(10,10))
+    fig.subplots_adjust(left=0.01, bottom=0.08, right=0.99, top=0.94, wspace=0.10, hspace=0.20)
+    axs[0,0].imshow(image, cmap='Greys_r')
+    #axs[0,0].plot(X, Y, linestyle='none', color='yellow', marker = 'o', markersize=1)
+    #axs[0,0].plot(X_selected, Y_selected, linestyle='none', color='lime', marker = 'o', markersize=1)
+    axs[0,0].axis(False)
+    axs[0,0].set_title('Image with Edge points  by ' + edge_detector + ' Detector', fontsize = fontsize)
+    for (j, X), Y, cosX, cosY, image_vals in zip(enumerate(X_selected), Y_selected, cosXs_selected, cosYs_selected, img_vals_all):
         x_positions = X + cosX*dist_pix
         y_positions = Y + cosY*dist_pix
+        my_col = plt.get_cmap("gist_rainbow_r")((ntr-j)/ntr)
         inds = np.where(np.logical_and(np.logical_and(x_positions>=0, x_positions<=xsz), np.logical_and(y_positions>=0, y_positions<=ysz)))
-        axs[1,0].plot(x_positions[inds], y_positions[inds], 'r', linewidth=0.15)
-    axs[1,0].plot(X_selected, Y_selected, linestyle='none', color='lime', marker = 'o', markersize=1)
-    axs[1,0].scatter(X_selected[0:3], Y_selected[0:3], color='red', facecolors='none', marker = 'o', s=50)
-    axs[1,0].scatter(X_selected[-4:-1], Y_selected[-4:-1], color='white', facecolors='none', marker = 'o', s=50)
-    axs[1,0].axis(False)
-    axs[1,0].set_title('Absolute Value of Image Gradient')
+        axs[0,0].plot([X], [Y], linestyle='none', color=my_col, marker = 'o', markersize=1)
+        axs[0,0].plot(x_positions[inds], y_positions[inds], 'yellow', linewidth=0.5)
+        axs[1,1].plot(dist_pix, image_vals, color=my_col, linewidth=0.5)
+    axs[0,0].scatter(X_selected[0:3], Y_selected[0:3], color='red', facecolors='none', marker = 'o', s=50)
+    axs[0,0].scatter(X_selected[-4:-1], Y_selected[-4:-1], color='white', facecolors='none', marker = 'o', s=50)
+    axs[0,1].text(0.5, 1.1, top_text, transform=axs[0,0].transAxes)
+    axs[1,1].grid(True)
+    axs[1,1].set_xlabel('Distance (nm)', fontsize = fontsize)
+    axs[1,1].set_ylabel('Interpolated Image Intensity', fontsize = fontsize)
+    axs[1,1].set_title('Analyzed Transitions: Intensity Profiles', fontsize = fontsize)
+    
+    '''
+    axs[1,1].imshow(abs_grad)
+    axs[1,1].plot(X, Y, linestyle='none', color='yellow', marker = 'o', markersize=1)
+    axs[1,1].plot(X_selected, Y_selected, linestyle='none', color='lime', marker = 'o', markersize=1)
+    axs[1,1].scatter(X_selected[0:3], Y_selected[0:3], color='red', facecolors='none', marker = 'o', s=50)
+    axs[1,1].scatter(X_selected[-4:-1], Y_selected[-4:-1], color='white', facecolors='none', marker = 'o', s=50)
+    axs[1,1].axis(False)
+    axs[1,1].set_title('Absolute Value of Image Gradient')
+    '''
     hist_res = axs[0,1].hist(transition_distances_selected, bins=64)
     axs[0,1].grid(True)
 
@@ -1898,38 +1911,36 @@ def plot_edge_transition_analysis_details(image, results_xlsx, **kwargs):
     axs[0,1].text(0.05, 0.7, 'Mean value (nm): {:.3f}'.format(tr_mean*pixel_size), transform=axs[0,1].transAxes)
     axs[0,1].text(0.05, 0.65, 'STD (nm):       {:.3f}'.format(tr_std*pixel_size), transform=axs[0,1].transAxes)
     tr_str = '{:.2f} to {:.2f} '.format(bounds[0], bounds[1])
-    axs[0,1].set_title(tr_str + ' Transition Distribution ('+ edge_detector + ' Edge Detector)')
-    axs[0,1].set_xlabel('Transition Distance (pix)')
-    axs[0,1].set_ylabel('Count')
+    axs[0,1].set_title(tr_str + ' Transition Distribution ('+ edge_detector + ' Detector)', fontsize = fontsize)
+    axs[0,1].set_xlabel('Transition Distance (pix)', fontsize = fontsize)
+    axs[0,1].set_ylabel('Count', fontsize = fontsize)
 
     tr_x_to_plot = cosXs_selected*transition_distances_selected
     tr_y_to_plot = cosYs_selected*transition_distances_selected
     tr_plot_min = np.min((tr_x_to_plot, tr_y_to_plot))
     tr_plot_max = np.max((tr_x_to_plot, tr_y_to_plot))
-    axs[1,1].scatter(tr_x_to_plot, tr_y_to_plot)
-    #axs[1,1].set_xlim((tr_plot_min, tr_plot_max))
-    #axs[1,1].set_ylim((tr_plot_min, tr_plot_max))
-    axs[1,1].axis('scaled')
-    axs[1,1].grid(True)
-    axs[1,1].set_title('Transition Distribution over Directions')
-    axs[1,1].set_xlabel('Transition X component')
-    axs[1,1].set_ylabel('Transition Y component')
-
+    axs[1,0].scatter(tr_x_to_plot, tr_y_to_plot)
+    axs[1,0].axis('scaled')
+    axs[1,0].grid(True)
+    axs[1,0].set_title('Transition Distribution over Directions', fontsize = fontsize)
+    axs[1,0].set_xlabel('Transition X component', fontsize = fontsize)
+    axs[1,0].set_ylabel('Transition Y component', fontsize = fontsize)
+   
     try:
         # sin2x_fun
         #a*np.sin(2.0*x+b)+c
-        p_opt,p_cov=cf(sin2x_fun, theta, np.array(transition_distances_selected), p0=(tr_std, 0.0, tr_mean))
+        p_opt, p_cov=cf(sin2x_fun, theta, np.array(transition_distances_selected), p0=(tr_std, 0.0, tr_mean))
         tr_fit = sin2x_fun(theta_ordered, *p_opt)
         trX_fit = tr_fit*np.cos(theta_ordered)
         trY_fit = tr_fit*np.sin(theta_ordered)
-        axs[1,1].plot(trX_fit, trY_fit, c='magenta', label='centered fit')
-        axs[1,1].text(0.025, 0.95, 'Assymetry: {:.3f}'.format(np.abs(p_opt[0]/p_opt[2])), transform=axs[1,1].transAxes, color='magenta')
+        axs[1,0].plot(trX_fit, trY_fit, c='magenta', label='centered fit')
+        axs[1,0].text(0.025, 0.95, 'Ellipticity: {:.3f}'.format(np.abs(p_opt[0]/p_opt[2])), transform=axs[1,0].transAxes, color='magenta')
     except:
-        axs[1,1].text(0.025, 0.95, 'Could not analyze Assymetry')
+        axs[1,0].text(0.025, 0.95, 'Could not analyze Ellipticity', transform=axs[1,0].transAxes, color='magenta')
 
     if save_png:
-        axs[1,0].text(0.05, -0.05, save_fname, transform=axs[1, 0].transAxes)
-        fig.savefig(save_fname, dpi=300)
+        axs[1,0].text(0.05, -0.18, save_fname, transform=axs[1,0].transAxes, fontsize = fontsize-2)
+        fig.savefig(save_fname, dpi=dpi)
 
  
 
