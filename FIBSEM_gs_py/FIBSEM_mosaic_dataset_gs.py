@@ -527,14 +527,14 @@ def generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs):
     return save_fname
 
 
-def generate_report_SEM_param_montage_xlsx(FIBSEM_Data_xlsx, **kwargs):
+def generate_report_SEM_param_mosaic_stack_xlsx(FIBSEM_Data_xlsx, **kwargs):
     '''
-    Generate Report Plot for mill rate evaluation from XLSX spreadsheet file. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
+    Generate Report Plot SEM parameter vs frame from XLSX spreadsheet file. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
     
     Parameters:
     ----------
     FIBSEM_Data_xlsx : str
-        Path to the XLSX spreadsheet file containing the Working Distance (WD), Milling Y Voltage (MV), and FOV center shifts data.
+        Path to the XLSX spreadsheet file containing the FIBSEM data.
     
     kwargs:
     ----------
@@ -544,8 +544,6 @@ def generate_report_SEM_param_montage_xlsx(FIBSEM_Data_xlsx, **kwargs):
         Mosaic shape (ny_tiles, nx_tiles). Default is (1,1).
     tile_id : tuple or list of of 2 ints
         Y and X indices of the tile for which the WD fs frame will be evaluzted. Default is (0, 0).
-    frame_id : int
-        ID of the frame to show the SEM parameter map over the tile mosaic.
     save_png : boolean
         If True (default), the plot is saved into PNG file.
     dpi : int
@@ -557,11 +555,10 @@ def generate_report_SEM_param_montage_xlsx(FIBSEM_Data_xlsx, **kwargs):
     '''
     saved_kwargs = read_kwargs_xlsx(FIBSEM_Data_xlsx, 'kwargs Info', **kwargs)
     SEM_params = kwargs.get('SEM_params', ['SEMStiX', 'SEMStiY'])
+    num_SEM_params = len(SEM_params)
     linestyles = kwargs.get('linestyles', ['-', ':', '--', '-.', '-'])
     SEM_keys = []
-    Yaxis_title = ''
     for SEM_param in SEM_params:
-        Yaxis_title = Yaxis_title + SEM_param + ', '
         if SEM_param == 'WD':
             SEM_keys.append('Working Distance (mm)')
         else:
@@ -569,17 +566,12 @@ def generate_report_SEM_param_montage_xlsx(FIBSEM_Data_xlsx, **kwargs):
     mosaic_shape = kwargs.get('mosaic_shape', (1, 1))
     nxny = np.product(mosaic_shape)
     tile_id = kwargs.get('tile_id', (0, 0))
-    frame_id =  kwargs.get('frame_id', -1)
     data_dir = saved_kwargs.get("data_dir", '')
     ldm = 70
     data_dir_short = data_dir if len(data_dir)<ldm else '... '+ data_dir[-ldm:]
     verbose = kwargs.get('verbose', False)
     save_png = kwargs.get('save_png', True)
     dpi = kwargs.get('dpi', 300)
-    if save_png:
-        save_fname = kwargs.get ('save_fname', os.path.join(data_dir, FIBSEM_Data_xlsx.replace('.xlsx','_Mill_Rate.png')))
-    else:
-        save_fname = 'Image not saved'
     if verbose:
         print('Loading kwarg Data')
     Sample_ID = kwargs.get('Sample_ID', saved_kwargs.get('Sample_ID', ''))
@@ -594,39 +586,110 @@ def generate_report_SEM_param_montage_xlsx(FIBSEM_Data_xlsx, **kwargs):
     fr = int_results['Frame']/nxny
 
     if verbose:
+        print('Generating Plots')
+    save_fnames = []
+    for k, SEM_key in enumerate(SEM_keys):
+        fs = 12
+        fig, axs = plt.subplots(2, 1, figsize = (6, 6), sharex=True)
+        fig.subplots_adjust(left=0.12, bottom=0.1, right=0.99, top=0.96, wspace=0.05, hspace=0.05)
+
+        for l in np.arange(nxny):
+            my_col = plt.get_cmap("gist_rainbow_r")((nxny-l)/nxny)
+            SEMl = int_results_all.iloc[l::nxny, :][SEM_key]
+            if l == mosaic_shape[1]*tile_id[0]+tile_id[1]:
+                label = SEM_params[k] + ', Tile={:d},{:d}'.format(*tile_id)
+                axs[0].plot(fr, SEMl, color=my_col, label=label)
+                axs[1].plot(fr, SEMl, color=my_col, label=label)
+            else:
+                axs[0].plot(fr, SEMl, color=my_col)
+        axs[0].legend(fontsize=12, loc = 'lower right')        
+        axs[0].text(0.40, 0.92, 'All Tiles', transform=axs[0].transAxes, fontsize=12)
+        axs[0].text(0.2, 1.04, Sample_ID, fontsize = fs, transform=axs[0].transAxes)        
+        axs[1].text(0.40, 0.92, 'Tile={:d},{:d}'.format(*tile_id), transform=axs[1].transAxes, fontsize=12)
+        axs[1].set_xlabel('Frame')
+        for ax in axs:
+            ax.grid(True)
+            ax.set_ylabel(SEM_key)
+            ax.legend(fontsize=12, loc = 'lower right')
+        if save_png:
+            save_fname = kwargs.get ('save_fname', os.path.join(data_dir, FIBSEM_Data_xlsx.replace('.xlsx', '_' + SEM_params[k] + '.png')))
+            axs[-1].text(-0.12, -0.23, save_fname, fontsize = 5, transform=axs[-1].transAxes)
+            fig.savefig(save_fname, dpi=dpi)
+        else:
+            save_fname = 'Image not saved'
+        save_fnames.append(save_fname) 
+    return save_fnames
+
+
+def generate_report_SEM_param_mosaic_layer_xlsx(FIBSEM_Data_xlsx, **kwargs):
+    '''
+    Generate Report Plot for mill rate evaluation from XLSX spreadsheet file. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
+    
+    Parameters:
+    ----------
+    FIBSEM_Data_xlsx : str
+        Path to the XLSX spreadsheet file containing the FIBSEM data.
+    
+    kwargs:
+    ----------
+    SEM_params : list of str
+        SEM parameters to analyze. Options are: 'WD', 'SEMStiX', 'SEMStiY', 'SEMAlnX', 'SEMAlnY'. Default is ['SEMStiX', 'SEMStiY'].
+    mosaic_shape : tuple or list of of 2 ints
+        Mosaic shape (ny_tiles, nx_tiles). Default is (1,1).
+    frame_id : int
+        ID of the frame to show the SEM parameter map over the tile mosaic.
+    save_png : boolean
+        If True (default), the plot is saved into PNG file.
+    dpi : int
+        DPI for PNG. Default is 300.
+    save_fname : string
+        File name to save the PNG image. Default is os.path.join(data_dir, Mill_Rate_Data_xlsx.replace('.xlsx','_Mill_Rate.png')).
+    verbose : boolean
+        Display intermediate results. Default is False.
+    '''
+    saved_kwargs = read_kwargs_xlsx(FIBSEM_Data_xlsx, 'kwargs Info', **kwargs)
+    SEM_params = kwargs.get('SEM_params', ['SEMStiX', 'SEMStiY'])
+    num_SEM_params = len(SEM_params)
+    linestyles = kwargs.get('linestyles', ['-', ':', '--', '-.', '-'])
+    SEM_keys = []
+    Yaxis_title = ''
+    fname_repl_suffix = ''
+    for SEM_param in SEM_params:
+        Yaxis_title = Yaxis_title + SEM_param + ', '
+        if SEM_param == 'WD':
+            SEM_keys.append('Working Distance (mm)')
+            fname_repl_suffix = fname_repl_suffix + '_WD'
+        else:
+            SEM_keys.append(SEM_param)
+            fname_repl_suffix = fname_repl_suffix + '_' + SEM_param
+    mosaic_shape = kwargs.get('mosaic_shape', (1, 1))
+    nxny = np.product(mosaic_shape)
+    frame_id =  kwargs.get('frame_id', -1)
+    data_dir = saved_kwargs.get("data_dir", '')
+    ldm = 70
+    data_dir_short = data_dir if len(data_dir)<ldm else '... '+ data_dir[-ldm:]
+    verbose = kwargs.get('verbose', False)
+    save_png = kwargs.get('save_png', True)
+    dpi = kwargs.get('dpi', 300)
+    if verbose:
+        print('Loading kwarg Data')
+    Sample_ID = kwargs.get('Sample_ID', saved_kwargs.get('Sample_ID', ''))
+    if verbose:
+        print('Loading FIBSEM Data')
+    try:
+        int_results_all = pd.read_excel(FIBSEM_Data_xlsx, sheet_name='FIBSEM Data')
+    except:
+        int_results_all = pd.read_excel(FIBSEM_Data_xlsx, sheet_name='Milling Rate Data')
+
+    if verbose:
         print('Generating Plot')
     fs = 12
-    fig, axs = plt.subplots(3,1, figsize = (6,10), gridspec_kw={"height_ratios" : [1.5, 1.5, 2]})
-    fig.subplots_adjust(left=0.15, bottom=0.06, right=0.99, top=0.97, wspace=0.05, hspace=0.25)
-
-    for k in np.arange(nxny):
-        my_col = plt.get_cmap("gist_rainbow_r")((nxny-k)/(nxny-1))
-        for j, SEM_key in enumerate(SEM_keys):
-            SEMk = int_results_all.iloc[k::nxny, :][SEM_key]
-            if k == mosaic_shape[1]*tile_id[0]+tile_id[1]:
-                label = SEM_key + ', Tile={:d},{:d}'.format(*tile_id)
-                axs[0].plot(fr, SEMk, color=my_col, marker='x', markersize=4, linestyle = linestyles[j], label = label)
-            else:
-                axs[0].plot(fr, SEMk, color=my_col, linestyle = linestyles[j])
-
-    axs[0].grid(True)
-    axs[0].set_ylabel(Yaxis_title)
-    axs[0].set_xlabel('Frame')
-    axs[0].text(0.40, 0.92, 'All Tiles', transform=axs[0].transAxes, fontsize=12)
-    axs[0].text(0.2, 1.04, Sample_ID, fontsize = fs, transform=axs[0].transAxes)
-    axs[0].legend(fontsize=10, loc = 'lower right')
-
-    for j, SEM_key in enumerate(SEM_keys):
-        SEMi = int_results[SEM_key]
-        my_col = plt.get_cmap("gist_rainbow_r")((len(SEM_keys) + 1 - j)/len(SEM_keys))
-        axs[1].plot(fr, SEMi, label=SEM_key + ', Tile={:d},{:d}'.format(*tile_id), linestyle = linestyles[j], color=my_col)
-    axs[1].grid(True)
-    axs[1].set_ylabel(Yaxis_title)
-    axs[1].set_xlabel('Frame')
-    axs[1].text(0.40, 0.92, 'Tile={:d},{:d}'.format(*tile_id), transform=axs[1].transAxes, fontsize=12)
-    axs[1].legend(fontsize=10, loc = 'lower right')
-
+    fig, axs = plt.subplots(num_SEM_params+1,1, figsize = (6,num_SEM_params*3+1), gridspec_kw={"height_ratios" : [1.5]*num_SEM_params + [2]})
+    fig.subplots_adjust(left=0.12, bottom=0.02, right=0.99, top=0.98, wspace=0.05, hspace=0.25)
+    
     nz = int(len(int_results_all)/nxny)
+    if frame_id==-1:
+        frame_id = nz-1
     ny, nx = mosaic_shape
     all_params = []
 
@@ -647,22 +710,33 @@ def generate_report_SEM_param_montage_xlsx(FIBSEM_Data_xlsx, **kwargs):
             All_strs.append(loc_str)
     All_strs = np.array(All_strs).reshape(mosaic_shape)
 
-    axs[2].axis(False)
-    if frame_id==-1:
-        frame_id = nz-1
-    axs[2].set_title('MAP od SEM parameters over the Tiles, Frame={:d}'.format(frame_id), fontsize=10)
+    for k, SEM_key in enumerate(SEM_keys):
+        for j in np.arange(ny):
+            my_col = plt.get_cmap("gist_rainbow_r")((ny-j)/(ny))
+            label = 'Y Tile = {:d}'.format(j)
+            axs[k].plot(all_params[k, j, :], color=my_col, marker='x', markersize=4, label = label)
+        axs[k].set_ylabel(SEM_keys[k])
+        axs[k].grid(True)
+        axs[k].set_xlabel('X Tile #')
+        axs[k].legend(fontsize=10, loc = 'lower right')
+
+    axs[-1].axis(False)
+    axs[0].set_title(Sample_ID+', frame={:d}'.format(frame_id))
     llw1 = 0.9 / mosaic_shape[1]
     clw = [llw1 for k in np.arange(mosaic_shape[1])]
-    tbl = axs[2].table(cellText = All_strs,
+    tbl = axs[-1].table(cellText = All_strs,
                    colWidths=clw,
                    cellLoc='center',
                    colLoc='center',
                    bbox = [0.02, 0, 0.96, 1.0],
                    zorder=10)
-    
+        
     if save_png:
-        axs[2].text(-0.12, -0.17, save_fname, fontsize = 5, transform=axs[2].transAxes)
+        save_fname = kwargs.get ('save_fname', os.path.join(data_dir, FIBSEM_Data_xlsx.replace('.xlsx',fname_repl_suffix+'_frame{:d}.png'.format(frame_id))))
+        axs[-1].text(-0.12, -0.07, save_fname, fontsize = 4, transform=axs[-1].transAxes)
         fig.savefig(save_fname, dpi=dpi)
+    else:
+        save_fname = 'Image not saved'
     return save_fname
 
 
@@ -2413,7 +2487,7 @@ class FIBSEM_mosaic_dataset:
 
         layer_mosaics = []
         layer_mosaic_weights = np.zeros((self.Ysize, self.Xsize-left_crop), dtype=float)
-        for iname_name in image_names:
+        for image_name in image_names:
             layer_mosaic = np.zeros((self.Ysize, self.Xsize-left_crop), dtype=float)
             tile_params_mult = []
             xy_limits = []
@@ -2557,7 +2631,6 @@ class FIBSEM_mosaic_dataset:
                                bbox = [0.02, 0, 0.96, 1.0],
                                #bbox = [0.45, 1.02, 2.8, 0.55],
                                zorder=10)
-            
             fig.savefig(snapshot_fname, dpi=dpi)
         
         if save_to_dat:
