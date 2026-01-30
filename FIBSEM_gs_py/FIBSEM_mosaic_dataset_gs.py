@@ -2681,12 +2681,18 @@ class FIBSEM_mosaic_dataset:
                 fig, ax = plt.subplots(1,1, figsize=(sx,sy))
                 fig.subplots_adjust(left=0.0, bottom=0.0, right=1.0, top=1.0, wspace=0.01, hspace=0.01)
                 if j == 0:
-                    vmin = vminA
-                    vmax = vmaxA
+                    if not save_snapshot:
+                        vmin, vmax = get_min_max_thresholds(layer_mosaic, thr_min=thr_min, thr_max=thr_max, nbins=nbins, disp_res=False)
+                    else:
+                        vmin = vminA
+                        vmax = vmaxA
                     det_str = 'Detector A:  '+ self.DetA.strip('\x00')
                 else:
-                    vmin = vminB
-                    vmax = vmaxB
+                    if not save_snapshot:
+                        vmin, vmax = get_min_max_thresholds(layer_mosaic, thr_min=thr_min, thr_max=thr_max, nbins=nbins, disp_res=False)
+                    else:
+                        vmin = vminB
+                        vmax = vmaxB
                     det_str = 'Detector B:  '+ self.DetB.strip('\x00')
                 print(det_str + ', actual the data range values: vmin={:.2f}, vmax={:.2f}'.format(vmin, vmax))
                 ax.imshow(layer_mosaic, cmap='Greys', vmin = vmin, vmax = vmax)
