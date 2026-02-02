@@ -73,6 +73,10 @@ def build_weight_array(shape, **kwargs):
         weight_min for weight. Default is 1
     weight_max : float
         weight_max for weight. Default is 2048
+
+    Returns:
+    ----------
+    weights
     '''
     weight_min = kwargs.get('weight_min', 1.0)
     weight_max = kwargs.get('weight_max', 1024.0)
@@ -101,6 +105,10 @@ def transform_tile(tile_params, deformation_field):
 
     deformation_field : 3D array
         Deformation field for distortion corrections to be executed before ECC. Default is np.nan - no distortion correction
+
+    Returns:
+    ----------
+    tile_out, weight_out, xi, xa-left_crop-x0, yi,  ya-y0
     
     '''
     j, fl, image_name, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max, left_crop = tile_params
@@ -211,7 +219,10 @@ def remap_tile(img, deformation_field, **kwargs):
         borderValue : int
             borderValue used by CV2.remap. Default is np.nan.
     
-    Returns: image_deformed, shift_x, shift_y
+    
+    Returns:
+    ---------- 
+    image_deformed, shift_x, shift_y
     '''
     interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
     borderValue = kwargs.get('borderValue', np.nan)
@@ -245,8 +256,9 @@ def find_Transform_ECC(img1, img2, **kwargs):
     Find Transformation using cv2.findTransformECC on parts of images with approximately known and small image overlaps.
     Works much faster than if performed on whole images. gleb.shtengel@gmail.com 11.2025.
     
+    
+    Parameters:
     ----------
-    Params:
     img1 : 2D array
     img2 : 2D array
     
@@ -267,7 +279,9 @@ def find_Transform_ECC(img1, img2, **kwargs):
     verbose : boolean
             Display intermediate results. Default is False.
             
-    Returns: warp_matrix, error_code
+    Returns:
+    ----------
+    warp_matrix, error_code
         warp_matrix : Updated warp matrix. If failed, returns original warp_matrix.
         error_code : CV2.error code. 0 if no error.
     '''
@@ -305,8 +319,8 @@ def find_Transform_ECC_DASK(params, deformation_field):
     If no defonmation is needed, still pass a deformation field, but it will not be use (kwarg['perform_deformation']=False)
     Works much faster than if performed on whole images. gleb.shtengel@gmail.com 11.2025.
     
+    Parameters:
     ----------
-    Params:
     params : list of [fname1, fname2, kwargs]
     deformation_field : 2D array
         Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
@@ -334,7 +348,9 @@ def find_Transform_ECC_DASK(params, deformation_field):
     verbose : boolean
             Display intermediate results. Default is False.
             
-    Returns: warp_matrix, error_code
+    Returns:
+    ----------
+    warp_matrix, error_code
         warp_matrix : Updated warp matrix. If failed, returns original warp_matrix.
         error_code : CV2.error code. 0 if no error.
     '''
@@ -396,6 +412,10 @@ def assemble_layer(params, deformation_field):
             Display intermediate results.
     deformation_field : 2D array
         Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
+
+    Returns:
+    ----------
+    layer_mosaic, layer_id
     '''
     layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, shape, Xsize, Ysize, left_crop, verbose = params
     layer_mosaic = np.zeros((Ysize, Xsize-left_crop), dtype=float)
@@ -447,6 +467,10 @@ def generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs):
         File name to save the PNG image. Default is os.path.join(data_dir, Mill_Rate_Data_xlsx.replace('.xlsx','_Mill_Rate.png')).
     verbose : boolean
         Display intermediate results. Default is False.
+
+    Returns:
+    ----------
+    save_fname
     '''
     saved_kwargs = read_kwargs_xlsx(Mill_Rate_Data_xlsx, 'kwargs Info', **kwargs)
     mosaic_shape = kwargs.get('mosaic_shape', (1, 1))
@@ -552,6 +576,10 @@ def generate_report_SEM_param_mosaic_stack_xlsx(FIBSEM_Data_xlsx, **kwargs):
         File name to save the PNG image. Default is os.path.join(data_dir, Mill_Rate_Data_xlsx.replace('.xlsx','_Mill_Rate.png')).
     verbose : boolean
         Display intermediate results. Default is False.
+
+    Returns:
+    ----------
+    save_fnames
     '''
     saved_kwargs = read_kwargs_xlsx(FIBSEM_Data_xlsx, 'kwargs Info', **kwargs)
     SEM_params = kwargs.get('SEM_params', ['SEMStiX', 'SEMStiY'])
@@ -646,6 +674,10 @@ def generate_report_SEM_param_mosaic_layer_xlsx(FIBSEM_Data_xlsx, **kwargs):
         File name to save the PNG image. Default is os.path.join(data_dir, Mill_Rate_Data_xlsx.replace('.xlsx','_Mill_Rate.png')).
     verbose : boolean
         Display intermediate results. Default is False.
+
+    Returns:
+    ----------
+    save_fname
     '''
     saved_kwargs = read_kwargs_xlsx(FIBSEM_Data_xlsx, 'kwargs Info', **kwargs)
     SEM_params = kwargs.get('SEM_params', ['SEMStiX', 'SEMStiY'])
@@ -765,6 +797,7 @@ def generate_report_data_minmax_montage_xlsx(minmax_xlsx_file, **kwargs):
         Display intermediate results. Default is False.
 
     Returns:
+    ----------
     save_fname
     '''
     saved_kwargs = read_kwargs_xlsx(minmax_xlsx_file, 'kwargs Info', **kwargs)
@@ -869,7 +902,7 @@ class FIBSEM_mosaic_dataset:
     ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
     Contains the info/settings on the FIB-SEM montage and the procedures that can be performed on it.
 
-     Attributes
+    Attributes
     ----------
     fls : array of str
         filenames for the individual data frames in the set
@@ -1020,7 +1053,7 @@ class FIBSEM_mosaic_dataset:
         Generate Report Plot for transformation summary.
 
     assemble_layer_mosaic(layer_id, **kwargs)
-        Assemble layer mosaic based on transformation matrices for each tile. Options to save snapshot, save mosaic as FIBSEM_frame (dat file) or as PNG.
+        Assemble layer mosaic based on transformation matrices for each tile. Options to save snapshot, save mosaic as FIBSEM_frame (dat file) or save images as JPG or PNG.
 
     save_stack(**kwargs)
         Assemble all layers based on transformation matrices for each tile and save them into stack.
@@ -1408,7 +1441,8 @@ class FIBSEM_mosaic_dataset:
             String containing the name of the binary dump for saving all attributes of the current instance of the FIBSEM_dataset object.
 
         Returns:
-        dump_filename : string
+        ----------
+            dump_filename : string
         '''
         default_dump_filename = os.path.join(self.data_dir, self.fnm_montage.replace('.mrc', '_params.bin'))
         dump_filename = kwargs.get("dump_filename", default_dump_filename)
@@ -1423,7 +1457,7 @@ class FIBSEM_mosaic_dataset:
         Evaluates parameters of FIBSEM montage (Min/Max, Working Distance (WD), Milling Y Voltage (MV), FOV center positions). ©G.Shtengel 10/2021 gleb.shtengel@gmail.com
         
         kwargs:
-        ---------
+        ----------
         DASK_client : DASK client. If set to empty string '' (default), local computations are performed.
         DASK_client_retries : int (default to 3)
             Number of allowed automatic retries if a task fails. Default is object attribute.
@@ -1447,27 +1481,29 @@ class FIBSEM_mosaic_dataset:
             If True, intermediate messages and results will be displayed. Default is False.
 
         Returns:
-        list of 14 parameters: FIBSEM_Data_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding, mill_rate_WD, mill_rate_MV, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolutions, YResolutions
-            FIBSEM_Data_xlsx : str
-                path to Excel file with the FIBSEM data
-            data_min_glob : float   
-                min data value for I8 conversion (open CV SIFT requires I8)
-            data_man_glob : float   
-                max data value for I8 conversion (open CV SIFT requires I8)
-            center_x : float array
-                FOV Center X-coordinate extracted from the header data
-            center_y : float array
-                FOV Center Y-coordinate extracted from the header data
-            ScanRate : float array
-                SEM Scan Rate (Hz)
-            EHT : float array
-                SEM EHT voltage (kV)
-            SEMSpecimenI : float array
-                SEM Specimen current (nA)
-            XResolutions : int array
-                X-frame sizes
-            YResolutions : int array
-                Y-frame sizes
+        ----------
+        FIBSEM_Data : list of 20 parameters
+            FIBSEM_Data_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding, mill_rate_WD, mill_rate_MV, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolutions, YResolutions, SEMStiX, SEMStiY, SEMAlnX, SEMAlnY, errors_s2
+                FIBSEM_Data_xlsx : str
+                    path to Excel file with the FIBSEM data
+                data_min_glob : float   
+                    min data value for I8 conversion (open CV SIFT requires I8)
+                data_man_glob : float   
+                    max data value for I8 conversion (open CV SIFT requires I8)
+                center_x : float array
+                    FOV Center X-coordinate extracted from the header data
+                center_y : float array
+                    FOV Center Y-coordinate extracted from the header data
+                ScanRate : float array
+                    SEM Scan Rate (Hz)
+                EHT : float array
+                    SEM EHT voltage (kV)
+                SEMSpecimenI : float array
+                    SEM Specimen current (nA)
+                XResolutions : int array
+                    X-frame sizes
+                YResolutions : int array
+                    Y-frame sizes
         '''
         verbose = kwargs.get('verbose', True)
         DASK_client = kwargs.get('DASK_client', '')
@@ -1561,7 +1597,7 @@ class FIBSEM_mosaic_dataset:
         Extract Key-Points and Descriptors. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
         
         kwargs:
-        ---------
+        ----------
         DASK_client : DASK client. DASK client. If empty string '' (Default), local computations are performed.
         DASK_client_retries : int
             Number of allowed automatic retries if a task fails. Default is object attribute.
@@ -1622,6 +1658,7 @@ class FIBSEM_mosaic_dataset:
         If True, outputs will be printed.
     
         Returns:
+        ----------
         fnms_kpts : array of str
             Filenames for binary files containing Key-Points and Descriptors for each frame.
         '''
@@ -1679,7 +1716,7 @@ class FIBSEM_mosaic_dataset:
         Determine transformation matrices for frame pairs using SIFT. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
         
         kwargs:
-        ---------
+        ----------
         DASK_client : DASK client. If empty string '' (default), local computations are performed.
         DASK_client_retries : int
             Number of allowed automatic retries if a task fails. Default is object attribute.
@@ -1735,7 +1772,8 @@ class FIBSEM_mosaic_dataset:
             Display intermediate results. Default is True.
     
         Returns:
-        transformations_results : array of lists containing the results:
+        ----------
+        transformations_results_3D : array of lists containing the results:
             [transformation_matrix, fnm_matches, npt, error_abs_mean, error_FWHMx, error_FWHMy, iteration]
             transformation_matrix : 2D float array
                 Transformation matrix for each sequential frame pair.
@@ -1871,7 +1909,7 @@ class FIBSEM_mosaic_dataset:
             Default is full images, so image_margins = (self.YResolution, self.XResolution)
 
         kwargs:
-        ---------
+        ----------
         ftype : int
             File type (0 - Shan Xu's .dat, 1 - tif). Default is object attribute.
         left_crop : int
@@ -1928,7 +1966,9 @@ class FIBSEM_mosaic_dataset:
         fill_value = 0.0
             Fill value for outside pixeld in cv2.remap. Default is 0.
 
-        Returns : fnm_deformed1, fnm_deformed2, transformations_result
+        Returns:
+        ----------
+        fnm_deformed1, fnm_deformed2, transformations_result
         '''
         ftype = kwargs.get("ftype", self.ftype)
         left_crop = kwargs.get('left_crop', 0)
@@ -2118,7 +2158,7 @@ class FIBSEM_mosaic_dataset:
         Uses find_Transform_ECC(img1, img2, **kwargs).
         
         kwargs:
-        ---------
+        ----------
         DASK_client : DASK client. If empty string '' (default), local computations are performed.
         DASK_client_retries : int
             Number of allowed automatic retries if a task fails. Default is object attribute.
@@ -2142,7 +2182,8 @@ class FIBSEM_mosaic_dataset:
             Display intermediate results. Default is True.
         
         Returns:
-        transformations_results : array of lists containing the results:
+        ----------
+        transformations_results_3D : array of lists containing the results:
             [transformation_matrix, error_code]
             transformation_matrix : 2D float array
                 Transformation matrix for each sequential frame pair.
@@ -2222,13 +2263,14 @@ class FIBSEM_mosaic_dataset:
         Solve mosaic stack stitching (perform bundle optimization). ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
         
         kwargs:
-        ---------
+        ----------
         verbose : boolean
             Display intermediate results. Default is True.
         method : string
             Options are: ['SIFT-ECC', 'SIFT', 'ECC']. Default is 'ECC'.  'SIFT-ECC' means - try SIFT first, and for the tiles that SIFT failed, try ECC.
         
         Returns:
+        ----------
         positions : array of new tile positions.
         '''
         
@@ -2351,6 +2393,10 @@ class FIBSEM_mosaic_dataset:
         verbose : boolean
             Display intermediate results. Default is False.
 
+        Returns:
+        ----------
+        save_fname
+
         '''
         mosaic_shape = kwargs.get('mosaic_shape', (self.ny_tiles, self.nx_tiles))
         nxny = np.product(mosaic_shape)
@@ -2405,7 +2451,7 @@ class FIBSEM_mosaic_dataset:
 
     def assemble_layer_mosaic(self, layer_id, **kwargs):
         '''
-        Assemble layer mosaic based on transformation matrices for each tile. Options to save snapshot, save mosaic as FIBSEM_frame (dat file) or as PNG. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
+        Assemble layer mosaic based on transformation matrices for each tile. Options to save snapshot, save mosaic as FIBSEM_frame (dat file) or save_images as JPG or PNG. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
 
         Parameters:
         ----------
@@ -2451,6 +2497,10 @@ class FIBSEM_mosaic_dataset:
             The name of the image to perform these operations (default is self.fls[layer_id].ravel()[0].replace('0-0-0.dat', 'layer_mosaic.jpg')).
         verbose : boolean
             Display intermediate results. Default is False.
+
+        Returns:
+        ----------
+        layer_mosaics, layer_id, layer_mosaic_weights, xy_limits
         
         '''
         ifDetB = (self.DetB != 'None')
@@ -2745,6 +2795,10 @@ class FIBSEM_mosaic_dataset:
             Number of allowed automatic retries if a task fails. Default is object attribute.
         verbose : boolean
             Display intermediate results. Default is False.
+
+        Returns:
+        ----------
+        fnms_saved
         
         '''
         DASK_client = kwargs.get('DASK_client', '')

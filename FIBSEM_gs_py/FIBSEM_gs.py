@@ -121,7 +121,7 @@ def _dynamic_max_trials_gs(n_inliers, n_samples, min_samples, probability):
         Probability (confidence) that one outlier-free sample is generated.
 
     Returns
-    -------
+    ----------
     trials : int
         Number of trials.
     """
@@ -230,7 +230,7 @@ def ransac(
         Initial samples selection for model estimation
 
     Returns
-    -------
+    ----------
     model : object
         Best model with largest consensus set.
     inliers : (N,) array
@@ -241,7 +241,7 @@ def ransac(
     .. [1] "RANSAC", Wikipedia, https://en.wikipedia.org/wiki/RANSAC
 
     Examples
-    --------
+    ----------
 
     Generate ellipse data without tilt and add noise:
 
@@ -450,7 +450,7 @@ def levinson_durbin(s, nlags=10, isacov=False):
         autocovariances or the data series.
 
     Returns
-    -------
+    ----------
     sigma_v : float
         The estimate of the error variance.
     arcoefs : ndarray
@@ -465,7 +465,7 @@ def levinson_durbin(s, nlags=10, isacov=False):
         autoregressive coefficients for AR(nlags).
 
     Notes
-    -----
+    ----------
     This function returns currently all results, but maybe we drop sigma and
     phi from the returns.
 
@@ -520,8 +520,8 @@ def find_autocorrelation_peak(ind_acr, mag_acr, **kwargs):
     '''
     Estimates the noise-free value of auto-correlation function by extrapolation.  ©G.Shtengel 12/2024 gleb.shtengel@gmail.com
     
-    Parameters
-    ---------
+    Parameters:
+    ----------
     ind_acr : 1D - array
         indices (coordinates in pixels)
     mag_acr : 1D - array
@@ -608,8 +608,8 @@ def Single_Image_SNR(img, **kwargs):
     ©G.Shtengel 12/2024 gleb.shtengel@gmail.com
     Calculates SNR of a single image based on auto-correlation analysis after [1].
     
-    Parameters
-    ---------
+    Parameters:
+    ----------
     img : 2D array
      
     kwargs:
@@ -644,13 +644,14 @@ def Single_Image_SNR(img, **kwargs):
         Display intermediate results.
         
     Returns:
-        xSNR, ySNR, rSNR : float, float, float
-            SNR determined using the method in [1] along X- and Y- directions.
-            If there is a direction with slow varying data - that direction provides more accurate SNR estimate
-            Y-streaks in typical FIB-SEM data provide slow varying Y-component because streaks
-            usually get increasingly worse with increasing Y. 
-            So for typical FIB-SEM data use ySNR
-    
+    ----------
+    xSNR, ySNR, rSNR : float, float, float
+        SNR determined using the method in [1] along X- and Y- directions.
+        If there is a direction with slow varying data - that direction provides more accurate SNR estimate
+        Y-streaks in typical FIB-SEM data provide slow varying Y-component because streaks
+        usually get increasingly worse with increasing Y. 
+        So for typical FIB-SEM data use ySNR
+
     [1] J. T. L. Thong et al, Single-image signal-to-noise ratio estimation. Scanning, 328–336 (2001).
     '''
     edge_fraction = kwargs.get("edge_fraction", 0.10)
@@ -820,7 +821,7 @@ def Single_Image_Noise_ROIs(img, Noise_ROIs, Hist_ROI, **kwargs):
             threshold parameters, and Noise Variance is taken at the intensity
             in the middle of the range (Min Intensity + Max Intensity)/2.0
 
-    Parameters
+    Parameters:
     ----------
     img : 2D array
         Original image
@@ -1031,11 +1032,12 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     7. Perform free linear fit of the variance vs. intensity. SNR0 is calculated as <S^2>/<N^2>.
     8. Perform linear fit with forced zero Intercept (DarkCount) of the variance vs. intensity. SNR1 is calculated <S^2>/<N^2>.
 
-    Parameters
+    Parameters:
     ----------
     img : 2d array
 
     kwargs:
+    ----------
     evaluation_box : list of 4 int
         evaluation_box = [top, height, left, width] boundaries of the box used for evaluating the image noise statistics.
         if evaluation_box is not set or evaluation_box = [0, 0, 0, 0], the entire image is used.
@@ -1071,6 +1073,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         Resolution (DPI) of the PNG image.
 
     Returns:
+    ----------
     mean_vals, var_vals, I0, SNR0, SNR1, popt, result
         mean_vals and var_vals are the Mean Intensity and Noise Variance values for Step5, I0 is zero intercept (should be close to DarkCount)
         SNR0 and SNR1 are SNR's (Step 7 and 8 respectively)
@@ -1373,6 +1376,7 @@ def Perform_2D_fit(img, estimator, **kwargs):
         Resolution (DPI) for the output PNG image.
 
     Returns:
+    ----------
     intercept, coefs, mse, img_correction_array
     '''
     image_name = kwargs.get("image_name", 'RawImageA')
@@ -1598,9 +1602,9 @@ def Perform_2D_fit(img, estimator, **kwargs):
 ##############################################
 def mutual_information_2d(x, y, sigma=1, bin=256, normalized=False):
     """
-    Computes (normalized) mutual information between two 1D variate from a
-    joint histogram.
-    Parameters
+    Computes (normalized) mutual information between two 1D variate from a joint histogram.
+
+    Parameters:
     ----------
     x : 1D array
         first variable
@@ -1608,8 +1612,9 @@ def mutual_information_2d(x, y, sigma=1, bin=256, normalized=False):
         second variable
     sigma: float
         sigma for Gaussian smoothing of the joint histogram
-    Returns
-    -------
+
+    Returns:
+    ----------
     mi: float
         the computed similarity measure
     """
@@ -1647,20 +1652,22 @@ def Two_Image_NCC_SNR(img1, img2, **kwargs):
     
     Calculates SNR from cross-correlation of two images after [1, 2, 3].
     
-    Parameters
-    ---------
+    Parameters:
+    ----------
     img1 : 2D array
     img2 : 2D array
      
     kwargs:
+    ----------
     zero_mean: boolean
         if True, cross-correlation is zero-mean
     
     Returns:
-        NCC, SNR : float, float
-            NCC - normalized cross-correlation coefficient
-            SNR - Signal-to-Noise ratio based on NCC
-    
+    ----------
+    NCC, SNR : float, float
+        NCC - normalized cross-correlation coefficient
+        SNR - Signal-to-Noise ratio based on NCC
+
    [1] J. Frank, L. AI-Ali, Signal-to-noise ratio of electron micrographs obtained by cross correlation. Nature 256, 4 (1975).
    [2] J. Frank, in: Computer Processing of Electron Microscopic Images. Ed. P.W. Hawkes (Springer, Berlin, 1980).
    [3] M. Radermacher, T. Ruiz, On cross-correlations, averages and noise in electron microscopy. Acta Crystallogr. Sect. F Struct. Biol. Commun. 75, 12–18 (2019).
@@ -1695,12 +1702,13 @@ def Two_Image_FSC(img1, img2, **kwargs):
     Performs Fourier Shell Correlation to determine the image resolution, after [1]. ©G.Shtengel, 10/2019. gleb.shtengel@gmail.com
     FSC is determined from radially averaged foirier cross-correlation (with optional selection of range of angles for radial averaging).
     
-    Parameters
-    ---------
+    Parameters:
+    ----------
     img1 : 2D array
     img2 : 2D array
      
     kwargs:
+    ----------
     SNRt : float
         SNR threshold for determining the resolution bandwidth
     fit_data : boolean
@@ -1739,8 +1747,9 @@ def Two_Image_FSC(img1, img2, **kwargs):
     verbose : boolean
         print the outputs. Default is False
 
-    
-    Returns FSC_sp_frequencies, FSC_data, x2, T, FSC_bw
+    Returns:
+    ----------
+    FSC_sp_frequencies, FSC_data, x2, T, FSC_bw
         FSC_sp_frequencies : float array 
             Spatial Frequency (/Nyquist) - for FSC plot
         FSC_data: float array
@@ -1905,8 +1914,9 @@ def Two_Image_Analysis(params):
         eval_bounds = [xi,  xa, yi, ya]
         eval_metrics = ['NSAD', 'NCC', 'NMI', 'FSC']
 
-    Returns
-        results : list of results
+    Returns:
+    ----------
+    results : list of results
     '''
     frame1_filename, frame2_filename, eval_bounds, eval_metrics = params
     xi_eval,  xa_eval, yi_eval, ya_eval = eval_bounds
@@ -1955,7 +1965,6 @@ def Two_Image_Analysis(params):
     return results
 
 
-
 ##########################################
 #         MRC stack analysis functions
 ##########################################
@@ -1966,6 +1975,7 @@ def evaluate_registration_two_frames(params_mrc):
     ©G.Shtengel, 10/2020. gleb.shtengel@gmail.com
 
     Parameters:
+    ----------
     params_mrc : list of mrc_filename, fr, evals, save_frame_png, filename_frame_png
     mrc_filename  : string
         full path to mrc filename
@@ -1973,8 +1983,8 @@ def evaluate_registration_two_frames(params_mrc):
         Index of the SECOND frame
     evals :  list of image bounds to be used for evaluation exi_eval, xa_eval, yi_eval, ya_eval 
 
-
     Returns:
+    ----------
     image_nsad, image_ncc, image_mi   : float, float, float
 
     '''
@@ -2055,11 +2065,12 @@ def analyze_mrc_stack_registration(mrc_filename, **kwargs):
     ©G.Shtengel, 04/2021. gleb.shtengel@gmail.com
 
     Parameters:
-    ---------
+    ----------
     mrc_filename : str
         File name (full path) of the mrc stack to be analyzed.
+
     kwargs:
-    ---------
+    ----------
     DASK_client : DASK client. If set to empty string '' (default), local computations are performed.
     DASK_client_retries : int
         Number of allowed automatic retries if a task fails. Default is 3.
@@ -2084,6 +2095,7 @@ def analyze_mrc_stack_registration(mrc_filename, **kwargs):
         If True, sample frames with superimposed eval box and registration analysis data will be saved into png files. Default is True.
 
     Returns:
+    ----------
     reg_summary : PD data frame, registration_summary_xlsx : path to summary XLSX spreadsheet file
     '''
     mrc_filename  = os.path.normpath(mrc_filename)
@@ -2305,12 +2317,13 @@ def show_eval_box_mrc_stack(mrc_filename, **kwargs):
     Read MRC stack and display the eval box for each frame from the list.
     ©G.Shtengel, 04/2021. gleb.shtengel@gmail.com
 
-    Parameters
-    ---------
+    Parameters:
+    ----------
     mrc_filename : str
         File name (full path) of the mrc stack to be analyzed
      
     kwargs:
+    ----------
     frame_inds : array
         List of frame indices to display the evaluation box. If not provided, three frames will be used:
         [nz//10,  nz//2, nz//10*9] where nz is number of frames in mrc stack
@@ -2430,12 +2443,12 @@ def plot_cross_sections_mrc_stack(mrc_filename, **kwargs):
     ©G.Shtengel, 10/2023. gleb.shtengel@gmail.com
 
     Parameters:
-    ---------
+    ----------
     mrc_filename : str
         File name (full path) of the mrc stack to be analyzed
      
     kwargs:
-    ---------
+    ----------
     XZ_section : boolean
         If True (default), XZ cros-section is present.
     ZY_section : boolean
@@ -2486,7 +2499,9 @@ def plot_cross_sections_mrc_stack(mrc_filename, **kwargs):
     dpi : int
         DPI for the PNG file. Dafult is 300.
     
-    Returns: images, axs
+    Returns:
+    ----------
+    images, axs
     '''
     display_scale_bars = kwargs.get('display_scale_bars', True)
     bar_length_um = kwargs.get('bar_length_um', 1.0)  #in um
@@ -2655,7 +2670,7 @@ def bin_crop_frames(bin_crop_parameters):
     ©G.Shtengel, 10/2023. gleb.shtengel@gmail.com
     
     Parameters:
-    ---------
+    ----------
     params : list
         mrc_filename : filename for the MRC source file
         dtp : data type
@@ -2668,7 +2683,10 @@ def bin_crop_frames(bin_crop_parameters):
         xbin_factor, ybin_factor, zbin_factor,
         mode, flipY
         xi, xa, yi, ya
-    Returns : target_frame_ID, transformed_frame
+
+    Returns:
+    ----------
+    target_frame_ID, transformed_frame
     '''
     mrc_filename, dtp, start_frame_ID, stop_frame_ID, target_frame_ID, xbin_factor, ybin_factor, zbin_factor, mode, flipY, xi, xa, yi, ya = bin_crop_parameters
     nx_binned = (xa-xi)//xbin_factor
@@ -2697,11 +2715,12 @@ def bin_crop_mrc_stack(mrc_filename, **kwargs):
     Bins and crops a 3D mrc stack along X-, Y-, or Z-directions and saves it into MRC or HDF5 format. ©G.Shtengel 08/2022 gleb.shtengel@gmail.com
 
     Parameters:
-    ---------
+    ----------
         mrc_filename : str
             name (full path) of the mrc file to be binned.
+    
     kwargs:
-    ---------
+    ----------
         DASK_client : DASK client. If set to empty string '' (default), local computations are performed.
         DASK_client_retries : int
             Number of allowed automatic retries if a task fails. Default is 3.
@@ -2740,9 +2759,11 @@ def bin_crop_mrc_stack(mrc_filename, **kwargs):
             stop frame.
         voxel_size_new : rec array.
             new voxel size in nm. Will be converted into Angstroms for MRC header.
+    
     Returns:
-        fnms_saved : list of str
-            Names of the new (binned and cropped) data files.
+    ----------
+    fnms_saved : list of str
+        Names of the new (binned and cropped) data files.
     '''
     DASK_client = kwargs.get('DASK_client', '')
     DASK_client_retries = kwargs.get('DASK_client_retries', 3)
@@ -3197,7 +3218,7 @@ def destreak_mrc_stack_with_kernel(mrc_filename, destreak_kernel, data_min, data
         build_kernel_FFT_destreaker_autodetect(data, **kwargs):
 
     Parameters:
-    ---------
+    ----------
     mrc_filename : str
         File name (full path) of the mrc stack to be analyzed
     destreak_kernel : 2D array - to multiply the FFT
@@ -3208,8 +3229,9 @@ def destreak_mrc_stack_with_kernel(mrc_filename, destreak_kernel, data_min, data
          - identified by comparing to data_min and data_max
          - if ouside the above range - replaced by mirror imaged adjacent data
          - after FFT, kernel multiplication, and reverse FFT, they will be replaced by zeros.
+    
     kwargs:
-    ---------
+    ----------
     DASK_client : DASK client. If set to empty string '' (default), local computations are performed.
     DASK_client_retries : int
         Number of allowed automatic retries if a task fails. Default is 3.
@@ -3250,7 +3272,8 @@ def destreak_mrc_stack_with_kernel(mrc_filename, destreak_kernel, data_min, data
         Path to the filename to save the results. If empty, mrc_filename+'_destreaked.mrc' will be used.
     
     Returns:
-        fnms_saved : list of str    Names of the new (binned and cropped) data files.
+    ----------
+    fnms_saved : list of str    Names of the new (binned and cropped) data files.
     '''
     DASK_client = kwargs.get('DASK_client', '')
     DASK_client_retries = kwargs.get('DASK_client_retries', 3)
@@ -3402,7 +3425,7 @@ def smooth_single_frame_kernel_shared(smooth_kernel, params):
     ©G.Shtengel, 10/2023. gleb.shtengel@gmail.com
     
     Parameters:
-    ---------
+    ----------
     smooth_kernel : 2D array - for 2D-convolution
     params : list
         mrc_filename : filename for the MRC source file
@@ -3412,7 +3435,9 @@ def smooth_single_frame_kernel_shared(smooth_kernel, params):
             frame to save
         data_min, data_max : floats
 
-    Returns : target_frame_ID, transformed_frame
+    Returns:
+    ----------
+    target_frame_ID, transformed_frame
     '''
     mrc_filename, dt, source_frame_ID, target_frame_ID, data_min, data_max = params
     mrc_obj = mrcfile.mmap(mrc_filename, mode='r', permissive=True)
@@ -3430,7 +3455,7 @@ def smooth_mrc_stack_with_kernel(mrc_filename, smooth_kernel, data_min, data_max
     ©G.Shtengel, 10/2023. gleb.shtengel@gmail.com
 
     Parameters:
-    ---------
+    ----------
     mrc_filename : str
         File name (full path) of the mrc stack to be analyzed
     smooth_kernel : 2D array - for 2D-convolution
@@ -3441,8 +3466,9 @@ def smooth_mrc_stack_with_kernel(mrc_filename, smooth_kernel, data_min, data_max
          - identified by comparing to data_min and data_max
          - if ouside the above range - replaced by mirror imaged adjacent data
          - after FFT, kernel multiplication, and reverse FFT, they will be replaced by zeros.
+
     kwargs:
-    ---------
+    ----------
     DASK_client : DASK client. If set to empty string '' (default), local computations are performed.
     DASK_client_retries : int
         Number of allowed automatic retries if a task fails. Default is 3.
@@ -3460,8 +3486,9 @@ def smooth_mrc_stack_with_kernel(mrc_filename, smooth_kernel, data_min, data_max
         Path to the filename to save the results. If empty, mrc_filename+'_smoothed.mrc' will be used.
 
     Returns:
-        save_filename : str
-            The name of the smoothed MRC stack.
+    ----------
+    save_filename : str
+        The name of the smoothed MRC stack.
     '''
     DASK_client = kwargs.get('DASK_client', '')
     DASK_client_retries = kwargs.get('DASK_client_retries', 3)
@@ -3556,8 +3583,8 @@ def destreak_smooth_mrc_stack_with_kernels(mrc_filename, destreak_kernel, smooth
     Read MRC stack and destreak the data by performing FFT, multiplying it by kernel, and performing inverse FFT.
     ©G.Shtengel, 10/2023. gleb.shtengel@gmail.com
 
-    Parameters
-    ---------
+    Parameters:
+    ----------
     mrc_filename : str
         File name (full path) of the mrc stack to be analyzed
     destreak_kernel : 2D array - to multiply the FFT
@@ -3571,6 +3598,7 @@ def destreak_smooth_mrc_stack_with_kernels(mrc_filename, destreak_kernel, smooth
          - after destreaking and smoothing they will be replaced by zeros.
 
     kwargs:
+    ----------
     frame_inds : array
         Array of frames to be used for evaluation. If not provided, evaluzation will be performed on all frames
     invert_data : boolean
@@ -3580,7 +3608,11 @@ def destreak_smooth_mrc_stack_with_kernels(mrc_filename, destreak_kernel, smooth
     save_destreak_smooth_filename : str
         Path to the filename to save the destreaked stack. If empty, mrc_filename+'_destreaked_smoothed.mrc' will be used
     
-    Returns the name of the destreaked MRC stack
+    Returns:
+    ----------
+    save_destreak_filename, save_destreak_smooth_filename
+        save_destreak_filename : str
+            the name of the destreaked MRC stack
     '''
     mrc_filename  = os.path.normpath(mrc_filename)
     save_destreak_filename = kwargs.get('save_destreak_filename', mrc_filename.replace('.mrc', '_destreaked.mrc'))
@@ -3636,14 +3668,15 @@ def destreak_smooth_mrc_stack_with_kernels(mrc_filename, destreak_kernel, smooth
 
 def mrc_stack_estimate_resolution_blobs_2D(mrc_filename, **kwargs):
     '''
-    Estimate transitions in the images inside mrc_stack, uses select_blobs_LoG_analyze_transitions(frame_eval, **kwargs). gleb.shtengel@gmail.com  06/2023 
+    Estimate transitions in the images inside mrc_stack, uses select_blobs_LoG_analyze_transitions(frame_eval, **kwargs). gleb.shtengel@gmail.com  06/2023
+
     Parameters:
-    ---------
+    ----------
     mrc_filename : str
         File name (full path) of the mrc stack to be analyzed
         
     kwargs:
-    ---------
+    ----------
     DASK_client : DASK client. If set to empty string '' (default), local computations are performed.
     DASK_client_retries : int
         Number of allowed automatic retries if a task fails. Default is 3.
@@ -3708,7 +3741,9 @@ def mrc_stack_estimate_resolution_blobs_2D(mrc_filename, **kwargs):
         save only good blob data (useful if the dataset is too big). Default is False.
     results_file_xlsx : file name for Excel workbook to save the results.
 
-    Returns: XY_transitions ; array[len(frame_inds), 4]
+    Returns:
+    ----------
+    XY_transitions ; array[len(frame_inds), 4]
         array consists of lines - one line for each frame in frame_inds
         each line has 4 elements: [Xpt1, Xpt2, Ypt1, Ypt2]
     '''
@@ -3911,6 +3946,7 @@ def select_blobs_LoG_analyze_transitions_2D_mrc_stack(params):
     Finds blobs in the given grayscale image using Laplasian of Gaussians (LoG). gleb.shtengel@gmail.com 02/2024
     
     Parameters:
+    ----------
     params = list of: [mrc_filename, frame_ind, eval_bounds_single_frame, offsets, invert_data, flipY, zbin_factor, min_sigma, max_sigma, threshold,  overlap, pixel_size, subset_size, bounds, bands,
         min_thr, transition_low_limit, transition_high_limit, nbins, verbose, disp_res, save_data, save_good_blobs_only]
     mrc_filename
@@ -3955,7 +3991,9 @@ def select_blobs_LoG_analyze_transitions_2D_mrc_stack(params):
     save_good_blobs_only : boolean
         save only good blob data (useful if the dataset is too big). Default is False.
     
-    Returns: XY_transitions
+    Returns:
+    ----------
+    XY_transitions
         XY_transitions with error_flag=0
     '''
     [mrc_filename, frame_ind, eval_bounds_single_frame, offsets, invert_data, flipY, zbin_factor, min_sigma, max_sigma, threshold,  overlap, pixel_size, subset_size, bounds, bands, min_thr, transition_low_limit, transition_high_limit, nbins, verbose, disp_res, save_data, save_good_blobs_only] = params
@@ -4065,11 +4103,11 @@ def mrc_stack_plot_2D_blob_examples(results_xlsx, **kwargs):
     mrc_stack_estimate_resolution_blobs_2D analyzes the transitions in the image, uses select_blobs_LoG_analyze_transitions(frame_eval, **kwargs). gleb.shtengel@gmail.com  04/2025 
 
     Parameters:
-    ---------
+    ----------
     results_file_xlsx : file name of Excel workbook of the results created by mrc_stack_estimate_resolution_blobs_2D
     
     kwargs:
-    ---------
+    ----------
     save_png : boolean
         save the image into PNG file. Default is False.
     save_fname : string
@@ -4260,12 +4298,13 @@ def show_eval_box_tif_stack(tif_filename, **kwargs):
     Read tif stack and display the eval box for each frame from the list.
     ©G.Shtengel, 08/2022. gleb.shtengel@gmail.com
 
-    Parameters
-    ---------
+    Parameters:
+    ----------
     tif_filename : str
         File name (full path) of the tif stack to be analyzed
      
     kwargs:
+    ----------
     evaluation_box : list of 4 int
         evaluation_box = [top, height, left, width] boundaries of the box used for evaluating the image registration
         if evaluation_box is not set or evaluation_box = [0, 0, 0, 0], the entire image is used.
@@ -4391,15 +4430,17 @@ def evaluate_registration_two_frames_tif(params_tif):
     ©G.Shtengel, 08/2022. gleb.shtengel@gmail.com
 
     Parameters:
+    ----------
     params_tif : list of tif_filename, fr, evals
-    tif_filename  : string
-        full path to tif filename
-    fr : int
-        Index of the SECOND frame
-    evals :  list of image bounds to be used for evaluation exi_eval, xa_eval, yi_eval, ya_eval, save_frame_png, filename_frame_png
+        tif_filename  : string
+            full path to tif filename
+        fr : int
+            Index of the SECOND frame
+        evals :  list of image bounds to be used for evaluation exi_eval, xa_eval, yi_eval, ya_eval, save_frame_png, filename_frame_png
 
 
     Returns:
+    ----------
     image_nsad, image_ncc, image_mi   : float, float, float
 
     '''
@@ -4450,12 +4491,13 @@ def analyze_tif_stack_registration(tif_filename, **kwargs):
     Read MRC stack and analyze registration - calculate NSAD, NCC, and MI.
     ©G.Shtengel, 08/2022. gleb.shtengel@gmail.com
 
-    Parameters
-    ---------
+    Parameters:
+    ----------
     tif_filename : str
         File name (full path) of the mrc stack to be analyzed
 
     kwargs:
+    ----------
     DASK_client : DASK client. If set to empty string '' (default), local computations are performed
     DASK_client_retries : int
         Number of allowed automatic retries if a task fails. Default is 3.
@@ -4479,7 +4521,11 @@ def analyze_tif_stack_registration(tif_filename, **kwargs):
     save_filename : str
         Path to the filename to save the results. If empty, tif_filename+'_RegistrationQuality.xlsx' will be used
 
-    Returns reg_summary : PD data frame, registration_summary_xlsx : path to summary XLSX spreadsheet file
+    Returns:
+    ----------
+    reg_summary, registration_summary_xlsx
+        reg_summary : PD data frame
+        registration_summary_xlsx : path to summary XLSX spreadsheet file
     '''
     tif_filename = os.path.normpath(tif_filename)
     
@@ -4639,10 +4685,12 @@ def read_transformation_matrix_from_xf_file(xf_filename):
     Reads transformation matrix created by FiJi-based workflow from *.xf file. ©G.Shtengel 10/2022 gleb.shtengel@gmail.com
     
     Parameters:
+    ----------
     xf_filename : str
         Full path to *.xf file containing the transformation matrix data
 
     Returns:
+    ----------
     transformation_matrix : array
     '''
     npdt_recalled = pd.read_csv(xf_filename, sep = '  ', header = None)
@@ -4660,14 +4708,16 @@ def analyze_transformation_matrix(transformation_matrix, xf_filename):
     Analyzes the transformation matrix created by FiJi-based workflow. ©G.Shtengel 10/2022 gleb.shtengel@gmail.com
     
     Parameters:
+    ----------
     transformation_matrix : array
         Transformation matrix (read by read_transformation_matrix_from_xf_file above).
     xf_filename : str
         Full path to *.xf file containing the transformation matrix data
 
     Returns:
+    ----------
     tr_matr_cum : array
-    Cumulative transformation matrix
+        Cumulative transformation matrix
     '''
     Xshift_orig = transformation_matrix[:, 0, 2]
     Yshift_orig = transformation_matrix[:, 1, 2]
@@ -4804,16 +4854,20 @@ def generate_report_mill_rate_xlsx(Mill_Rate_Data_xlsx, **kwargs):
     Generate Report Plot for mill rate evaluation from XLSX spreadsheet file. ©G.Shtengel 12/2022 gleb.shtengel@gmail.com
     
     Parameters:
+    ----------
     Mill_Rate_Data_xlsx : str
         Path to the XLSX spreadsheet file containing the Working Distance (WD), Milling Y Voltage (MV), and FOV center shifts data.
     
     kwargs:
+    ----------
     Mill_Volt_Rate_um_per_V : float
         Milling Voltage to Z conversion (µm/V). Default is 31.235258870176065.
+    verbose : boolean
+        if True, intermediate printouts are enabled. Default is False.
 
     '''
-    disp_res = kwargs.get('disp_res', False)
-    if disp_res:
+    verbose = kwargs.get('verbose', False)
+    if verbose:
         print('Loading kwarg Data')
     saved_kwargs = read_kwargs_xlsx(Mill_Rate_Data_xlsx, 'kwargs Info', **kwargs)
     data_dir = saved_kwargs.get("data_dir", '')
@@ -4821,7 +4875,7 @@ def generate_report_mill_rate_xlsx(Mill_Rate_Data_xlsx, **kwargs):
     Saved_Mill_Volt_Rate_um_per_V = saved_kwargs.get("Mill_Volt_Rate_um_per_V", 31.235258870176065)
     Mill_Volt_Rate_um_per_V = kwargs.get("Mill_Volt_Rate_um_per_V", Saved_Mill_Volt_Rate_um_per_V)
     
-    if disp_res:
+    if verbose:
         print('Loading Working Distance and Milling Y Voltage Data')
     try:
         int_results = pd.read_excel(Mill_Rate_Data_xlsx, sheet_name='FIBSEM Data')
@@ -4831,7 +4885,7 @@ def generate_report_mill_rate_xlsx(Mill_Rate_Data_xlsx, **kwargs):
     WD = int_results['Working Distance (mm)']
     MillingYVoltage = int_results['Milling Y Voltage (V)']
 
-    if disp_res:
+    if verbose:
         print('Generating Plot')
     fs = 12
     Mill_Volt_Rate_um_per_V = 31.235258870176065
@@ -4870,19 +4924,24 @@ def generate_report_ScanRate_EHT_xlsx(ScanRate_EHT_Data_xlsx, **kwargs):
     Generate Report Plot for Scan Rate and EHT from XLSX spreadsheet file. ©G.Shtengel 09/2023 gleb.shtengel@gmail.com
     
     Parameters:
+    ----------
     ScanRate_EHT_Data_xlsx : str
         Path to the XLSX spreadsheet file containing the Scan Rate and EHT data.
     
     kwargs:
+    ----------
+    verbose : boolean
+        if True, intermediate printouts are enabled. Default is False.
+
     '''
-    disp_res = kwargs.get('disp_res', False)
-    if disp_res:
+    verbose = kwargs.get('verbose', False)
+    if verbose:
         print('Loading kwarg Data')
     saved_kwargs = read_kwargs_xlsx(ScanRate_EHT_Data_xlsx, 'kwargs Info', **kwargs)
     data_dir = saved_kwargs.get("data_dir", '')
     Sample_ID = saved_kwargs.get("Sample_ID", '')
     
-    if disp_res:
+    if verbose:
         print('Loading Scan Rate and EHT Data')
     try:
         int_results = pd.read_excel(ScanRate_EHT_Data_xlsx, sheet_name='FIBSEM Data')
@@ -4896,7 +4955,7 @@ def generate_report_ScanRate_EHT_xlsx(ScanRate_EHT_Data_xlsx, **kwargs):
     except:
         SEMSpecimenI = EHT*0.0
 
-    if disp_res:
+    if verbose:
         print('Generating Plot')
     fs = 12
 
@@ -4924,20 +4983,24 @@ def generate_report_FOV_center_shift_xlsx(FOV_center_shift_xlsx, **kwargs):
     Generate Report Plot for FOV center shift from XLSX spreadsheet file. ©G.Shtengel 12/2022 gleb.shtengel@gmail.com
     
     Parameters:
+    ----------
     FOV_center_shift_xlsx : str
         Path to the XLSX spreadsheet file containing the Working Distance (WD), Milling Y Voltage (MV), and FOV center shifts data.
     
     kwargs:
+    ----------
+    verbose : boolean
+        if True, intermediate printouts are enabled. Default is False.
 
     '''
-    disp_res = kwargs.get('disp_res', False)
-    if disp_res:
+    verbose = kwargs.get('verbose', False)
+    if verbose:
         print('Loading kwarg Data')
     saved_kwargs = read_kwargs_xlsx(FOV_center_shift_xlsx, 'kwargs Info', **kwargs)
     data_dir = saved_kwargs.get("data_dir", '')
     Sample_ID = saved_kwargs.get("Sample_ID", '')
     
-    if disp_res:
+    if verbose:
         print('Loading FOV Center Location Data')
     try:
         int_results = pd.read_excel(FOV_center_shift_xlsx, sheet_name='FIBSEM Data')
@@ -4950,7 +5013,7 @@ def generate_report_FOV_center_shift_xlsx(FOV_center_shift_xlsx, **kwargs):
     trend_x = savgol_filter(center_x*1.0, sv_apert, 1) - center_x[0]
     trend_y = savgol_filter(center_y*1.0, sv_apert, 1) - center_y[0]
 
-    if disp_res:
+    if verbose:
         print('Generating Plot')
     fs = 12
 
@@ -4986,9 +5049,14 @@ def generate_report_data_minmax_xlsx(minmax_xlsx_file, **kwargs):
     Parameters:
     minmax_xlsx_file : str
         Path to the XLSX spreadsheet file containing Min-Max data
+
+    kwargs:
+    ----------
+    verbose : boolean
+        if True, intermediate printouts are enabled. Default is False.
     '''
-    disp_res = kwargs.get('disp_res', False)
-    if disp_res:
+    verbose = kwargs.get('verbose', False)
+    if verbose:
         print('Loading kwarg Data')
     saved_kwargs = read_kwargs_xlsx(minmax_xlsx_file, 'kwargs Info', **kwargs)
     data_dir = saved_kwargs.get("data_dir", '')
@@ -5000,7 +5068,7 @@ def generate_report_data_minmax_xlsx(minmax_xlsx_file, **kwargs):
     fit_params = kwargs.get("fit_params", fit_params_saved)
     preserve_scales =  saved_kwargs.get("preserve_scales", True)  # If True, the transformation matrix will be adjusted using teh settings defined by fit_params below
     
-    if disp_res:
+    if verbose:
         print('Loading MinMax Data')
     try:
         int_results = pd.read_excel(minmax_xlsx_file, sheet_name='FIBSEM Data')
@@ -5025,7 +5093,7 @@ def generate_report_data_minmax_xlsx(minmax_xlsx_file, **kwargs):
         sliding_min = frame_min.astype(np.double)
         sliding_max = frame_min.astype(np.double)
 
-    if disp_res:
+    if verbose:
         print('Generating Plot')
     fs = 12
     fig0, ax0 = plt.subplots(1,1,figsize=(6,4))
@@ -5068,9 +5136,13 @@ def generate_report_transf_matrix_from_xlsx(transf_matrix_xlsx_file, **kwargs):
     transf_matrix_xlsx_file : str
         Path to the XLSX spreadsheet file containing Transformation Matrix data
 
+    kwargs:
+    ----------
+    verbose : boolean
+        if True, intermediate printouts are enabled. Default is False.
     '''
-    disp_res = kwargs.get('disp_res', False)
-    if disp_res:
+    verbose = kwargs.get('verbose', False)
+    if verbose:
         print('Loading kwarg Data')
     saved_kwargs = read_kwargs_xlsx(transf_matrix_xlsx_file, 'kwargs Info', **kwargs)
     data_dir = saved_kwargs.get("data_dir", '')
@@ -5091,7 +5163,7 @@ def generate_report_transf_matrix_from_xlsx(transf_matrix_xlsx_file, **kwargs):
     solver = saved_kwargs.get("solver", 'RANSAC')
     drmax = saved_kwargs.get("drmax", 2.0)
     max_iter = saved_kwargs.get("max_iter", 1000)
-    BFMatcher = saved_kwargs.get("BFMatcher", False)           # If True, the BF Matcher is used for keypont matching, otherwise FLANN will be used
+    BFMatcher = saved_kwargs.get("BFMatcher", False)           # If True, the BF Matcher is used for keypoint matching, otherwise FLANN will be used
     save_matches = saved_kwargs.get("save_matches", True)      # If True, matches will be saved into individual files
     save_res_png  = saved_kwargs.get("save_res_png", True)
 
@@ -5102,7 +5174,7 @@ def generate_report_transf_matrix_from_xlsx(transf_matrix_xlsx_file, **kwargs):
     subtract_FOVtrend_from_fit = saved_kwargs.get("subtract_FOVtrend_from_fit", [True, True])
     pad_edges =  saved_kwargs.get("pad_edges", True)
     
-    if disp_res:
+    if verbose:
         print('Loading Original Transformation Data')
     orig_transf_matrix = pd.read_excel(transf_matrix_xlsx_file, sheet_name='Orig. Transformation Matrix')
     transformation_matrix = np.vstack((orig_transf_matrix['T00 (Sxx)'],
@@ -5193,8 +5265,8 @@ def generate_report_transf_matrix_from_xlsx(transf_matrix_xlsx_file, **kwargs):
     axs5[0, 1].set_title('# of key-points per frame')
     axs5[0, 1].text(0.03, 0.2, 'Mean # of kpts= {:.0f}   Median # of kpts= {:.0f}'.format(np.mean(npts), np.median(npts)), transform=axs5[0, 1].transAxes, fontsize = fs-1)
     # plot Standard deviations
-    axs5[0, 2].plot(error_abs_mean, 'magenta', linewidth = lwl, label = 'Mean Abs Error over keyponts per frame')
-    axs5[0, 2].set_title('Mean Abs Error keyponts per frame')  
+    axs5[0, 2].plot(error_abs_mean, 'magenta', linewidth = lwl, label = 'Mean Abs Error over keypoints per frame')
+    axs5[0, 2].set_title('Mean Abs Error keypoints per frame')  
     axs5[0, 2].text(0.03, 0.3, 'Mean Abs Error= {:.3f}   Median Abs Error= {:.3f}'.format(np.mean(error_abs_mean), np.median(error_abs_mean)), transform=axs5[0, 2].transAxes, fontsize = fs-1)
     try:
         error_FWHMx = stat_results['Xerror_FWHM']
@@ -5329,6 +5401,11 @@ def generate_report_transf_matrix_details(transf_matrix_bin_file, *kwarrgs):
     transf_matrix_bin_file : str
         Path to the binary dump file
 
+    kwargs:
+    ----------
+    verbose : boolean
+        if True, intermediate printouts are enabled. Default is False.
+
     '''
     with open(transf_matrix_bin_file, "rb") as f:
         [saved_kwargs, npts, error_abs_mean,
@@ -5354,7 +5431,7 @@ def generate_report_transf_matrix_details(transf_matrix_bin_file, *kwarrgs):
     solver = saved_kwargs.get("solver", 'RANSAC')
     drmax = saved_kwargs.get("drmax", 2.0)
     max_iter = saved_kwargs.get("max_iter", 1000)
-    BFMatcher = saved_kwargs.get("BFMatcher", False)           # If True, the BF Matcher is used for keypont matching, otherwise FLANN will be used
+    BFMatcher = saved_kwargs.get("BFMatcher", False)           # If True, the BF Matcher is used for keypoint matching, otherwise FLANN will be used
     save_matches = saved_kwargs.get("save_matches", True)      # If True, matches will be saved into individual files
     save_res_png  = saved_kwargs.get("save_res_png", True)
 
@@ -5414,8 +5491,8 @@ def generate_report_transf_matrix_details(transf_matrix_bin_file, *kwarrgs):
     axs5[0, 1].set_title('# of key-points per frame')
     axs5[0, 1].text(0.03, 0.2, 'Mean # of kpts= {:.0f}   Median # of kpts= {:.0f}'.format(np.mean(npts), np.median(npts)), transform=axs5[0, 1].transAxes, fontsize = fs-1)
     # plot Standard deviations
-    axs5[0, 2].plot(error_abs_mean, 'magenta', linewidth = lwl, label = 'Mean Abs Error over keyponts per frame')
-    axs5[0, 2].set_title('Mean Abs Error keyponts per frame')  
+    axs5[0, 2].plot(error_abs_mean, 'magenta', linewidth = lwl, label = 'Mean Abs Error over keypoints per frame')
+    axs5[0, 2].set_title('Mean Abs Error keypoints per frame')  
     axs5[0, 2].text(0.03, 0.2, 'Mean Abs Error= {:.3f}   Median Abs Error= {:.3f}'.format(np.mean(error_abs_mean), np.median(error_abs_mean)), transform=axs5[0, 2].transAxes, fontsize = fs-1)
     
     # plot scales terms
@@ -5506,11 +5583,12 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
         - 'SIFT kwargs' (optional) - containg the kwargs with SIFT registration parameters.
 
     Parameters:
+    ----------
     xlsx_fname : str
         full path to the XLSX spreadsheet file
     
     kwargs:
-    ---------
+    ----------
     sample_frame_files : list
         List of paths to sample frame images
     png_file : str
@@ -5665,7 +5743,7 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
                     if len(fls) < 1:
                         fls = sorted(glob.glob(os.path.join(data_dir,'*/*.tif')))
                 num_frames = len(fls)
-                stack_info_dict['disp_res']=False
+                stack_info_dict['verbose']=False
                 raw_dataset = FIBSEM_dataset(fls, recall_parameters=os.path.exists(dump_filename), **stack_info_dict)
                 XResolution = raw_dataset.XResolution
                 YResolution = raw_dataset.YResolution
@@ -5795,12 +5873,14 @@ def plot_registrtion_quality_xlsx(data_files, labels, **kwargs):
     ©G.Shtengel, 04/2021. gleb.shtengel@gmail.com
 
     Parameters:
+    ----------
     data_files : array of str
         Filenames (full paths) of the registration summaries (*.xlsx files)
     labels : array of str
         Labels (for each registration)
 
     kwargs:
+    ----------
     frame_inds : array or list of int
         Array or list of frame indices to use to azalyze the data.
     save_res_png : boolean
@@ -5818,7 +5898,8 @@ def plot_registrtion_quality_xlsx(data_files, labels, **kwargs):
     linewidths : array of float
         linewidths for individual files. If not provided, all linewidths are set to 0.5
 
-    Returns
+    Returns:
+    ----------
     xlsx_fname : str
         Filename of the summary Excel notebook.
     '''
@@ -6110,10 +6191,12 @@ class FIBSEM_frame:
     ©G.Shtengel 10/2021 gleb.shtengel@gmail.com
     Contains the info/settings on a single FIB-SEM data frame and the procedures that can be performed on it.
     Initialization Parameters:
+    ----------
         Filename : string
             Filename of the file containing the FIBSEM frame
 
     Initialization kwargs:
+    ----------
         ftype : int
             0 - Shan Xu's binary format (default).  1 - tif files
         read_header_only : boolean
@@ -6124,7 +6207,7 @@ class FIBSEM_frame:
         memory_profiling : boolean
             If True will perfrom memory profiling. Default is False
 
-    Attributes (only some more important are listed here)
+    Attributes (only some more important are listed here):
     ----------
     fname : str
         filename of the individual data frame
@@ -6153,7 +6236,7 @@ class FIBSEM_frame:
     PixelSize : float
         pixel size in nm. Default is 8.0
 
-    Methods
+    Methods:
     ----------
     print_header()
         Prints a formatted content of the file header.
@@ -6930,9 +7013,8 @@ class FIBSEM_frame:
         '''
         Display auto-scaled detector images and save the figure into JPEG file (s).
 
-        Parameters
-        ----------
         kwargs:
+        ----------
         images_to_save : str
             Images to save. options are: 'A', 'B', or 'Both' (default).
         invert_data : boolean
@@ -6969,7 +7051,7 @@ class FIBSEM_frame:
         '''
         Save the detector images into TIF file (s).
 
-        Parameters
+        Parameters:
         ----------
         images_to_save : str
             Images to save. options are: 'A', 'B', or 'Both' (default).
@@ -7004,7 +7086,7 @@ class FIBSEM_frame:
         the minimum and maximum values for the image are found by finding
         the intensities at which CDF= thr_min and (1- thr_max), respectively.
 
-        Parameters
+        Parameters:
         ----------
         image_name : string
             the name of the image to perform this operations (defaulut is 'RawImageA')
@@ -7018,7 +7100,8 @@ class FIBSEM_frame:
             (default is False) - to plot/ display the results
 
         Returns:
-            dmin, dmax: (float) minimum and maximum values of the data range.   
+        ----------
+        dmin, dmax: (float) minimum and maximum values of the data range.   
         '''
 
         if image_name == 'ImageA':
@@ -7039,7 +7122,7 @@ class FIBSEM_frame:
         '''
         Convert the Image A into 8-bit array
 
-        Parameters
+        Parameters:
         ----------
         thr_min : float
             lower CDF threshold for determining the minimum data value
@@ -7052,7 +7135,8 @@ class FIBSEM_frame:
         nbins : int
             number of histogram bins for building the PDF and CDF
         
-        Returns
+        Returns:
+        ----------
         dt, data_min, data_max
             dt : 2D np.uint8 array
                 Converted data
@@ -7074,7 +7158,7 @@ class FIBSEM_frame:
         '''
         Convert the Image B into 8-bit array
 
-        Parameters
+        Parameters:
         ----------
         thr_min : float
             lower CDF threshold for determining the minimum data value
@@ -7087,7 +7171,8 @@ class FIBSEM_frame:
         nbins : int
             number of histogram bins for building the PDF and CDF
         
-        Returns
+        Returns:
+        ----------
         dt, data_min, data_max
             dt : 2D np.uint8 array
                 Converted data
@@ -7110,7 +7195,7 @@ class FIBSEM_frame:
         Build an image that contains both the Detector A and Detector B (if present) images as well as a table with important FIB-SEM parameters.
 
         kwargs:
-         ----------
+        ----------
         thr_min : float
             Lower CDF threshold for determining the minimum data value. Default is 1.0e-3
         thr_max : float
@@ -7279,6 +7364,7 @@ class FIBSEM_frame:
             List of coordinates (indices) for each of the ROI's - the boundaries of the image subset to evaluate the noise.
         Hist_ROI : list [left, right, top, bottom]
             Coordinates (indices) of the boundaries of the image subset to evaluate the real data histogram.
+
         kwargs:
         ----------
         image_name : string
@@ -7301,6 +7387,7 @@ class FIBSEM_frame:
             Save the analysis output into a PNG file. Default is True.
         res_fname : str
             Filename - used for plotting the data. Default is attribute self.fname  + '_' + image_name + '_Noise_Analysis_ROIs.png'.
+
         Returns:
         ----------
         mean_vals, var_vals, NF_slope, PSNR, MSNR, DSNR
@@ -7372,8 +7459,6 @@ class FIBSEM_frame:
         7. Perform free linear fit of the variance vs. intensity. SNR0 is calculated as <S^2>/<N^2>.
         8. Perform linear fit with forced zero Intercept (DarkCount) of the variance vs. intensity. SNR1 is calculated <S^2>/<N^2>.
 
-        Parameters
-        ----------
         kwargs:
         ----------
         image_name : string
@@ -7413,6 +7498,7 @@ class FIBSEM_frame:
             Resolution (DPI ) of the PNG image.
 
         Returns:
+        ----------
         mean_vals, var_vals, I0, SNR0, SNR1, popt, result
             mean_vals and var_vals are the Mean Intensity and Noise Variance values for Step 5
             I0 is zero intercept (should be close to DarkCount),
@@ -7489,8 +7575,6 @@ class FIBSEM_frame:
         Calculates SNR of a single image base on auto-correlation analysis of a single image, after [1].
         Calls function Single_Image_SNR(img, **kwargs)
         
-        Parameters:
-        ---------
         kwargs:
         ---------
         image_name : str
@@ -7525,14 +7609,15 @@ class FIBSEM_frame:
             Resolution (DPI) for the output PNG image.
         verbose : boolean
             Display intermediate results. Default is False.
+
         Returns:
         ---------
-            xSNR, ySNR : float, float
-                SNR determined using the method in [1] along X- and Y- directions.
-                If there is a direction with slow varying data - that direction provides more accurate SNR estimate.
-                Y-streaks in typical FIB-SEM data provide slow varying Y-component because streaks usually get increasingly worse with increasing Y.
-                So for typical FIB-SEM data use ySNR or rSNR.   
-                [1] J. T. L. Thong et al, Single-image signal-tonoise ratio estimation. Scanning, 328–336 (2001).
+        xSNR, ySNR : float, float
+            SNR determined using the method in [1] along X- and Y- directions.
+            If there is a direction with slow varying data - that direction provides more accurate SNR estimate.
+            Y-streaks in typical FIB-SEM data provide slow varying Y-component because streaks usually get increasingly worse with increasing Y.
+            So for typical FIB-SEM data use ySNR or rSNR.   
+            [1] J. T. L. Thong et al, Single-image signal-tonoise ratio estimation. Scanning, 328–336 (2001).
         '''
         image_name = kwargs.get("image_name", 'RawImageA')
         zero_mean = kwargs.get('zero_mean', True)
@@ -7679,9 +7764,8 @@ class FIBSEM_frame:
         Perfrom 2D polynomial fit (calls Perform_2D_fit(Img, estimator, **kwargs)) and determine the field-flattening parameters.
         ©G.Shtengel, 04/2023. gleb.shtengel@gmail.com
         
-        Parameters:
-        ----------
         kwargs:
+        ----------
         image_names : list of str
             Options are: 'RawImageA' (default), 'RawImageB', 'ImageA', 'ImageB'
         estimator : RANSACRegressor(),
@@ -7721,6 +7805,7 @@ class FIBSEM_frame:
             Resolution (DPI) for the output PNG image.
 
         Returns:
+        ----------
         img_correction_coeffs, img_correction_arrays
         '''
         image_names = kwargs.get("image_names", ['RawImageA'])
@@ -7801,8 +7886,7 @@ class FIBSEM_frame:
         '''
         Flatten the image(s). Image flattening parameters must be determined (determine_field_fattening_parameters)
         ©G.Shtengel, 04/2023. gleb.shtengel@gmail.com
-        Parameters:
-        ----------
+
         kwargs:
         ----------
         image_correction_file : str
@@ -7814,6 +7898,7 @@ class FIBSEM_frame:
             Arrays containing field flattening info.
 
         Returns:
+        ----------
         flattened_images : list of 2D arrays
         '''
 
@@ -7870,16 +7955,21 @@ class FIBSEM_frame:
     def pad_and_save(self, **kwargs):
         '''
         Pad existing frame (increase image size) and save into a new .dat file. Only works on .dat files at the moment. ©G.Shtengel 08/2025 gleb.shtengel@gmail.com
-         kwargs:
-            ----------
-            padding_offsets : list of 4 ints
-                padding_offsets = [top_pad, bottom_pad, left_pad, right_pad]. Deafault is [0, 0, 0, 0] (no padding).
-            save_filename : string
-                Filename for saving the padded frame. Default is self.fname.replace('.dat', '_padded.dat').
-            fill_value : int
-                Fill value for padding. Default is 0.
-            verbose : boolean
-                Display intermediate comments / results. Default is False.
+
+        kwargs:
+        ----------
+        padding_offsets : list of 4 ints
+            padding_offsets = [top_pad, bottom_pad, left_pad, right_pad]. Deafault is [0, 0, 0, 0] (no padding).
+        save_filename : string
+            Filename for saving the padded frame. Default is self.fname.replace('.dat', '_padded.dat').
+        fill_value : int
+            Fill value for padding. Default is 0.
+        verbose : boolean
+            Display intermediate comments / results. Default is False.
+
+        Returns:
+        ----------
+        save_filename
         '''
         padding_offsets = kwargs.get('padding_offsets', [0, 0, 0, 0])
         top_pad, bottom_pad, left_pad, right_pad = padding_offsets
@@ -7937,9 +8027,14 @@ class FIBSEM_frame:
 
 def kp_to_list(kp):
     '''
-    Convert a keypont object to a list (so that it can be "pickled").
+    Convert a keypoint object to a list (so that it can be "pickled").
+
+    Parameters:
+    ----------
+    kp : keypoint object
     
-    Returns
+    Returns:
+    ----------
     pt, angle, size, response, class_id, octave
     (all extracted from corresponding cv2.KeyPoint() object attributes)
     '''
@@ -7954,14 +8049,16 @@ def kp_to_list(kp):
 
 def list_to_kp(inp_list):
     '''
-    Convert a list to a keypont object
+    Convert a list to a keypoint object
 
     Parameters:
+    ----------
     inp_list : list
         List of Key-Point properties to initialize the following cv2.KeyPoint() object attributes:
         [pt, angle, size, response, class_id, octave]
 
     Returns:
+    ----------
     kp : Instance of cv2.KeyPoint() object 
     '''
     kp = cv2.KeyPoint()
@@ -8005,7 +8102,8 @@ def evaluate_FIBSEM_frame(params):
             number of histogram bins for building the PDF and CDF
 
     Returns:
-        dmin, dmax, WD, MillingYVoltage, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolution, YResolution, SEMStiX, SEMStiY, SEMAlnX, SEMAlnY, ex_error
+    ----------
+    dmin, dmax, WD, MillingYVoltage, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolution, YResolution, SEMStiX, SEMStiY, SEMAlnX, SEMAlnY, ex_error
         dmin, dmax: (float) minimum and maximum values of the data range.
         WD, MillingYVoltage, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolution, YResolution - SEM parameters 
     '''
@@ -8117,9 +8215,11 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
     Evaluates parameters of FIBSEM data set (Min/Max, Working Distance (WD), Milling Y Voltage (MV), FOV center positions).
 
     Parameters:
+    ----------
     DASK_client  : DASK client
 
     kwargs:
+    ----------
     use_DASK : boolean
         perform remote DASK computations
     DASK_client_retries : int
@@ -8156,36 +8256,30 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
         Default is False. If True and the data exists (saved into XLSX), use that.   
 
     Returns:
-    list of 14 parameters: FIBSEM_Data_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding, mill_rate_WD, mill_rate_MV, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolutions, YResolutions, SEMStiX, SEMStiY, SEMAlnX, SEMAlnY, errors_s2
-        FIBSEM_Data_xlsx : str
-            path to Excel file with the FIBSEM data
-        data_min_glob : float   
-            min data value for I8 conversion (open CV SIFT requires I8)
-        data_man_glob : float   
-            max data value for I8 conversion (open CV SIFT requires I8)
-        data_min_sliding : float array
-            min data values (one per file) for I8 conversion
-        data_max_sliding : float array
-            max data values (one per file) for I8 conversion
-        mill_rate_WD : float array
-            Milling rate calculated based on Working Distance (WD)
-        mill_rate_MV : float array
-            Milling rate calculated based on Milling Y Voltage (MV)
-        center_x : float array
-            FOV Center X-coordinate extracted from the header data
-        center_y : float array
-            FOV Center Y-coordinate extracted from the header data
-        ScanRate : float array
-            SEM Scan Rate (Hz)
-        EHT : float array
-            SEM EHT voltage (kV)
-        SEMSpecimenI : float array
-            SEM Specimen current (nA)
-        XResolutions : int array
-            X-frame sizes
-        YResolutions : int array
-            Y-frame sizes
-    '''
+    ----------
+    FIBSEM_Data : list of 20 parameters
+        FIBSEM_Data_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding, mill_rate_WD, mill_rate_MV, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolutions, YResolutions, SEMStiX, SEMStiY, SEMAlnX, SEMAlnY, errors_s2
+            FIBSEM_Data_xlsx : str
+                path to Excel file with the FIBSEM data
+            data_min_glob : float   
+                min data value for I8 conversion (open CV SIFT requires I8)
+            data_man_glob : float   
+                max data value for I8 conversion (open CV SIFT requires I8)
+            center_x : float array
+                FOV Center X-coordinate extracted from the header data
+            center_y : float array
+                FOV Center Y-coordinate extracted from the header data
+            ScanRate : float array
+                SEM Scan Rate (Hz)
+            EHT : float array
+                SEM EHT voltage (kV)
+            SEMSpecimenI : float array
+                SEM Specimen current (nA)
+            XResolutions : int array
+                X-frame sizes
+            YResolutions : int array
+                Y-frame sizes
+'''
 
     nfrs = len(fls)
     use_DASK = kwargs.get("use_DASK", False)
@@ -8362,7 +8456,7 @@ def extract_keypoints_descr_files(params, deformation_field):
     ©G.Shtengel 10/2021 gleb.shtengel@gmail.com
     
     Parameters:
-    -----------
+    ----------
     params = fl, dmin, dmax, kwargs
         fl : str
             image filename (full path)
@@ -8419,8 +8513,9 @@ def extract_keypoints_descr_files(params, deformation_field):
         Deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
 
     Returns:
-        fnm : str
-            path to the file containing Key-Points and Descriptors
+    ----------
+    fnm : str
+        path to the file containing Key-Points and Descriptors
     '''
     fl, dmin, dmax, kwargs = params
     ftype = kwargs.get("ftype", 0)
@@ -8688,7 +8783,7 @@ def determine_transformations_files(params_dsf):
     kwargs['max_iter'] = max_iter
     remove_per_iter = kwargs.get('remove_per_iter', 1)
     kwargs['remove_per_iter'] = remove_per_iter
-    BFMatcher = kwargs.get("BFMatcher", False)           # If True, the BF Matcher is used for keypont matching, otherwise FLANN will be used
+    BFMatcher = kwargs.get("BFMatcher", False)           # If True, the BF Matcher is used for keypoint matching, otherwise FLANN will be used
     save_matches = kwargs.get("save_matches", True)      # If True, matches will be saved into individual files
     Lowe_Ratio_Threshold = kwargs.get("Lowe_Ratio_Threshold", 0.7)    # threshold for Lowe's Ratio Test
     RANSAC_initial_fraction = kwargs.get("RANSAC_initial_fraction", 0.005)  # fraction of data points for initial RANSAC iteration step.
@@ -8972,7 +9067,7 @@ def process_transformation_matrix_dataset(transformation_matrix, FOVtrend_x, FOV
     solver = kwargs.get("solver", 'RANSAC')
     drmax = kwargs.get("drmax", 2.0)
     max_iter = kwargs.get("max_iter", 1000)
-    BFMatcher = kwargs.get("BFMatcher", False)           # If True, the BF Matcher is used for keypont matching, otherwise FLANN will be used
+    BFMatcher = kwargs.get("BFMatcher", False)           # If True, the BF Matcher is used for keypoint matching, otherwise FLANN will be used
     save_matches = kwargs.get("save_matches", True)      # If True, matches will be saved into individual files
     save_res_png  = kwargs.get("save_res_png", True)
     verbose = kwargs.get('verbose', False)
@@ -9136,7 +9231,7 @@ def calculate_residual_deformation_fields_dataset(tr_matr_cum, image_shape, fnms
     '''
     Calculates residual deformation fields for transformation IN ADDITION to that determined by transformation_matrix. ©G.Shtengel 01/2025 gleb.shtengel@gmail.com
 
-    Parameters
+    Parameters:
     ----------
     tr_matr_cum : transformation matrix
     image_shape : target image shape
@@ -9162,7 +9257,9 @@ def calculate_residual_deformation_fields_dataset(tr_matr_cum, image_shape, fnms
         filename for the final registered dataset
     verbose : boolean
 
-    Returns deformation_fields, deformation_fields_bin_file
+    Returns:
+    ----------
+    deformation_fields, deformation_fields_bin_file
     '''
     deformation_type = kwargs.get("deformation_type", 'post_1DY')
     deformation_sigma = kwargs.get('deformation_sigma', 50)
@@ -9222,6 +9319,7 @@ def SIFT_find_keypoints_dataset(fr, **kwargs):
     Evaluate SIFT key point discovery for a test frame (fr). ©G.Shtengel 08/2022 gleb.shtengel@gmail.com
     
     Parameters:
+    ----------
     fr : str
         filename for the data frame to be used for SIFT key point discovery evaluation
     
@@ -9273,6 +9371,7 @@ def SIFT_find_keypoints_dataset(fr, **kwargs):
         Save PNG images of the intermediate processing statistics and final registration quality check
 
     Returns:
+    ----------
     dmin, dmax, comp_time, transform_matrix, n_matches, iteration, kpts
     '''
 
@@ -9293,7 +9392,7 @@ def SIFT_find_keypoints_dataset(fr, **kwargs):
     drmax = kwargs.get("drmax", 2.0)
     max_iter = kwargs.get("max_iter", 1000)
     Lowe_Ratio_Threshold = kwargs.get("Lowe_Ratio_Threshold", 0.7)   # threshold for Lowe's Ratio Test
-    BFMatcher = kwargs.get("BFMatcher", False)           # If True, the BF Matcher is used for keypont matching, otherwise FLANN will be used
+    BFMatcher = kwargs.get("BFMatcher", False)           # If True, the BF Matcher is used for keypoint matching, otherwise FLANN will be used
     save_matches = kwargs.get("save_matches", True)      # If True, matches will be saved into individual files
     save_res_png  = kwargs.get("save_res_png", True)
     evaluation_box = kwargs.get("evaluation_box", [0, 0, 0, 0])
@@ -9376,7 +9475,7 @@ def SIFT_find_keypoints_dataset(fr, **kwargs):
     kp1 = [list_to_kp(kpp1) for kpp1 in kpp1s]     # this converts a list of lists to a list of keypoint objects to be used by a matcher later
     src_pts = np.float32([ kp.pt for kp in kp1 ]).reshape(-1, 2)    
     x, y = src_pts.T
-    print('Extracted {:d} keyponts'.format(len(kp1)))
+    print('Extracted {:d} keypoints'.format(len(kp1)))
     # the code below is for vector map. vectors have origin coordinates x and y, and vector projections xs and ys.
     vec_field = ax.scatter(x,y, s=0.02, marker='o', c='r')
     ax.text(0.01, 1.1-0.13*frame.YResolution/frame.XResolution, Sample_ID + ', thr_min={:.0e}, thr_max={:.0e}, SIFT_nfeatures={:d}'.format(thr_min, thr_max, SIFT_nfeatures), fontsize=fsize, transform=ax.transAxes)
@@ -9396,7 +9495,7 @@ def SIFT_evaluation_dataset(fs, **kwargs):
     fs : array of str
         filenames for the data frames to be used for SIFT evaluation
     
-    kwargs
+    kwargs:
     ---------
     DASK_client : DASK client. If set to empty string '' (default), local computations are performed
     DASK_client_retries : int
@@ -9440,7 +9539,7 @@ def SIFT_evaluation_dataset(fs, **kwargs):
     max_iter : int
         Max number of iterations in the iterative procedure above (RANSAC or LinReg)
     BFMatcher : boolean
-        If True, the BF Matcher is used for keypont matching, otherwise FLANN will be used
+        If True, the BF Matcher is used for keypoint matching, otherwise FLANN will be used
     save_matches : boolean
         If True, matches will be saved into individual files
     SIFT_nfeatures : int
@@ -9480,7 +9579,9 @@ def SIFT_evaluation_dataset(fs, **kwargs):
         If True will perfrom memory profiling. Default is False.
     use_existing_data : boolean
         Default is False. If True and this had already been performed, use existing results
+
     Returns:
+    ----------
     dmin, dmax, comp_time, transform_matrix, n_matches, iteration, kpts, error_FWHMx, error_FWHMy
     '''
     memory_profiling = kwargs.get('memory_profiling', False)
@@ -9513,7 +9614,7 @@ def SIFT_evaluation_dataset(fs, **kwargs):
     drmax = kwargs.get("drmax", 2.0)
     max_iter = kwargs.get("max_iter", 1000)
     Lowe_Ratio_Threshold = kwargs.get("Lowe_Ratio_Threshold", 0.7)   # threshold for Lowe's Ratio Test
-    BFMatcher = kwargs.get("BFMatcher", False)           # If True, the BF Matcher is used for keypont matching, otherwise FLANN will be used
+    BFMatcher = kwargs.get("BFMatcher", False)           # If True, the BF Matcher is used for keypoint matching, otherwise FLANN will be used
     save_matches = kwargs.get("save_matches", True)      # If True, matches will be saved into individual files
     save_res_png  = kwargs.get("save_res_png", True)
     verbose = kwargs.get('verbose', False)
@@ -9826,12 +9927,12 @@ def check_registration(img0, img1, **kwargs):
     Debugging tool. Perform SIFT registration check on two images. Will perform SIFT, and then report Residual Errors and plot residual error histograms
     
     Parameters:
-    ---------
+    ----------
     img0 : 2D array
     img1 : 2D array
     
     kwargs:
-    ---------
+    ----------
     thr_min : float
         CDF threshold for determining the minimum data value.
     thr_max : float
@@ -9897,8 +9998,10 @@ def check_registration(img0, img1, **kwargs):
         Fontsize. Default is 12.
     fsize_text : int
         Secondary Fontsize. Default is 6.
+
     Returns:
-        return error_FWHMx, error_FWHMy
+    ----------
+    error_FWHMx, error_FWHMy
     '''
     thr_min = kwargs.get("thr_min", 1e-3)
     thr_max = kwargs.get("thr_max", 1e-3)
@@ -10120,7 +10223,8 @@ def transform_chunk_of_frames(frame_filenames, xsz, ysz, ftype,
     '''
     Transform Chunk of Frames and average into a single transformed frames. ©G.Shtengel 09/2022 gleb.shtengel@gmail.com
 
-    Parameters
+    Parameters:
+    ----------
     frame_filenames : list of strings
         Filenames (Full paths) of FIB-SEM frame files for every frame in frame_inds
     xsz  :  int
@@ -10163,7 +10267,10 @@ def transform_chunk_of_frames(frame_filenames, xsz, ysz, ftype,
     fill_value : float
         fill value for padding. Default is zero.
     
-    Returns
+    Returns:
+    ----------
+    transformed_img
+
     '''
     transformed_img = np.zeros((ysz, xsz), dtype=float)
     num_frames = len(frame_filenames)
@@ -10219,7 +10326,6 @@ def transform_chunk_of_frames(frame_filenames, xsz, ysz, ftype,
     if frame.EightBit==1:
         transformed_img = np.clip(np.round(transformed_img) , 0, 255)
     '''
-
     return transformed_img
     
 
@@ -10227,76 +10333,77 @@ def transform_and_save_chunk_of_frames(chunk_of_frame_parametrs):
     '''
     Transform Chunk of Frames and save into a single transformed frame. ©G.Shtengel 09/2022 gleb.shtengel@gmail.com
 
-    Parameters
+    Parameters:
+    ----------
     chunk_of_frame_parametrs : list of following parameters
-        [save_filename, frame_filenames, tr_matrices, deformation_fields, image_scales, image_offsets, tr_args]
-    
-    save_filename : path
-        Filename for saving the transformed frame
-    frame_filenames : list of strings
-        Filenames (Full paths) of FIB-SEM frame files for every frame in frame_inds
-    tr_matrices : list of 2D (or 3D array)
-        Transformation matrix for every frame in frame_inds. Each transformation matrix is in a form:
-            [[Sxx Sxy Tx]
-            [Syx  Syy Ty]
-            [0    0   1]]
-    deformation_fields : list of 1D or 2D arrays (or 2D or 3D array)
-        Deformation Field for every frame in frame_inds
-    image_scales : list (array) of floats
-        image multipliers for image rescaling: I = (I-image_offset)*image_scale + image_offset
-    image_offsets : list (array) of floats
-        image offsets for image rescaling: I = (I-image_offset)*image_scale + image_offset
+        [save_filename, frame_filenames, tr_matrices, deformation_fields, image_scales, image_offsets, tr_args]    
+        save_filename : path
+            Filename for saving the transformed frame
+        frame_filenames : list of strings
+            Filenames (Full paths) of FIB-SEM frame files for every frame in frame_inds
+        tr_matrices : list of 2D (or 3D array)
+            Transformation matrix for every frame in frame_inds. Each transformation matrix is in a form:
+                [[Sxx Sxy Tx]
+                [Syx  Syy Ty]
+                [0    0   1]]
+        deformation_fields : list of 1D or 2D arrays (or 2D or 3D array)
+            Deformation Field for every frame in frame_inds
+        image_scales : list (array) of floats
+            image multipliers for image rescaling: I = (I-image_offset)*image_scale + image_offset
+        image_offsets : list (array) of floats
+            image offsets for image rescaling: I = (I-image_offset)*image_scale + image_offset
 
-    tr_args : list of lowwowing parameters:
-        tr_args = [ImgB_fraction, xsz, ysz, xi, xa, yi, ya, int_order, invert_data, flipY, flatten_image, image_correction_file, perform_transformation, shift_matrix, inv_shift_matrix, perform_deformation, deformation_type, ftype, dtp, fill_value]
-    
-    ImgB_fraction : float
-        Fractional weight of Image B for fused images, default is 0
-    xsz  :  int
-        X-size (pixels)
-    ysz  :  int
-        Y-size (pixels)
-    xi : int
-        Low X-axis bound for placing the transformed frame into the image before transformation
-    xa : int
-        High X-axis bound for placing the transformed frame into the image before transformation
-    yi : int
-        Low Y-axis bound for placing the transformed frame into the image before transformation
-    ya : int
-        High Y-axis bound for placing the transformed frame into the image before transformation
-    int_order : int
-        Default is 1. Interpolation order (0: Nearest-neighbor, 1: Bi-linear (default), 2: Bi-quadratic, 3: Bi-cubic, 4: Bi-quartic, 5: Bi-quintic)
-    invert_data : boolean
-        Invert data, default is False.
-    flipY : boolean
-        Flip output along Y-axis, default is False.
-    flatten_image : boolean
-        perform image flattening
-    image_correction_file : str
-        full path to a binary filename that contains source name (image_correction_source) and correction array (img_correction_array)
-    perform_transformation  : boolean
-        perform transformation     
-    shift_matrix : 2d array
-        shift matrix
-    inv_shift_matrix : 2d array
-        inverse shift matrix.
-    perform_deformation : boolean
-        If True - the data is deformed (in addition to tyransformation defined above) using the deformation field data defined below
-    deformation_type : str
-        Options are:
-            'post_1DY'  - Deformation is performed AFTER the matrix transformation using 1D deformation field with only Y-coordinate components (all pixels along X-axis are deformed the same way).
-            'prior_1DY' - Deformation is performed PRIOR to the matrix transformation using 1D deformation field with only Y-coordinate components (all pixels along X-axis are deformed the same way).
-            'post_1DX'  - Deformation is performed AFTER the matrix transformation using 1D deformation field with only X-coordinate components (all pixels along Y-axis are deformed the same way).
-            'prior_1DX' - Deformation is performed PRIOR to the matrix transformation using 1D deformation field with only X-coordinate components (all pixels along Y-axis are deformed the same way).
-            'post_2D'   - Deformation is performed AFTER the matrix transformation using 2D deformation field.
-            'prior_2D'  - Deformation is performed PRIOR to the matrix transformation using 2D deformation field.
-    ftype : int
-        File Type. 0 for Shan's .dat files, 1 for tif files
-    dtp : data type
-        Python data type for saving. Default is int16, the other option currently is uint8.
-    verbose : boolean 
+        tr_args : list of lowwowing parameters:
+            tr_args = [ImgB_fraction, xsz, ysz, xi, xa, yi, ya, int_order, invert_data, flipY, flatten_image, image_correction_file, perform_transformation, shift_matrix, inv_shift_matrix, perform_deformation, deformation_type, ftype, dtp, fill_value]
+                ImgB_fraction : float
+                    Fractional weight of Image B for fused images, default is 0
+                xsz  :  int
+                    X-size (pixels)
+                ysz  :  int
+                    Y-size (pixels)
+                xi : int
+                    Low X-axis bound for placing the transformed frame into the image before transformation
+                xa : int
+                    High X-axis bound for placing the transformed frame into the image before transformation
+                yi : int
+                    Low Y-axis bound for placing the transformed frame into the image before transformation
+                ya : int
+                    High Y-axis bound for placing the transformed frame into the image before transformation
+                int_order : int
+                    Default is 1. Interpolation order (0: Nearest-neighbor, 1: Bi-linear (default), 2: Bi-quadratic, 3: Bi-cubic, 4: Bi-quartic, 5: Bi-quintic)
+                invert_data : boolean
+                    Invert data, default is False.
+                flipY : boolean
+                    Flip output along Y-axis, default is False.
+                flatten_image : boolean
+                    perform image flattening
+                image_correction_file : str
+                    full path to a binary filename that contains source name (image_correction_source) and correction array (img_correction_array)
+                perform_transformation  : boolean
+                    perform transformation     
+                shift_matrix : 2d array
+                    shift matrix
+                inv_shift_matrix : 2d array
+                    inverse shift matrix.
+                perform_deformation : boolean
+                    If True - the data is deformed (in addition to tyransformation defined above) using the deformation field data defined below
+                deformation_type : str
+                    Options are:
+                        'post_1DY'  - Deformation is performed AFTER the matrix transformation using 1D deformation field with only Y-coordinate components (all pixels along X-axis are deformed the same way).
+                        'prior_1DY' - Deformation is performed PRIOR to the matrix transformation using 1D deformation field with only Y-coordinate components (all pixels along X-axis are deformed the same way).
+                        'post_1DX'  - Deformation is performed AFTER the matrix transformation using 1D deformation field with only X-coordinate components (all pixels along Y-axis are deformed the same way).
+                        'prior_1DX' - Deformation is performed PRIOR to the matrix transformation using 1D deformation field with only X-coordinate components (all pixels along Y-axis are deformed the same way).
+                        'post_2D'   - Deformation is performed AFTER the matrix transformation using 2D deformation field.
+                        'prior_2D'  - Deformation is performed PRIOR to the matrix transformation using 2D deformation field.
+                ftype : int
+                    File Type. 0 for Shan's .dat files, 1 for tif files
+                dtp : data type
+                    Python data type for saving. Default is int16, the other option currently is uint8.
+                fill_value
 
-    Returns
+    Returns:
+    ----------
+    save_filename
     '''
     #save_filename, frame_filenames, tr_matrices, image_scales, image_offsets, tr_args = chunk_of_frame_parametrs
     save_filename, frame_filenames, tr_matrices, deformation_fields, image_scales, image_offsets, tr_args = chunk_of_frame_parametrs
@@ -10420,13 +10527,14 @@ def analyze_registration_frames(DASK_client, frame_filenames, **kwargs):
     '''
     Transform and save FIB-SEM data set. A new vesion, with variable zbin_factor option. ©G.Shtengel 09/2022 gleb.shtengel@gmail.com
 
-    Parameters
+    Parameters:
+    ----------
     DASK_client : 
     frame_filenames : list of strings
         List of filenames (one for each transformed / z-binned frame)
     
-    kwargs
-    ---------
+    kwargs:
+    ----------
     use_DASK : boolean
         perform remote DASK computations
     DASK_client_retries : int
@@ -10457,6 +10565,7 @@ def analyze_registration_frames(DASK_client, frame_filenames, **kwargs):
         If True (default), intermediate messages and results will be displayed.
 
     Returns:
+    ----------
     reg_summary, reg_summary_xlsx
         reg_summary : pandas DataFrame
         reg_summary = pd.DataFrame(np.vstack((npts, error_abs_mean, image_nsad, image_ncc, image_mi)
@@ -10567,7 +10676,8 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
     '''
     Transform and save FIB-SEM data set. A new vesion, with variable zbin_factor option. ©G.Shtengel 01/2023 gleb.shtengel@gmail.com
 
-    Parameters
+    Parameters:
+    ----------
     DASK_client : DASK client
     frame_inds : int array
         Array of frame indices. If not set or set to np.array((-1)), all frames will be transformed
@@ -10576,8 +10686,8 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
     tr_matr_cum_residual : array
         transformation matrix
     
-    kwargs
-    ---------
+    kwargs:
+    ----------
     use_DASK : boolean
         perform remote DASK computations
     DASK_client_retries : int
@@ -10634,6 +10744,7 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
         Default is False.
 
     Returns:
+    ----------
     registered_filenames : list of filenames (one for each transformed / z-binned frame)
     
     '''
@@ -10742,33 +10853,35 @@ def save_data_stack(FIBSEMstack, **kwargs):
     '''
     Saves the dataset into a file.
     
-    Parameters
-        FIBSEMstack : 3D array (may be DASK array)
-            Data set to be saved
+    Parameters:
+    ----------
+    FIBSEMstack : 3D array (may be DASK array)
+        Data set to be saved
         
-    kwargs
-    ---------
-        data_dir : str
-            data directory for saving the data
-        fnm_reg : str
-            filename for the final registered dataset
-        fnm_types : list of strings
-            File type(s) for output data. Options are: ['h5', 'mrc'].
-            Defauls is 'mrc'. 'h5' is BigDataViewer HDF5 format, uses npy2bdv package. Use empty list if do not want to save the data.
-        voxel_size : rec array of 3 elemets
-            voxel size in nm
-        dtp  : dtype
-            Python data type for saving. Default is int16, the other option currently is uint8.
-        verbose : boolean
-            Display messages and intermediate results
-        chunked_mrc_write : boolean
-            if True, the MRC stack is written in chunks, otherwise (False, Default) frame-by-frame
-        chunk_length : int
-            length of MRC write chunk. Default is 32
+    kwargs:
+    ----------
+    data_dir : str
+        data directory for saving the data
+    fnm_reg : str
+        filename for the final registered dataset
+    fnm_types : list of strings
+        File type(s) for output data. Options are: ['h5', 'mrc'].
+        Defauls is 'mrc'. 'h5' is BigDataViewer HDF5 format, uses npy2bdv package. Use empty list if do not want to save the data.
+    voxel_size : rec array of 3 elemets
+        voxel size in nm
+    dtp  : dtype
+        Python data type for saving. Default is int16, the other option currently is uint8.
+    verbose : boolean
+        Display messages and intermediate results
+    chunked_mrc_write : boolean
+        if True, the MRC stack is written in chunks, otherwise (False, Default) frame-by-frame
+    chunk_length : int
+        length of MRC write chunk. Default is 32
         
     Returns:
-        fnms_saved : list of strings
-            Paths to the files where the data set was saved.
+    ----------
+    fnms_saved : list of strings
+        Paths to the files where the data set was saved.
     
     '''
     data_dir = kwargs.get("data_dir", '')
@@ -10911,60 +11024,62 @@ def select_blobs_LoG_analyze_transitions_2D_dataset(params):
     Finds blobs in the given grayscale image using Laplasian of Gaussians (LoG). gleb.shtengel@gmail.com 06/2023
     
     Parameters:
+    ----------
     params = list of: [fls, frame_ind, ftype, image_name, eval_bounds, offsets_sizes, invert_data, flipY, zbin_factor, perform_transformation, tr_matr_cum_residual, int_order, pad_edges,
         min_sigma, max_sigma, threshold,  overlap, pixel_size, subset_size, bounds, bands, min_thr, transition_low_limit, transition_high_limit, nbins, verbose, disp_res, save_data, save_good_blobs_only]
-    fls
-    frame_ind : index of frame
-    ftype
-    image_name : str
-        Options are: 'RawImageA' (default), 'RawImageB', 'ImageA', 'ImageB'
-    eval_bounds_single_frame
-    offsets = [xi, yi, padx, pady]
-    invert_data : boolean
-        If True - the data is inverted
-    flipY
-    zbin_factor
-    perform_transformation : boolean
-        If True - the data is transformed using existing cumulative transformation matrix. If False - the data is not transformed
-    tr_matr_cum_residual
-    int_order
-    pad_edges : boolean
-        If True, the data will be padded before transformation to avoid clipping.
-    min_sigma : float
-        min sigma (in pixel units) for Gaussian kernel in LoG search.
-    max_sigma : float
-        min sigma (in pixel units) for Gaussian kernel in LoG search.
-    threshold : float
-        threshold for LoG search. The absolute lower bound for scale space maxima. Local maxima smaller
-        than threshold are ignored. Reduce this to detect blobs with less intensities. 
-    overlap : float
-        A value between 0 and 1. If the area of two blobs overlaps by a
-        fraction greater than 'overlap', the smaller blob is eliminated.    
-    pixel_size : float
-        pixel size in nm.
-    subset_size : int
-        subset size (pixels) for blob / transition analysis
-    bounds : lists
-        List of transition limits.
-    bands : list of 3 ints
-        list of three ints for the averaging bands for determining the left min, peak, and right min of the cross-section profile.
-    min_thr : float
-        threshold for identifying a 'good' transition (bottom < min_thr* top)
-    transition_low_limit : float
-        error flag is incremented by 4 if the determined transition distance is below this value.
-    transition_high_limit : float
-        error flag is incremented by 8 if the determined transition distance is above this value.
-    title : str
-        title.
-    nbins : int
-        bins for histogram
-    verbose
-    disp_res
-    save_data
-    save_good_blobs_only
+        fls
+        frame_ind : index of frame
+        ftype
+        image_name : str
+            Options are: 'RawImageA' (default), 'RawImageB', 'ImageA', 'ImageB'
+        eval_bounds_single_frame
+        offsets = [xi, yi, padx, pady]
+        invert_data : boolean
+            If True - the data is inverted
+        flipY
+        zbin_factor
+        perform_transformation : boolean
+            If True - the data is transformed using existing cumulative transformation matrix. If False - the data is not transformed
+        tr_matr_cum_residual
+        int_order
+        pad_edges : boolean
+            If True, the data will be padded before transformation to avoid clipping.
+        min_sigma : float
+            min sigma (in pixel units) for Gaussian kernel in LoG search.
+        max_sigma : float
+            min sigma (in pixel units) for Gaussian kernel in LoG search.
+        threshold : float
+            threshold for LoG search. The absolute lower bound for scale space maxima. Local maxima smaller
+            than threshold are ignored. Reduce this to detect blobs with less intensities. 
+        overlap : float
+            A value between 0 and 1. If the area of two blobs overlaps by a
+            fraction greater than 'overlap', the smaller blob is eliminated.    
+        pixel_size : float
+            pixel size in nm.
+        subset_size : int
+            subset size (pixels) for blob / transition analysis
+        bounds : lists
+            List of transition limits.
+        bands : list of 3 ints
+            list of three ints for the averaging bands for determining the left min, peak, and right min of the cross-section profile.
+        min_thr : float
+            threshold for identifying a 'good' transition (bottom < min_thr* top)
+        transition_low_limit : float
+            error flag is incremented by 4 if the determined transition distance is below this value.
+        transition_high_limit : float
+            error flag is incremented by 8 if the determined transition distance is above this value.
+        title : str
+            title.
+        nbins : int
+            bins for histogram
+        verbose
+        disp_res
+        save_data
+        save_good_blobs_only
     
-    Returns: XY_transitions
-        XY_transitions with error_flag=0
+    Returns:
+    ----------
+    frame_ind_arr, error_flags, blobs_LoG, tr_results_arr
     '''
     [fls, frame_ind, ftype, image_name, eval_bounds_single_frame, offsets_sizes, invert_data, flipY, zbin_factor, perform_transformation, tr_matr_cum_residual, int_order, pad_edges, min_sigma, max_sigma, threshold,  overlap, pixel_size, subset_size, bounds, bands, min_thr, transition_low_limit, transition_high_limit, nbins, verbose, disp_res, save_data, save_good_blobs_only] = params
 
@@ -11083,7 +11198,7 @@ class FIBSEM_dataset:
     ©G.Shtengel 10/2021 gleb.shtengel@gmail.com
     Contains the info/settings on the FIB-SEM dataset and the procedures that can be performed on it.
 
-    Attributes
+    Attributes:
     ----------
     fls : array of str
         filenames for the individual data frames in the set
@@ -11134,7 +11249,7 @@ class FIBSEM_dataset:
     max_iter : int
         Max number of iterations in the iterative procedure above (RANSAC or LinReg)
     BFMatcher : boolean
-        If True, the BF Matcher is used for keypont matching, otherwise FLANN will be used
+        If True, the BF Matcher is used for keypoint matching, otherwise FLANN will be used
     save_matches : boolean
         If True, matches will be saved into individual files
     SIFT_nfeatures : int
@@ -11207,8 +11322,8 @@ class FIBSEM_dataset:
             evaluation_box = [top, height, left, width] boundaries of the box used for evaluating the image registration.
             if evaluation_box is not set or evaluation_box = [0, 0, 0, 0], the entire image is used.
 
-    Methods
-    -------
+    Methods:
+    ----------
     SIFT_evaluation(eval_fls = [], **kwargs):
         Evaluate SIFT settings and perfromance of few test frames (eval_fls).
 
@@ -11262,7 +11377,7 @@ class FIBSEM_dataset:
             Filenames for the individual data frames in the set
 
         kwargs:
-        ---------
+        ----------
         ftype : int
             File type (0 - Shan Xu's .dat, 1 - tif).
         EightBit : int
@@ -11423,7 +11538,7 @@ class FIBSEM_dataset:
         self.SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", 0.04)
         self.SIFT_edgeThreshold = kwargs.get("SIFT_edgeThreshold", 10)
         self.SIFT_sigma = kwargs.get("SIFT_sigma", 1.6)
-        self.BFMatcher = kwargs.get("BFMatcher", False)           # If True, the BF Matcher is used for keypont matching, otherwise FLANN will be used
+        self.BFMatcher = kwargs.get("BFMatcher", False)           # If True, the BF Matcher is used for keypoint matching, otherwise FLANN will be used
         self.save_matches = kwargs.get("save_matches", True)      # If True, matches will be saved into individual files
         self.TransformType = kwargs.get("TransformType", RegularizedAffineTransform)
         self.tr_matr_cum_residual = [np.eye(3,3) for i in np.arange(self.nfrs)]  # placeholder - identity transformation matrix
@@ -11499,12 +11614,12 @@ class FIBSEM_dataset:
         Evaluate SIFT settings and perfromance of few test frames (eval_fls). ©G.Shtengel 10/2021 gleb.shtengel@gmail.com
         
         Parameters:
-        ---------
+        ----------
         eval_fls : array of str
             filenames for the data frames to be used for SIFT evaluation.
         
         kwargs:
-        ---------
+        ----------
         memory_profiling : boolean
             If True, memory profiling will be performed. Default is False.
         DASK_client : DASK client. If empty string '' (default), local computations are performed.
@@ -11582,6 +11697,7 @@ class FIBSEM_dataset:
             Returns a width of interval determined using search direction from above or total number of bins above half max. Options are 'interval' (default) or 'count'.
     
         Returns:
+        ----------
         dmin, dmax, comp_time, transform_matrix, n_matches, iteration, kpts, error_FWHMx, error_FWHMy
         '''
         DASK_client = kwargs.get('DASK_client', '')
@@ -11674,7 +11790,7 @@ class FIBSEM_dataset:
         Convert binary ".dat" files into ".tif" files. ©G.Shtengel 10/2021 gleb.shtengel@gmail.com
         
         kwargs:
-        ---------
+        ----------
         DASK_client : DASK client.
             If set to empty string '' (default), local computations are performed
         DASK_client_retries : int
@@ -11714,7 +11830,7 @@ class FIBSEM_dataset:
         Evaluates parameters of FIBSEM data set (Min/Max, Working Distance (WD), Milling Y Voltage (MV), FOV center positions). ©G.Shtengel 10/2021 gleb.shtengel@gmail.com
         
         kwargs:
-        ---------
+        ----------
         DASK_client : DASK client. If set to empty string '' (default), local computations are performed.
         DASK_client_retries : int (default to 3)
             Number of allowed automatic retries if a task fails. Default is object attribute.
@@ -11749,35 +11865,37 @@ class FIBSEM_dataset:
             If True (default), intermediate messages and results will be displayed.
 
         Returns:
-        list of 14 parameters: FIBSEM_Data_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding, mill_rate_WD, mill_rate_MV, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolutions, YResolutions
-            FIBSEM_Data_xlsx : str
-                path to Excel file with the FIBSEM data
-            data_min_glob : float   
-                min data value for I8 conversion (open CV SIFT requires I8)
-            data_man_glob : float   
-                max data value for I8 conversion (open CV SIFT requires I8)
-            data_min_sliding : float array
-                min data values (one per file) for I8 conversion
-            data_max_sliding : float array
-                max data values (one per file) for I8 conversion
-            mill_rate_WD : float array
-                Milling rate calculated based on Working Distance (WD)
-            mill_rate_MV : float array
-                Milling rate calculated based on Milling Y Voltage (MV)
-            center_x : float array
-                FOV Center X-coordinate extracted from the header data
-            center_y : float array
-                FOV Center Y-coordinate extracted from the header data
-            ScanRate : float array
-                SEM Scan Rate (Hz)
-            EHT : float array
-                SEM EHT voltage (kV)
-            SEMSpecimenI : float array
-                SEM Specimen current (nA)
-            XResolutions : int array
-                X-frame sizes
-            YResolutions : int array
-                Y-frame sizes
+        ----------
+        FIBSEM_Data : list of 20 parameters
+            FIBSEM_Data_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding, mill_rate_WD, mill_rate_MV, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolutions, YResolutions, SEMStiX, SEMStiY, SEMAlnX, SEMAlnY, errors_s2
+                FIBSEM_Data_xlsx : str
+                    path to Excel file with the FIBSEM data
+                data_min_glob : float   
+                    min data value for I8 conversion (open CV SIFT requires I8)
+                data_man_glob : float   
+                    max data value for I8 conversion (open CV SIFT requires I8)
+                data_min_sliding : float array
+                    min data values (one per file) for I8 conversion
+                data_max_sliding : float array
+                    max data values (one per file) for I8 conversion
+                mill_rate_WD : float array
+                    Milling rate calculated based on Working Distance (WD)
+                mill_rate_MV : float array
+                    Milling rate calculated based on Milling Y Voltage (MV)
+                center_x : float array
+                    FOV Center X-coordinate extracted from the header data
+                center_y : float array
+                    FOV Center Y-coordinate extracted from the header data
+                ScanRate : float array
+                    SEM Scan Rate (Hz)
+                EHT : float array
+                    SEM EHT voltage (kV)
+                SEMSpecimenI : float array
+                    SEM Specimen current (nA)
+                XResolutions : int array
+                    X-frame sizes
+                YResolutions : int array
+                    Y-frame sizes
         '''
         DASK_client = kwargs.get('DASK_client', '')
         use_DASK, status_update_address = check_DASK(DASK_client)
@@ -11871,7 +11989,7 @@ class FIBSEM_dataset:
         Extract Key-Points and Descriptors. ©G.Shtengel 10/2021 gleb.shtengel@gmail.com
         
         kwargs:
-        ---------
+        ----------
         DASK_client : DASK client. DASK client. If empty string '' (Default), local computations are performed.
         DASK_client_retries : int
             Number of allowed automatic retries if a task fails. Default is object attribute.
@@ -11929,6 +12047,7 @@ class FIBSEM_dataset:
             Default is False. If True and this had already been performed, use existing results.
     
         Returns:
+        ----------
         fnms : array of str
             Filenames for binary files containing Key-Points and Descriptors for each frame.
         '''
@@ -11997,7 +12116,7 @@ class FIBSEM_dataset:
         Determine transformation matrices for sequential frame pairs. ©G.Shtengel 10/2021 gleb.shtengel@gmail.com
         
         kwargs:
-        ---------
+        ----------
         DASK_client : DASK client. If empty string '' (default), local computations are performed.
         DASK_client_retries : int
             Number of allowed automatic retries if a task fails. Default is object attribute.
@@ -12041,6 +12160,7 @@ class FIBSEM_dataset:
             Default is False. If True and this had already been performed, use existing results.
     
         Returns:
+        ----------
         results_s4 : array of lists containing the results:
             [transformation_matrix, fnm_matches, npt, error_abs_mean, error_FWHMx, error_FWHMy, iteration]
             transformation_matrix : 2D float array
@@ -12123,7 +12243,7 @@ class FIBSEM_dataset:
         Calculate cumulative transformation matrix
         
         kwargs:
-        ---------
+        ----------
         data_dir : str
             Data directory (path). Default is object attribute.
         fnm_reg : str
@@ -12176,6 +12296,7 @@ class FIBSEM_dataset:
             If True, the data will be padded before transformation to avoid clipping. Default is object attribute.
 
         Returns:
+        ----------
         tr_matr_cum_residual, tr_matr_cum_xlsx_file : list of 2D arrays of float and the filename of the XLSX file with the transf matrix results
             Cumulative transformation matrices
         '''
@@ -12275,7 +12396,9 @@ class FIBSEM_dataset:
         verbose : boolean
             Display intermediate results. Default is False.
 
-        Returns deformation_fields, deformation_fields_bin_file
+        Returns:
+        ----------
+        deformation_fields, deformation_fields_bin_file
         '''
         tr_matr_cum_residual = kwargs.get("tr_matr_cum_residual", self.tr_matr_cum_residual)
         if len(self.tr_matr_cum_residual) == 0:
@@ -12309,11 +12432,12 @@ class FIBSEM_dataset:
         Save transformation attributes and parameters (including transformation matrices).
 
         kwargs:
-        -------
+        ----------
         dump_filename : string
             String containing the name of the binary dump for saving all attributes of the current instance of the FIBSEM_dataset object.
 
         Returns:
+        ----------
         dump_filename : string
         '''
         default_dump_filename = os.path.join(self.data_dir, self.fnm_reg.replace('.mrc', '_params.bin'))
@@ -12348,8 +12472,9 @@ class FIBSEM_dataset:
         -----------
         thr_npt : int
             Minimum number of matches. If the pair has less than this - it is reported as "suspicious" and is excluded.
-        kwargs
-        ---------
+
+        kwargs:
+        ----------
         data_dir : str
             Data directory (path). Default is object attribute.
         fnm_reg : str
@@ -12402,6 +12527,7 @@ class FIBSEM_dataset:
             If True, the data will be padded before transformation to avoid clipping. Default is object attribute.
 
         Returns:
+        ----------
         tr_matr_cum_residual : list of 2D arrays of float
             Cumulative transformation matrices
         '''
@@ -12481,7 +12607,7 @@ class FIBSEM_dataset:
         Transform the frames using the cumulative transformation matrix and save the data set into .mrc and/or .h5 file
         
         kwargs:
-        ---------
+        ----------
         DASK_client : If empty string ' ' (Default), local computations are performed.
         DASK_client_retries : int
             Number of allowed automatic retries if a task fails. Default is object attribute.
@@ -12583,6 +12709,7 @@ class FIBSEM_dataset:
             length of MRC write chunk. Default is 32.
         
         Returns:
+        ----------
         reg_summary, reg_summary_xlsx
             reg_summary : pandas DataFrame
             reg_summary = pd.DataFrame(np.vstack((npts, error_abs_mean, image_nsad, image_ncc, image_mi)
@@ -12838,7 +12965,7 @@ class FIBSEM_dataset:
         Show the box used for evaluating the registration quality.
 
         kwargs:
-        ---------
+        ----------
         frame_inds : array or list of int
             Array or list of frame indices to use to display the evaluation box.
             Default is [nfrs//10, nfrs//2, nfrs//10*9].
@@ -13011,7 +13138,7 @@ class FIBSEM_dataset:
         Estimate SNRs in Image A and Image B based on single-image SNR calculation using Auto-Correlation.  
 
         kwargs:
-        ---------
+        ----------
         frame_inds : list of int
             Array or list of frame indices to use to display the evaluation box. Default is [nfrs//10, nfrs//2, nfrs//10*9].
         zero_mean: boolean
@@ -13071,7 +13198,8 @@ class FIBSEM_dataset:
             Save PNG images of the intermediate processing statistics and final registration quality check. Default is False.
 
         Returns:
-            ImgB_fraction_xSNR, ImgB_fraction_ySNR, ImgB_fraction_rSNR
+        ----------
+        ImgB_fraction_xSNR, ImgB_fraction_ySNR, ImgB_fraction_rSNR
         
         '''
         fls = self.fls
@@ -13313,14 +13441,14 @@ class FIBSEM_dataset:
         Calculate NCC and SNR vs Image B fraction over a set of frames.
 
         Parameters:
-        ---------
+        ----------
         ImgB_fractions : list
             List of fractions to estimate the NCC and SNR.
         frame_inds : int array
             List or array array of frame indices to perform NCC / SNR evaluation.
         
         kwargs:
-        ---------
+        ----------
         DASK_client : DASK client
             If set to empty string '' (default), local computations are performed.
         DASK_client_retries : int 
@@ -13360,7 +13488,8 @@ class FIBSEM_dataset:
             Save PNG images of the intermediate processing statistics and final registration quality check.
 
         Returns:
-            SNRimpr_max_position, SNRimpr_max, ImgB_fractions, SNRs
+        ----------
+        SNRimpr_cc_max_position, SNRimpr_cc_max, ImgB_fractions, SNRs, rSNRFs
         '''
         
         DASK_client = kwargs.get('DASK_client', '')
@@ -13576,7 +13705,7 @@ class FIBSEM_dataset:
         Estimate transitions in the image, uses select_blobs_LoG_analyze_transitions(image, **kwargs). gleb.shtengel@gmail.com  06/2023 
 
         kwargs:
-        ---------
+        ----------
         DASK_client : DASK client. If set to empty string '' (default), local computations are performed
         DASK_client_retries : int
             Number of allowed automatic retries if a task fails. Default is 3.
@@ -13658,7 +13787,9 @@ class FIBSEM_dataset:
             save only good blob data (useful if the dataset is too big). Default is False.
         results_file_xlsx : file name for Excel workbook to save the results. Default is derived from self.fnm_reg +'_2D_blob_analysis_results.xlsx'
             
-        Returns: XY_transitions ; array[len(frame_inds), 4]
+        Returns:
+        ----------
+        XY_transitions ; array[len(frame_inds), 4]
             array consists of lines - one line for each frame in frame_inds
             each line has 4 elements: [Xpt1, Xpt2, Ypt1, Ypt2]
         '''
@@ -13866,11 +13997,11 @@ def plot_2D_blob_results(results_xlsx, **kwargs):
     estimate_resolution_blobs_2D analyzes the transitions in the image, uses select_blobs_LoG_analyze_transitions(frame_eval, **kwargs). gleb.shtengel@gmail.com  04/2025 
 
     Parameters:
-    ---------
+    ----------
     results_file_xlsx : file name of Excel workbook of the results created by estimate_resolution_blobs_2D
     
     kwargs:
-    ---------
+    ----------
     save_png : boolean
         Save the image into PNG file. Default is False.
     save_fname : string
@@ -14004,11 +14135,11 @@ def plot_2D_blob_examples(results_xlsx, **kwargs):
     estimate_resolution_blobs_2D analyzes the transitions in the image, uses select_blobs_LoG_analyze_transitions(frame_eval, **kwargs). gleb.shtengel@gmail.com  04/2025 
 
     Parameters:
-    ---------
+    ----------
     results_file_xlsx : file name of Excel workbook of the results created by estimate_resolution_blobs_2D
     
     kwargs:
-    ---------
+    ----------
     transitions : list of strings
         List of transitions to analyze. Defaults is ['X', 'Y']. Allowed options are: 'X', 'Y', 'X1', 'Y1', 'X2', 'Y2'
     cols : list of colors
@@ -14222,13 +14353,13 @@ def plot_2D_blob_examples_single(img, results_xlsx, **kwargs):
     estimate_resolution_blobs_2D analyzes the transitions in the image, uses select_blobs_LoG_analyze_transitions(frame_eval, **kwargs). gleb.shtengel@gmail.com  04/2025 
 
     Parameters:
-    ---------
+    ----------
     img : 2D array
         image
     results_file_xlsx : file name of Excel workbook of the results created by estimate_resolution_blobs_2D
     
     kwargs:
-    ---------
+    ----------
     save_png : boolean
         Save the image into PNG file. Default is False.
     save_fname : string
@@ -14342,11 +14473,11 @@ def plot_3D_blob_results(results_xlsx, **kwargs):
     select_blobs_LoG_analyze_transitions_3D analyzes the transitions in the volume, uses blobs_LoG. gleb.shtengel@gmail.com  10/2025 
 
     Parameters:
-    ---------
+    ----------
     results_file_xlsx : file name of Excel workbook of the results created by select_blobs_LoG_analyze_transitions_3D
     
     kwargs:
-    ---------
+    ----------
     transitions : list of strings
         List of transitions to analyze. Defaults is ['X', 'Y', 'Z']. Allowed options are: 'X', 'Y', 'Z', 'X1', 'Y1', 'Z1', 'X2', 'Y2', 'Z2'
     cols : list of colors
@@ -14517,12 +14648,12 @@ def plot_3D_blob_examples(volume, results_file_xlsx, **kwargs):
     select_blobs_LoG_analyze_transitions_3D analyzes the transitions in the volume, uses blobs_LoG. gleb.shtengel@gmail.com  10/2025 
 
     Parameters:
-    ---------
+    ----------
     volume : 3D array
     results_file_xlsx : file name of Excel workbook of the results created by select_blobs_LoG_analyze_transitions_3D
     
     kwargs:
-    ---------
+    ----------
     save_png : boolean
         save the image into PNG file. Default is False.
     save_fname : string
