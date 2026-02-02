@@ -2032,6 +2032,9 @@ class FIBSEM_mosaic_dataset:
                     'interpolation' : interpolation,
                     'fill_value' : fill_value,
                     'verbose' : verbose}
+        if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Will perfrom SIFT evaluation using following parameters (kpt_kwargs):')
+            print(kpt_kwargs)
 
         fl1 = self.fls.ravel()[index_pair[0]]
         fl2 = self.fls.ravel()[index_pair[1]]
@@ -2092,7 +2095,7 @@ class FIBSEM_mosaic_dataset:
             print('SIFT_contrastThreshold={:.3f},  SIFT_sigma={:.3f}'.format(SIFT_contrastThreshold, SIFT_sigma))
             print('RANSAC_initial_fraction = {:.4f}, max_iter={:d}'.format(RANSAC_initial_fraction, max_iter))
             print('drmax={:.3f}'.format(drmax))
-            print('# of keypoints = {:d} and {:d}, # of matches = {:d}'.format(n_kpts1, n_kpts2, n_matches))
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   # of keypoints = {:d} and {:d}, # of matches = {:d}'.format(n_kpts1, n_kpts2, n_matches))
 
             fs=12
             symsize = 2
