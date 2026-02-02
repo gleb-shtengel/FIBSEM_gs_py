@@ -146,7 +146,7 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
     A class representing single FIB-SEM data frame. ©G.Shtengel 10/2021 gleb.shtengel@gmail.com.
     Contains the info/settings on a single FIB-SEM data frame and the procedures that can be performed on it.
 
-    Attributes (only some more important are listed here)
+    Attributes (only some more important are listed here):
     ----------
     fname : str
         filename of the individual data frame
@@ -173,8 +173,8 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
     YResolution : int
         number of pixels - frame size in vertical direction
 
-    Methods
-    -------
+    Methods:
+    ----------
     print_header()
         Prints a formatted content of the file header.
     display_images()
@@ -208,7 +208,7 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
     A class representing a FIB-SEM data set. ©G.Shtengel 10/2021 gleb.shtengel@gmail.com.
     Contains the info/settings on the FIB-SEM dataset and the procedures that can be performed on it.
 
-    Attributes
+    Attributes:
     ----------
     fls : array of str
         filenames for the individual data frames in the set
@@ -320,8 +320,8 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
             evaluation_box = [left, width, top, height] boundaries of the box used for evaluating the image registration.
             if evaluation_box is not set or evaluation_box = [0, 0, 0, 0], the entire image is used.
 
-    Methods
-    -------
+    Methods:
+    ----------
     SIFT_evaluation(eval_fls = [], **kwargs)
         Evaluate SIFT settings and perfromance of few test frames (eval_fls = [], **kwargs).
     convert_raw_data_to_tif_files(**kwargs)
@@ -352,3 +352,61 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
         Estimate transitions in the image, uses select_blobs_LoG_analyze_transitions(**kwargs).
 
 
+
+## class FIBSEM_mosaic_dataset: 
+    '''
+    A class representing a stack of FIB-SEM mosaics (montages) - multiple z-panes consisting of multiple tiles.
+    Contains the info/settings on the FIB-SEM montage and the procedures that can be performed on it.
+    ©G.Shtengel 01/2026 gleb.shtengel@gmail.com.
+
+    Attributes:
+    ----------
+    Mostly the same as for class FIBSEM_dataset.
+    Unique Attributes:
+    shape : tuple of two int (self.ny_tiles, self.nX_tiles)
+    ny_tiles : int
+        # of rows per layer (# of tiles along Y-axis)
+    nx_tiles : int
+        # of columns per layer(# of tiles along X-axis)
+    nz_tiles: int
+        # of layers (# of tiles along Z-axis)
+    intralayer_weight : float, default 1.0
+        Weight for pairwise constraints within a single Z-layer.
+    interlayer_weight : float, default 100.0
+        Weight for pairwise constraints for tiles between adjacent Z-layers.(100–10000 typical).
+    add_reverse_edges : bool, default False
+        If True, adds both (i->j) and (j->i) with same weight (increases robustness).
+    anchor_ids : list or array of indices of the anchor tiles.
+
+
+    Methods:
+    ----------
+    save_parameters(**kwargs):
+        Save transformation attributes and parameters (including transformation matrices)
+
+    evaluate_FIBSEM_statistics(**kwargs)
+        Evaluates parameters of FIBSEM data set (data Min/Max, Working Distance, Milling Y Voltage, FOV center positions).
+
+    extract_keypoints(**kwargs):
+        Extract Key-Points and Descriptors
+
+    determine_transformations_SIFT(self, **kwargs)
+        Determine transformation matrices for frame pairs using SIFT. 
+
+    SIFT_evaluation(index_pair, pair_margins, **kwargs)
+        Evaluate SIFT performance on a given index_pair.
+
+    determine_transformations_ECC(**kwargs)
+        Determine transformation matrices for frame pairs using ECC. Uses find_Transform_ECC(img1, img2, **kwargs).
+
+    solve_stack_stitching(**kwargs)
+        Solve mosaic stack stitching (perform bundle optimization).
+
+    generate_transformation_report(**kwargs)
+        Generate Report Plot for transformation summary.
+
+    assemble_layer_mosaic(layer_id, **kwargs)
+        Assemble layer mosaic based on transformation matrices for each tile. Options to save snapshot, save mosaic as FIBSEM_frame (dat file) or save images as JPG or PNG.
+
+    save_stack(**kwargs)
+        Assemble all layers based on transformation matrices for each tile and save them into stack.

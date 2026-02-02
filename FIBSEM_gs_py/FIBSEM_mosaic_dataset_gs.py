@@ -902,7 +902,7 @@ class FIBSEM_mosaic_dataset:
     ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
     Contains the info/settings on the FIB-SEM montage and the procedures that can be performed on it.
 
-    Attributes
+    Attributes:
     ----------
     fls : array of str
         filenames for the individual data frames in the set
@@ -1026,8 +1026,8 @@ class FIBSEM_mosaic_dataset:
             evaluation_box = [top, height, left, width] boundaries of the box used for evaluating the image registration.
             if evaluation_box is not set or evaluation_box = [0, 0, 0, 0], the entire image is used.
 
-    Methods
-    -------
+    Methods:
+    ----------
     save_parameters(**kwargs):
         Save transformation attributes and parameters (including transformation matrices)
 
@@ -1039,7 +1039,7 @@ class FIBSEM_mosaic_dataset:
 
     determine_transformations_SIFT(self, **kwargs)
         Determine transformation matrices for frame pairs using SIFT. 
-    
+
     SIFT_evaluation(index_pair, pair_margins, **kwargs)
         Evaluate SIFT performance on a given index_pair.
 
@@ -1048,7 +1048,7 @@ class FIBSEM_mosaic_dataset:
 
     solve_stack_stitching(**kwargs)
         Solve mosaic stack stitching (perform bundle optimization).
-    
+
     generate_transformation_report(**kwargs)
         Generate Report Plot for transformation summary.
 
@@ -1057,7 +1057,7 @@ class FIBSEM_mosaic_dataset:
 
     save_stack(**kwargs)
         Assemble all layers based on transformation matrices for each tile and save them into stack.
-    
+
     '''
     
     def __init__(self, fls, **kwargs):
@@ -1073,7 +1073,6 @@ class FIBSEM_mosaic_dataset:
         ---------
         ftype : int
             File type (0 - Shan Xu's .dat, 1 - tif).
-        
         memory_profiling : boolean
             Perform memory profiling during the data load and output it. Default is False.
         intralayer_weight : float, default 1.0
@@ -1082,7 +1081,10 @@ class FIBSEM_mosaic_dataset:
             Weight for pairwise constraints for tiles between adjacent Z-layers.(100–10000 typical).
         add_reverse_edges : bool, default False
             If True, adds both (i->j) and (j->i) with same weight (increases robustness).
-        anchor_ids : list or array of indices of the anchor tiles.
+        shape : tuple of two int (self.ny_tiles, self.nX_tiles)
+            The program will try to auto-determine the sape, but it can be set explicitly.
+                # self.ny_tiles  - # of rows per layer (# of tiles along Y-axis)
+                # self.nx_tiles  - # of columns per layer(# of tiles along X-axis)
         EightBit : int
             If 1 then the data is assumed uint8, otherwise int16
         recall_parameters : boolean
