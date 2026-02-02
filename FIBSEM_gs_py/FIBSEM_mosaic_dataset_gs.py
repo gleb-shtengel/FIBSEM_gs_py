@@ -2795,6 +2795,8 @@ class FIBSEM_mosaic_dataset:
             Cropping value for cropping the image from the left side (used along with deformation_filed or on its own). Default is 0 - no cropping.
         fill_value : int
             The value to assign to pixels outside the transformed image bounds. Default is -10000.
+        image_name : str
+            Image name ('RawImageA' or 'RawImageB'). Default is 'RawImageA'.
         DASK_client : DASK client. If set to empty string '' (default), local computations are performed.
         DASK_client_retries : int (default to 3)
             Number of allowed automatic retries if a task fails. Default is object attribute.
@@ -2809,6 +2811,7 @@ class FIBSEM_mosaic_dataset:
         DASK_client = kwargs.get('DASK_client', '')
         fnm_montage = kwargs.get('fnm_montage', self.fnm_montage)
         fnm_types = kwargs.get("fnm_types", ['mrc'])
+        image_name = kwargs.get('image_name', 'RawImageA')
         if hasattr(self, voxel_size):
             voxel_size = kwargs.get("voxel_size", self.voxel_size)
         else:
@@ -2865,7 +2868,7 @@ class FIBSEM_mosaic_dataset:
             for layer_id in layer_ids:
                 fls_layer = self.fls[layer_id].ravel()
                 tr_matr_layer = self.tr_matr[layer_id]
-                params_mult.append([layer_id, fls_layer, tr_matr_layer, weight_min, weight_max, fill_value, self.shape, self.Xsize, self.Ysize, left_crop, verbose])
+                params_mult.append([layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, self.shape, self.Xsize, self.Ysize, left_crop, verbose])
 
             if use_DASK:
                 shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)
