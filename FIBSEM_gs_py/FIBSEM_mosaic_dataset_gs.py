@@ -1200,7 +1200,6 @@ class FIBSEM_mosaic_dataset:
         self.BrightnessB = test_frame.BrightnessB
         self.ContrastA = test_frame.ContrastA
         self.ContrastB = test_frame.ContrastB
-        self.BrightnessB = test_frame
         self.Sample_ID = kwargs.get("Sample_ID", test_frame.Sample_ID)
         self.EightBit = kwargs.get("EightBit", 1)
         self.DASK_client_retries = kwargs.get("DASK_client_retries", 3)
@@ -2713,7 +2712,7 @@ class FIBSEM_mosaic_dataset:
                     image_fname_loc = imf1 + '_' + self.DetA.strip('\x00') + imf2
                 fig.savefig(image_fname_loc, dpi=dpi)
 
-        return layer_mosaic, layer_id, layer_mosaic_weights, xy_limits
+        return layer_mosaics, layer_id, layer_mosaic_weights, xy_limits
 
 
     def save_stack(self, **kwargs):
