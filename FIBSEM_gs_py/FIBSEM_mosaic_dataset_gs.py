@@ -2809,8 +2809,11 @@ class FIBSEM_mosaic_dataset:
         DASK_client = kwargs.get('DASK_client', '')
         fnm_montage = kwargs.get('fnm_montage', self.fnm_montage)
         fnm_types = kwargs.get("fnm_types", ['mrc'])
-        voxel_size_default = np.rec.array((8.0, 8.0, 8.0), dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4')])
-        voxel_size = kwargs.get("voxel_size", voxel_size_default)
+        if hasattr(self, voxel_size):
+            voxel_size = kwargs.get("voxel_size", self.voxel_size)
+        else:
+            voxel_size_default = np.rec.array((8.0, 8.0, 8.0), dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4')])
+            voxel_size = kwargs.get("voxel_size", voxel_size_default)
         voxel_size_angstr = voxel_size.copy()
         voxel_size_angstr.x = voxel_size_angstr.x * 10.0
         voxel_size_angstr.y = voxel_size_angstr.y * 10.0
