@@ -1073,6 +1073,14 @@ class FIBSEM_mosaic_dataset:
         ---------
         ftype : int
             File type (0 - Shan Xu's .dat, 1 - tif).
+        data_dir : str
+            Data directory (path).
+        fnm_mosaic_stack : str
+            Filename for registered mosaic stack. Default is os.path.splitext(os.path.split(self.fls.ravel()[0])[1])[0][0:-5] + 'mosaic_stack.mrc'
+        recall_parameters : boolean
+            If True and dump_filename kwarg points to a valid binary file, will recall the dataset saved into that dump_filename. Default is False.
+        dump_filename : str
+            Filename (full path) to a binary dump file with saved dataset attributes. If dump_filename points to a valid binary file the data set saved in that file will be recalled. Default is empty string ''.
         memory_profiling : boolean
             Perform memory profiling during the data load and output it. Default is False.
         intralayer_weight : float, default 1.0
@@ -1087,12 +1095,6 @@ class FIBSEM_mosaic_dataset:
                 # self.nx_tiles  - # of columns per layer(# of tiles along X-axis)
         EightBit : int
             If 1 then the data is assumed uint8, otherwise int16
-        recall_parameters : boolean
-            If True and dump_filename kwarg points to a valid binary file, will recall the dataset saved into that dump_filename. Default is False.
-        dump_filename : str
-            Filename (full path) to a binary dump file with saved dataset attributes. If dump_filename points to a valid binary file the data set saved in that file will be recalled. Default is empty string ''.
-        data_dir : str
-            Data directory (path).
         DASK_client_retries : int
             Number of allowed automatic retries if a task fails. Default is 3. Default is 3.
         Sample_ID : str
@@ -1274,12 +1276,12 @@ class FIBSEM_mosaic_dataset:
                                                                     #    cv2.INTER_LANCZOS4  Uses a Lanczos kernel with an 8x8 neighborhood, providing the best quality, but it is the slowest method.
 
         try:
-            build_fnm_montage = os.path.splitext(os.path.split(self.fls.ravel()[0])[1])[0][0:-5] + 'montage_stack.mrc'
+            fnm_mosaic_stack_default = os.path.splitext(os.path.split(self.fls.ravel()[0])[1])[0][0:-5] + 'mosaic_stack.mrc'
         except:
-            build_fnm_montage = 'montage_stack.mrc'
-        self.fnm_montage = kwargs.get("fnm_montage", build_fnm_montage)
+            fnm_mosaic_stack_default = 'mosaic_stack.mrc'
+        self.fnm_mosaic_stack = kwargs.get('fnm_mosaic_stack', fnm_mosaic_stack_default)
         self.dtp = kwargs.get("dtp", np.int16)
-        kwargs.update({'data_dir' : self.data_dir, 'fnm_montage' : self.fnm_montage, 'dtp' : self.dtp})
+        kwargs.update({'data_dir' : self.data_dir, 'fnm_mosaic_stack' : self.fnm_mosaic_stack, 'dtp' : self.dtp})
                
         FirstPixels = []
         for fl in fls[0].ravel():
@@ -1446,7 +1448,7 @@ class FIBSEM_mosaic_dataset:
         ----------
             dump_filename : string
         '''
-        default_dump_filename = os.path.join(self.data_dir, self.fnm_montage.replace('.mrc', '_params.bin'))
+        default_dump_filename = os.path.join(self.data_dir, self.fnm_mosaic_stack.replace('.mrc', '_params.bin'))
         dump_filename = kwargs.get("dump_filename", default_dump_filename)
 
         pickle.dump(self.__dict__, open(dump_filename, 'wb'))
@@ -1521,7 +1523,7 @@ class FIBSEM_mosaic_dataset:
         thr_max = kwargs.get("thr_max", self.thr_max)
         nbins = kwargs.get("nbins", self.nbins)
         fit_params = kwargs.get('fit_params', ['SG', 3, 1])
-        FIBSEM_Data_xlsx_default = os.path.join(data_dir, os.path.splitext(self.fnm_montage)[0] + '_FIBSEM_Data.xlsx')
+        FIBSEM_Data_xlsx_default = os.path.join(data_dir, os.path.splitext(self.fnm_mosaic_stack)[0] + '_FIBSEM_Data.xlsx')
         FIBSEM_Data_xlsx = kwargs.get('FIBSEM_Data_xlsx', FIBSEM_Data_xlsx_default)
         use_existing_data = kwargs.get('use_existing_data', False)
 
@@ -2776,8 +2778,8 @@ class FIBSEM_mosaic_dataset:
         
         kwargs:
         ----------
-        fnm_montage : string
-            Silename to save the data. Default is object attribute self.fnm_montage
+        fnm_mosaic_stack : string
+            Silename to save the data. Default is object attribute self.fnm_mosaic_stack
         fnm_types : list of strings.
             File type(s) for output data. Options are: ['h5', 'mrc'].
             Defauls is ['mrc']. 'h5' is BigDataViewer HDF5 format, uses npy2bdv package. Use empty list if do not want to save the data.
@@ -2809,7 +2811,7 @@ class FIBSEM_mosaic_dataset:
         
         '''
         DASK_client = kwargs.get('DASK_client', '')
-        fnm_montage = kwargs.get('fnm_montage', self.fnm_montage)
+        fnm_mosaic_stack = kwargs.get('fnm_mosaic_stack', self.fnm_mosaic_stack)
         fnm_types = kwargs.get("fnm_types", ['mrc'])
         image_name = kwargs.get('image_name', 'RawImageA')
         if hasattr(self, 'voxel_size'):
@@ -2855,14 +2857,14 @@ class FIBSEM_mosaic_dataset:
 
         fnms_saved = []
         if 'mrc' in fnm_types:
-            mrc_filename = os.path.splitext(fnm_montage)[0] + '.mrc'
+            mrc_filename = os.path.splitext(fnm_mosaic_stack)[0] + '.mrc'
             fnms_saved.append(mrc_filename)
             stack_shape = (self.nz_tiles, self.Ysize, self.Xsize-left_crop)
             mrc_new = mrcfile.new_mmap(mrc_filename, shape = stack_shape, mrc_mode=mrc_mode, overwrite=True)
             mrc_new.voxel_size = voxel_size_angstr
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Saving the registered stack into the file: ', mrc_filename)
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Stack dimensions nz, ny, nx (pixels): {:d} x {:d} x {:d}'.format(*stack_shape))
-            print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Result Voxel Size (Angstroms): {:2f} x {:2f} x {:2f}'.format(voxel_size_angstr.x, voxel_size_angstr.y, voxel_size_angstr.z))
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Stack Voxel Size (Angstroms): {:2f} x {:2f} x {:2f}'.format(voxel_size_angstr.x, voxel_size_angstr.y, voxel_size_angstr.z))
             layer_ids = np.arange(self.nz_tiles)
             params_mult = []
             for layer_id in layer_ids:
