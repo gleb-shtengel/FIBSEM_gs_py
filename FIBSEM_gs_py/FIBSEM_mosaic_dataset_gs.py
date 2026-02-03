@@ -2074,7 +2074,7 @@ class FIBSEM_mosaic_dataset:
         path_base, f1 = os.path.split(fname1)
         _, f2 = os.path.split(fname2)
         fnm_matches = os.path.join(path_base, f1.replace('_kpdes.bin', '_')+f2.replace('_kpdes.bin', '_matches.bin'))
-        save_filename_default = os.path.join(self.data_dir, os.path.split(fnm_matches)[1].replace('_matches.bin') + '_SIFT_test.png')
+        save_filename_default = os.path.join(self.data_dir, os.path.split(fnm_matches)[1].replace('_matches.bin', '_SIFT_test.png'))
         save_filename = kwargs.get('save_filename', save_filename_default)
         if verbose:
             print('Key-points files:')
