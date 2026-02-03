@@ -2812,7 +2812,7 @@ class FIBSEM_mosaic_dataset:
         fnm_montage = kwargs.get('fnm_montage', self.fnm_montage)
         fnm_types = kwargs.get("fnm_types", ['mrc'])
         image_name = kwargs.get('image_name', 'RawImageA')
-        if hasattr(self, voxel_size):
+        if hasattr(self, 'voxel_size'):
             voxel_size = kwargs.get("voxel_size", self.voxel_size)
         else:
             voxel_size_default = np.rec.array((8.0, 8.0, 8.0), dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4')])
