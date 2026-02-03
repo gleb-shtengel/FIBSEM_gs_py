@@ -1094,6 +1094,8 @@ class FIBSEM_mosaic_dataset:
                 # self.nx_tiles  - # of columns per layer(# of tiles along X-axis)
         EightBit : int
             If 1 then the data is assumed uint8, otherwise int16
+        U8_conversion : str
+            Range selection for U8 conversion. Options are: 'global', 'sliding', and 'local'. Default is 'local'.
         DASK_client_retries : int
             Number of allowed automatic retries if a task fails. Default is 3. Default is 3.
         Sample_ID : str
@@ -1206,6 +1208,7 @@ class FIBSEM_mosaic_dataset:
         self.intralayer_weight = kwargs.get('intralayer_weight', 1.0)
         self.interlayer_weight = kwargs.get('interlayer_weight', 100.0)
         self.add_reverse_edges = kwargs.get('add_reverse_edges', False)
+        self.U8_conversion = kwargs.get('U8_conversion', 'local')
         test_frame = FIBSEM_frame(self.fls.ravel()[0], ftype = self.ftype, calculate_scaled_images=False, read_header_only=True)
         self.MachineID = test_frame.MachineID
         self.FileVersion = test_frame.FileVersion
@@ -1618,6 +1621,8 @@ class FIBSEM_mosaic_dataset:
             Deformation field for distortion corrections to be executed before SIFT. Default is np.nan - no distortion correction
         nbins : int
             Number of histogram bins for building the PDF and CDF. Default is object attribute.
+        U8_conversion : str
+            Range selection for U8 conversion. Options are: 'global', 'sliding', and 'local'. Default is 'local'.
         data_minmax : list of 5 parameters
             minmax_xlsx : str
                 path to Excel file with Min/Max data.
@@ -1676,7 +1681,13 @@ class FIBSEM_mosaic_dataset:
         thr_min = kwargs.get("thr_min", self.thr_min)
         thr_max = kwargs.get("thr_max", self.thr_max)
         nbins = kwargs.get("nbins", self.nbins)
-        data_minmax = kwargs.get("data_minmax", self.data_minmax)
+        if hasattr(self, 'U8_conversion'):
+            U8_conversion = kwargs.get('U8_conversion', self.U8_conversion)
+        else:
+            U8_conversion = kwargs.get('U8_conversion', 'local')
+        if U8_conversion != 'local':
+            data_minmax = kwargs.get("data_minmax", self.data_minmax)
+            minmax_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding = data_minmax
         SIFT_nfeatures = kwargs.get("SIFT_nfeatures", self.SIFT_nfeatures)
         SIFT_nOctaveLayers = kwargs.get("SIFT_nOctaveLayers", self.SIFT_nOctaveLayers)
         SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", self.SIFT_contrastThreshold)
@@ -1686,8 +1697,7 @@ class FIBSEM_mosaic_dataset:
         interpolation = kwargs.get('interpolation', self.interpolation)
         fill_value = kwargs.get('fill_value', 0)
         use_existing_data = kwargs.get('use_existing_data', False)
-
-        minmax_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding = data_minmax
+        
         kpt_kwargs = {'ftype' : ftype,
                     'thr_min' : thr_min,
                     'thr_max' : thr_max,
@@ -1701,7 +1711,16 @@ class FIBSEM_mosaic_dataset:
                     'interpolation' : interpolation,
                     'fill_value' : fill_value}
 
-        params_s3 = [[fl, data_min_glob, data_max_glob, kpt_kwargs] for fl in self.fls.ravel()]        
+        if U8_conversion == 'sliding':
+            params_s3 = []
+            for j, fl in enumerate(self.fls.ravel()):
+                params_s3. append([fl, data_min_sliding[j], data_max_sliding[j], kpt_kwargs])
+        else:
+            if U8_conversion == 'global': 
+                params_s3 = [[fl, data_min_glob, data_max_glob, kpt_kwargs] for fl in self.fls.ravel()]
+            else:
+                params_s3 = [[fl, -1, -1, kpt_kwargs] for fl in self.fls.ravel()]
+  
         if use_DASK:
             shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)
             futures_s3 = DASK_client.map(extract_keypoints_descr_files, params_s3, deformation_field = shared_data_future, retries = DASK_client_retries)
