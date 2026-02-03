@@ -1987,7 +1987,6 @@ class FIBSEM_mosaic_dataset:
         thr_min = kwargs.get("thr_min", self.thr_min)
         thr_max = kwargs.get("thr_max", self.thr_max)
         nbins = kwargs.get("nbins", self.nbins)
-        data_minmax = kwargs.get("data_minmax", self.data_minmax)
         SIFT_nfeatures = kwargs.get("SIFT_nfeatures", self.SIFT_nfeatures)
         SIFT_nOctaveLayers = kwargs.get("SIFT_nOctaveLayers", self.SIFT_nOctaveLayers)
         SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", self.SIFT_contrastThreshold)
@@ -2019,7 +2018,15 @@ class FIBSEM_mosaic_dataset:
         verbose = kwargs.get('verbose', True)
         dpi = kwargs.get('dpi', 600)
 
-        minmax_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding = data_minmax
+        fl1 = self.fls.ravel()[index_pair[0]]
+        fl2 = self.fls.ravel()[index_pair[1]]
+
+        minmax = []
+        for j,f in enumerate([fl1, fl2]):
+            minmax.append(FIBSEM_frame(f, ftype=ftype, calculate_scaled_images=False).get_image_min_max(image_name = 'RawImageA', thr_min=thr_min, thr_max=thr_max, nbins=nbins))
+        dmin = np.min(np.array(minmax))
+        dmax = np.max(np.array(minmax))
+
         kpt_kwargs = {'ftype' : ftype,
                     'thr_min' : thr_min,
                     'thr_max' : thr_max,
@@ -2039,9 +2046,7 @@ class FIBSEM_mosaic_dataset:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Will perfrom SIFT evaluation using following parameters (kpt_kwargs):')
             print(kpt_kwargs)
 
-        fl1 = self.fls.ravel()[index_pair[0]]
-        fl2 = self.fls.ravel()[index_pair[1]]
-        params_s3 = [[fl, data_min_glob, data_max_glob, kpt_kwargs] for fl in [fl1, fl2]]
+        params_s3 = [[fl, dmin, dmax, kpt_kwargs] for fl in [fl1, fl2]]
         fnms_kpts = []
         for j, param_s3 in enumerate(tqdm(params_s3, desc='Extracting Key Points and Descriptors: ', display=verbose)):
             fnms_kpts.append(extract_keypoints_descr_files(param_s3, deformation_field))
