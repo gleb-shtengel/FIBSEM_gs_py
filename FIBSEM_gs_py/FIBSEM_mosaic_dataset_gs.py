@@ -1902,19 +1902,19 @@ class FIBSEM_mosaic_dataset:
                     if verbose:
                         print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   An error occurred: {}'.format(e))
                         print('transformations_result:  ', transformations_result)
-            if verbose:
-                L = self.nz_tiles
-                M = self.ny_tiles
-                N = self.nx_tiles
-                V = L * M * N                     # Total number of tiles
-                nh = L * M * (N - 1)              # Total number of left-right intra-layer pairs
-                nv = L * (M - 1) * N              # Total number of up-down intra-layer pairs
-                nl = (L - 1) * M * N              # Total number of inter-layer pairs
-                C = nh + nv + nl                  # Total number of of pairs (pair-wise translations)
-                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intra-layer horisontal matches :', np.mean(self.SIFT_nmatches[0:nh]).astype(np.int64))
-                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intra-layer vertical matches :', np.mean(self.SIFT_nmatches[nh:nh+nv]).astype(np.int64))
-                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for inter-layer matches :', np.mean(self.SIFT_nmatches[nh+nv:]).astype(np.int64))
-                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Valid SIFT transformation established: ', self.SIFT_transformation_valid)
+
+            L = self.nz_tiles
+            M = self.ny_tiles
+            N = self.nx_tiles
+            V = L * M * N                     # Total number of tiles
+            nh = L * M * (N - 1)              # Total number of left-right intra-layer pairs
+            nv = L * (M - 1) * N              # Total number of up-down intra-layer pairs
+            nl = (L - 1) * M * N              # Total number of inter-layer pairs
+            C = nh + nv + nl                  # Total number of of pairs (pair-wise translations)
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intra-layer horisontal matches :', np.mean(self.SIFT_nmatches[0:nh]).astype(np.int64))
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intra-layer vertical matches :', np.mean(self.SIFT_nmatches[nh:nh+nv]).astype(np.int64))
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for inter-layer matches :', np.mean(self.SIFT_nmatches[nh+nv:]).astype(np.int64))
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   {:d} out of total of {:d} SIFT transformations are valid'.format(np.sum(self.SIFT_transformation_valid)), C)
         return transformations_results_3D
 
 
