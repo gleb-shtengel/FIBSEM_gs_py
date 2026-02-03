@@ -895,7 +895,6 @@ def generate_report_data_minmax_montage_xlsx(minmax_xlsx_file, **kwargs):
     return save_fname
 
 
-
 class FIBSEM_mosaic_dataset: 
     '''
     A class representing a stack of FIB-SEM mosaics (montages) - multiple z-panes consisting of multiple tiles.
@@ -1924,7 +1923,6 @@ class FIBSEM_mosaic_dataset:
             CDF threshold for determining the minimum data value. Default is object attribute.
         thr_max : float
             CDF threshold for determining the maximum data value. Default is object attribute.
-        
         nbins : int
             Number of histogram bins for building the PDF and CDF. Default is object attribute.
         data_minmax : list of 5 parameters
@@ -1969,7 +1967,10 @@ class FIBSEM_mosaic_dataset:
             Interpolation type as defined in CV2. Default is object attribute (default for that is cv2.INTER_LINEAR).
         fill_value = 0.0
             Fill value for outside pixeld in cv2.remap. Default is 0.
-
+        save_res_png : boolean
+            If True (Default), the results are savef into a PNG file
+        save_filename : str
+            A path for saving PNG data. Default is auto-generated as os.path.join(self.data_dir, os.path.split(fnm_matches)[1].replace('_matches.bin') + '_SIFT_test.png').
         Returns:
         ----------
         fnm_deformed1, fnm_deformed2, transformations_result
@@ -2073,6 +2074,17 @@ class FIBSEM_mosaic_dataset:
         path_base, f1 = os.path.split(fname1)
         _, f2 = os.path.split(fname2)
         fnm_matches = os.path.join(path_base, f1.replace('_kpdes.bin', '_')+f2.replace('_kpdes.bin', '_matches.bin'))
+        save_filename_default = os.path.join(self.data_dir, os.path.split(fnm_matches)[1].replace('_matches.bin') + '_SIFT_test.png')
+        save_filename = kwargs.get('save_filename', save_filename_default)
+        if verbose:
+            print('Key-points files:')
+            print(fname1)
+            print(fname1)
+            print('Deformed Image files:')
+            print(fnm_deformed1)
+            print(fnm_deformed2)
+            print('Key-point natches file:')
+            print(fnm_matches)
         dt_kwargs['fnm_matches'] = fnm_matches
         index_loc0, index_loc1 = np.mod(index_pair, self.nx_tiles*self.ny_tiles)
         FirstPixels_delta = self.FirstPixels[index_loc1] - self.FirstPixels[index_loc0]
@@ -2147,13 +2159,15 @@ class FIBSEM_mosaic_dataset:
                 axs[0].text(0.01, 1.00 - 0.195*frame.XResolution/frame.YResolution, '# of keypoints = {:d} and {:d}, # of matches ={:d}'.format(n_kpts1, n_kpts2, n_matches), fontsize=fsize_text, transform=axs[0].transAxes) 
                 axs[0].text(0.01, 1.00 - 0.215*frame.XResolution/frame.YResolution, 'mean_error = {:.3f}, error_FWHMx = {:3f},  error_FWHMy={:3f}'.format(error_abs_mean, error_FWHMx, error_FWHMy), fontsize=fsize_text, transform=axs[0].transAxes) 
 
-
             for title, ax in zip([fnm_deformed1, fnm_deformed2], axs):
                 ax.set_title(title, fontsize = fsize_text)
                 ax.axis(False)
 
             if save_res_png:
-                save_filename = kwargs.get('save_filename', fnm_matches.replace('_matches.bin', '_SIFT_test.png'))
+                axs[0]text(-0.12, -0.17, save_filename, fontsize = 5, transform=axs[0].transAxes)
+                if verbose:
+                    print('Summary Image is saved into file:')
+                    print(save_filename)
                 fig.savefig(save_filename, dpi=dpi)
 
         return fnm_deformed1, fnm_deformed2, transformations_result
