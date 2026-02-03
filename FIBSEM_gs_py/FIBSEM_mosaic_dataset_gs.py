@@ -2413,7 +2413,10 @@ class FIBSEM_mosaic_dataset:
         dpi = kwargs.get('dpi', 300)
         data_dir = kwargs.get('data_dir', self.data_dir)
         if save_png:
-            save_fname = kwargs.get ('save_fname', os.path.join(data_dir, 'Relative_Tile_Shifts.png'))
+            try:
+                save_fname = kwargs.get ('save_fname', os.path.splitext(fnm_mosaic_stack)[0] + '_Relative_Tile_Shifts.png')
+            except
+                save_fname = kwargs.get ('save_fname', os.path.join(data_dir, 'Relative_Tile_Shifts.png'))
         else:
             save_fname = 'Image not saved'
         Sample_ID = kwargs.get('Sample_ID', self.Sample_ID)
@@ -2451,7 +2454,7 @@ class FIBSEM_mosaic_dataset:
         axs[1].set_ylabel('Realtive Y-Shift (pix)')
         axs[2].set_ylabel('Realtive Shift (pix)')
         if save_png:
-            axs[2].text(-0.1, -0.18, save_fname, transform=axs[2].transAxes, fontsize=6)
+            axs[2].text(-0.1, -0.18, save_fname, transform=axs[2].transAxes, fontsize=5)
             fig.savefig(save_fname, dpi=dpi)
         return save_fname
 

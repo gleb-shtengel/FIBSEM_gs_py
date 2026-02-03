@@ -363,6 +363,10 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
     ----------
     Mostly the same as for class FIBSEM_dataset.
     Unique Attributes:
+    data_dir : str
+        Data directory (path).
+    fnm_mosaic_stack : str
+        Filename for registered mosaic stack.
     shape : tuple of two int (self.ny_tiles, self.nX_tiles)
     ny_tiles : int
         # of rows per layer (# of tiles along Y-axis)
