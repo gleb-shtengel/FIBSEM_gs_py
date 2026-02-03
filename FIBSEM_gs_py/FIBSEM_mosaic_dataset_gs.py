@@ -2164,7 +2164,7 @@ class FIBSEM_mosaic_dataset:
                 ax.axis(False)
 
             if save_res_png:
-                axs[0]text(-0.12, -0.17, save_filename, fontsize = 5, transform=axs[0].transAxes)
+                axs[-1].text(-0.12, -0.17, save_filename, fontsize = 5, transform=axs[-1].transAxes)
                 if verbose:
                     print('Summary Image is saved into file:')
                     print(save_filename)
