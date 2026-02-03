@@ -2415,7 +2415,7 @@ class FIBSEM_mosaic_dataset:
         if save_png:
             try:
                 save_fname = kwargs.get ('save_fname', os.path.splitext(fnm_mosaic_stack)[0] + '_Relative_Tile_Shifts.png')
-            except
+            except:
                 save_fname = kwargs.get ('save_fname', os.path.join(data_dir, 'Relative_Tile_Shifts.png'))
         else:
             save_fname = 'Image not saved'
