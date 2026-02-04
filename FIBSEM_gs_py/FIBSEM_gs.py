@@ -8525,8 +8525,9 @@ def extract_keypoints_descr_files(params, deformation_field):
     perform_deformation = np.any(np.invert(np.isnan(deformation_field)))
     left_crop = kwargs.get('left_crop', 0)
 
-    if verbose:
-            print('Deformation Field is present. Will perform image deformation first.')
+    if perform_deformation:
+        if verbose:
+                print('Deformation Field is present. Will perform image deformation first.')
     save_deformed_image = kwargs.get('save_deformed_image', False)
 
     if use_existing_data and os.path.exists(fnm):
@@ -9670,6 +9671,7 @@ def SIFT_evaluation_dataset(fs, **kwargs):
     axs[0,0].text(0.01, 1.14, otext, fontsize=fszl, transform=axs[0,0].transAxes)        
     if save_res_png :
         png_name = os.path.join(data_dir, (os.path.splitext(os.path.split(fs[0])[-1])[0] + '_SIFT_eval_'+TransformType.__name__ + '_' + solver +'_thr_min{:.0e}_thr_max{:.0e}.png'.format(thr_min, thr_max)))
+        axs[1,0].text(0.0, -0.25, png_name, fontsize = 5, transform=axs[1,0].transAxes)
         fig.savefig(png_name, dpi=300)
     if memory_profiling:
         elapsed_time = elapsed_since(start_time)
@@ -9734,6 +9736,7 @@ def SIFT_evaluation_dataset(fs, **kwargs):
 
     if save_res_png :
         fig2_fnm = os.path.join(data_dir, (os.path.splitext(os.path.split(fs[0])[-1])[0]+'_SIFT_vmap_'+TransformType.__name__ + '_' + solver +'_thr_min{:.0e}_thr_max{:.0e}.png'.format(thr_min, thr_max)))
+        ax.text(0.0, -0.25, fig2_fnm, fontsize = 5, transform=ax.transAxes)
         fig2.savefig(fig2_fnm, dpi=600)
     if memory_profiling:
         elapsed_time = elapsed_since(start_time)
