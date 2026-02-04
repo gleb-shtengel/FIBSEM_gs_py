@@ -9736,7 +9736,7 @@ def SIFT_evaluation_dataset(fs, **kwargs):
 
     if save_res_png :
         fig2_fnm = os.path.join(data_dir, (os.path.splitext(os.path.split(fs[0])[-1])[0]+'_SIFT_vmap_'+TransformType.__name__ + '_' + solver +'_thr_min{:.0e}_thr_max{:.0e}.png'.format(thr_min, thr_max)))
-        ax.text(0.0, 1.05, fig2_fnm, fontsize = 5, transform=ax.transAxes)
+        ax.text(0.0, 1.02, fig2_fnm, fontsize = 5, transform=ax.transAxes)
         fig2.savefig(fig2_fnm, dpi=600)
     if memory_profiling:
         elapsed_time = elapsed_since(start_time)
