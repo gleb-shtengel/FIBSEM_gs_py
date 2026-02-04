@@ -1913,7 +1913,8 @@ class FIBSEM_mosaic_dataset:
             C = nh + nv + nl                  # Total number of of pairs (pair-wise translations)
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intra-layer horisontal matches :', np.mean(self.SIFT_nmatches[0:nh]).astype(np.int64))
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intra-layer vertical matches :', np.mean(self.SIFT_nmatches[nh:nh+nv]).astype(np.int64))
-            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for inter-layer matches :', np.mean(self.SIFT_nmatches[nh+nv:]).astype(np.int64))
+            if nl > 0:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for inter-layer matches :', np.mean(self.SIFT_nmatches[nh+nv:]).astype(np.int64))
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   {:d} out of {:d} SIFT transformations are valid  (SIFT_nmatches > {:d})'.format(np.sum(self.SIFT_transformation_valid), C, SIFT_nmatches_min))
         return transformations_results_3D
 

@@ -9686,7 +9686,7 @@ def SIFT_evaluation_dataset(fs, **kwargs):
     xfsz = int(7 * frame.XResolution / np.max([frame.XResolution, frame.YResolution]))+1
     yfsz = int(7 * frame.YResolution / np.max([frame.XResolution, frame.YResolution]))+2
     fig2, ax = plt.subplots(1,1, figsize=(xfsz,yfsz))
-    fig2.subplots_adjust(left=0.0, bottom=0.25*(1-frame.YResolution/frame.XResolution), right=1.0, top=1.0)
+    fig2.subplots_adjust(left=0.0, bottom=0.25*(1-frame.YResolution/frame.XResolution), right=0.99, top=0.98)
     symsize = 2
     fsize_text = 6
     fsize_label = 10
@@ -9712,7 +9712,7 @@ def SIFT_evaluation_dataset(fs, **kwargs):
         # the code below is for vector map. vectors have origin coordinates x and y, and vector projections xs and ys.
         vec_field = ax.quiver(x,y,xs,ys,M, scale=50, width =0.0015, cmap='jet')
         cbar = fig2.colorbar(vec_field, pad=0.05, shrink=0.70, orientation = 'horizontal', format="%.1f")
-        cbar.set_label('SIFT Shift Amplitude (pix)', fontsize=fsize_label)
+        cbar.set_label('SIFT Residual Error (pix)', fontsize=fsize_label)
 
     ax.text(0.005, 1.00 - 0.010*frame.XResolution/frame.YResolution, fs[0], fontsize=fsize_text, transform=ax.transAxes)
     ax.text(0.005, 1.00 - 0.023*frame.XResolution/frame.YResolution, Sample_ID, fontsize=fsize_text, transform=ax.transAxes)
@@ -9736,7 +9736,7 @@ def SIFT_evaluation_dataset(fs, **kwargs):
 
     if save_res_png :
         fig2_fnm = os.path.join(data_dir, (os.path.splitext(os.path.split(fs[0])[-1])[0]+'_SIFT_vmap_'+TransformType.__name__ + '_' + solver +'_thr_min{:.0e}_thr_max{:.0e}.png'.format(thr_min, thr_max)))
-        ax.text(0.0, -0.25, fig2_fnm, fontsize = 5, transform=ax.transAxes)
+        ax.text(0.0, 1.05, fig2_fnm, fontsize = 5, transform=ax.transAxes)
         fig2.savefig(fig2_fnm, dpi=600)
     if memory_profiling:
         elapsed_time = elapsed_since(start_time)
