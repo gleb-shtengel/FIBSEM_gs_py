@@ -7149,7 +7149,7 @@ class FIBSEM_frame:
             #print('8-bit image already - no need to convert')
             dt = self.RawImageA
         else:
-            if data_min == data_max:
+            if data_min >= data_max:
                 data_min, data_max = self.get_image_min_max(image_name ='RawImageA', thr_min=thr_min, thr_max=thr_max, nbins=nbins, disp_res=False)
             dt = ((np.clip(self.RawImageA, data_min, data_max) - data_min)/(data_max-data_min)*255.0).astype(np.uint8)
         return dt, data_min, data_max
@@ -8238,9 +8238,6 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
         CDF threshold for determining the maximum data value
     nbins : int
         number of histogram bins for building the PDF and CDF
-    sliding_minmax : boolean
-        if True - data min and max will be taken from data_min_sliding and data_max_sliding arrays
-        if False - same data_min_glob and data_max_glob will be used for all files
     fit_params : list
         Example: ['SG', 501, 3]  - perform the above adjustment using Savitzky-Golay (SG) filter with parameters - window size 501, polynomial order 3.
         Other options are:
@@ -8292,7 +8289,6 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
     thr_min = kwargs.get("thr_min", 1e-3)
     thr_max = kwargs.get("thr_max", 1e-3)
     nbins = kwargs.get("nbins", 256)
-    sliding_minmax = kwargs.get("sliding_minmax", True)
     fit_params =  kwargs.get("fit_params", False)           # perform the above adjustment using  Savitzky-Golay (SG) fith with parameters
                                                             # window size 701, polynomial order 3
     if fit_params[0] != 'None':
@@ -9312,177 +9308,6 @@ def calculate_residual_deformation_fields_dataset(tr_matr_cum, image_shape, fnms
         pickle.dump(DumpObject, f)
     
     return deformation_fields, deformation_fields_bin_file
-
-
-def SIFT_find_keypoints_dataset(fr, **kwargs):
-    '''
-    Evaluate SIFT key point discovery for a test frame (fr). ©G.Shtengel 08/2022 gleb.shtengel@gmail.com
-    
-    Parameters:
-    ----------
-    fr : str
-        filename for the data frame to be used for SIFT key point discovery evaluation
-    
-    kwargs
-    ---------
-    data_dir : str
-        data directory (path)
-    ftype : int
-        file type (0 - Shan Xu's .dat, 1 - tif)
-    fnm_reg : str
-        filename for the final registered dataset
-    thr_min : float
-        CDF threshold for determining the minimum data value
-    thr_max : float
-        CDF threshold for determining the maximum data value
-    nbins : int
-        number of histogram bins for building the PDF and CDF
-    evaluation_box : list of 4 int
-        evaluation_box = [top, height, left, width] boundaries of the box used for key-point extraction
-        if evaluation_box is not set or evaluation_box = [0, 0, 0, 0], the entire image is used.
-    SIFT_nfeatures : int
-        SIFT library default is 0. The number of best features to retain.
-        The features are ranked by their scores (measured in SIFT algorithm as the local contrast)
-    SIFT_nOctaveLayers : int
-        SIFT library default  is 3. The number of layers in each octave.
-        3 is the value used in D. Lowe paper. The number of octaves is computed automatically from the image resolution.
-    SIFT_contrastThreshold : double
-        SIFT library default  is 0.04. The contrast threshold used to filter out weak features in semi-uniform (low-contrast) regions.
-        The larger the threshold, the less features are produced by the detector.
-        The contrast threshold will be divided by nOctaveLayers when the filtering is applied.
-        When nOctaveLayers is set to default and if you want to use the value used in
-        D. Lowe paper (0.03), set this argument to 0.09.
-    SIFT_edgeThreshold : double
-        SIFT library default  is 10. The threshold used to filter out edge-like features.
-        Note that the its meaning is different from the contrastThreshold,
-        i.e. the larger the edgeThreshold, the less features are filtered out
-        (more features are retained).
-    SIFT_sigma : double
-        SIFT library default is 1.6.  The sigma of the Gaussian applied to the input image at the octave #0.
-        If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
-    deformation_field : 2D array
-         Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
-    deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
-    interpolation : int
-        Interpolation type as defined in CV2 (if deformation_field is not np.nan) . Default is cv2.INTER_LINEAR.
-    fill_value = 0.0
-        Fill value for outside pixeld in cv2.remap. Default is 0.
-    save_res_png  : boolean
-        Save PNG images of the intermediate processing statistics and final registration quality check
-
-    Returns:
-    ----------
-    dmin, dmax, comp_time, transform_matrix, n_matches, iteration, kpts
-    '''
-
-    ftype = kwargs.get("ftype", 0)
-    data_dir = kwargs.get("data_dir", '')
-    fnm_reg = kwargs.get("fnm_reg", 'Registration_file.mrc')
-    thr_min = kwargs.get("thr_min", 1e-3)
-    thr_max = kwargs.get("thr_max", 1e-3)
-    nbins = kwargs.get("nbins", 256)
-    TransformType = kwargs.get("TransformType", RegularizedAffineTransform)
-    l2_param_default = 1e-5                                  # regularization strength (shrinkage parameter)
-    l2_matrix_default = np.eye(6)*l2_param_default                   # initially set equal shrinkage on all coefficients
-    l2_matrix_default[2,2] = 0                                 # turn OFF the regularization on shifts
-    l2_matrix_default[5,5] = 0                                 # turn OFF the regularization on shifts
-    l2_matrix = kwargs.get("l2_matrix", l2_matrix_default)
-    targ_vector = kwargs.get("targ_vector", np.array([1, 0, 0, 0, 1, 0]))   # target transformation is shift only: Sxx=Syy=1, Sxy=Syx=0
-    solver = kwargs.get("solver", 'RANSAC')
-    drmax = kwargs.get("drmax", 2.0)
-    max_iter = kwargs.get("max_iter", 1000)
-    Lowe_Ratio_Threshold = kwargs.get("Lowe_Ratio_Threshold", 0.7)   # threshold for Lowe's Ratio Test
-    BFMatcher = kwargs.get("BFMatcher", False)           # If True, the BF Matcher is used for keypoint matching, otherwise FLANN will be used
-    save_matches = kwargs.get("save_matches", True)      # If True, matches will be saved into individual files
-    save_res_png  = kwargs.get("save_res_png", True)
-    evaluation_box = kwargs.get("evaluation_box", [0, 0, 0, 0])
-    SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", 0.025)
-    RANSAC_initial_fraction = kwargs.get("RANSAC_initial_fraction", 0.005)  # fraction of data points for initial RANSAC iteration step.
-    deformation_field = kwargs.get('deformation_field', np.nan)
-    perform_deformation = np.any(np.invert(np.isnan(deformation_field)))
-    interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
-    fill_value = kwargs.get('fill_value', 0)
-
-    frame = FIBSEM_frame(fr, ftype=ftype, calculate_scaled_images=False)
-    if ftype == 0:
-        if frame.FileVersion > 8 :
-            Sample_ID = frame.Sample_ID.strip('\x00')
-        else:
-            Sample_ID = frame.Notes[0:16]
-    else:
-        Sample_ID = frame.Sample_ID
-    Sample_ID = kwargs.get("Sample_ID", Sample_ID)
-
-    print(Sample_ID)
-    
-    #if save_res_png :
-    #    frame.display_images()
-
-    img = np.ravel(frame.RawImageA)
-    fsz=12
-    fszl=11
-    dmin, dmax = frame.get_image_min_max(image_name = 'RawImageA', thr_min=thr_min, thr_max=thr_max, nbins=nbins)
-    xi = dmin-(np.abs(dmax-dmin)/10)
-    xa = dmax+(np.abs(dmax-dmin)/10)
-
-    fig, axs = plt.subplots(2,1, figsize=(6,6))
-    fig.suptitle(Sample_ID + ',  thr_min={:.0e}, thr_max={:.0e}, SIFT_contrastThreshold={:.3f}, comp.time={:.1f}sec'.format(thr_min, thr_max, SIFT_contrastThreshold, comp_time), fontsize=fszl)
-    
-    hist, bins, patches = axs[0].hist(img, bins = nbins)
-    axs[0].set_xlim(xi, xa)
-    axs[0].plot([dmin, dmin], [0, np.max(hist)], 'r', linestyle = '--')
-    axs[0].plot([dmax, dmax], [0, np.max(hist)], 'g', linestyle = '--')
-    axs[0].set_ylabel('Count', fontsize = fsz)
-    pdf = hist / (frame.XResolution * frame.YResolution)
-    cdf = np.cumsum(pdf)
-    xCDF = bins[0:-1]+(bins[1]-bins[0])/2.0
-    xthr = [xCDF[0], xCDF[-1]]
-    ythr_min = [thr_min, thr_min]
-    y1thr_max = [1-thr_max, 1-thr_max]
-
-    axs[1].plot(xCDF, cdf, label='CDF')
-    axs[1].plot(xthr, ythr_min, 'r', label='thr_min={:.5f}'.format(thr_min))
-    axs[1].plot([dmin, dmin], [0, 1], 'r', linestyle = '--', label = 'data_min={:.1f}'.format(dmin))
-    axs[1].plot(xthr, y1thr_max, 'g', label='1.0 - thr_max = {:.5f}'.format(1-thr_max))
-    axs[1].plot([dmax, dmax], [0, 1], 'g', linestyle = '--', label = 'data_max={:.1f}'.format(dmax))
-    axs[1].set_xlabel('Intensity Level', fontsize = fsz)
-    axs[1].set_ylabel('CDF', fontsize = fsz)
-    axs[1].set_xlim(xi, xa)
-    axs[1].legend(loc='center', fontsize=fsz)
-    axs[0].set_title('Data Min and Max with thr_min={:.0e},  thr_max={:.0e}'.format(thr_min, thr_max), fontsize = fsz)
-    for ax in axs.ravel():
-        ax.grid(True)
-        
-    t0 = time.time()
-    params1 = [fr, dmin, dmax, kwargs]
-    fnm_1 = extract_keypoints_descr_files(params1, deformation_field)
-           
-    t1 = time.time()
-    comp_time = (t1-t0)
-    #print('Time to compute: {:.1f}sec'.format(comp_time))
-       
-    xfsz = 3 * (int(7 * frame.XResolution / np.max([frame.XResolution, frame.YResolution]))+1)
-    yfsz = 3 * (int(7 * frame.YResolution / np.max([frame.XResolution, frame.YResolution]))+2)
-    fig2, ax = plt.subplots(1,1, figsize=(xfsz,yfsz))
-    fig2.subplots_adjust(left=0.0, bottom=0.25*(1-frame.YResolution/frame.XResolution), right=1.0, top=1.0)
-    symsize = 2
-    fsize = 12  
-    img2 = FIBSEM_frame(fr, ftype=ftype, calculate_scaled_images=False).RawImageA
-    ax.imshow(img2, cmap='Greys', vmin=dmin, vmax=dmax)
-    ax.axis(False)
-    
-    kpp1s, des1 = pickle.load(open(fnm_1, 'rb'))
-    kp1 = [list_to_kp(kpp1) for kpp1 in kpp1s]     # this converts a list of lists to a list of keypoint objects to be used by a matcher later
-    src_pts = np.float32([ kp.pt for kp in kp1 ]).reshape(-1, 2)    
-    x, y = src_pts.T
-    print('Extracted {:d} keypoints'.format(len(kp1)))
-    # the code below is for vector map. vectors have origin coordinates x and y, and vector projections xs and ys.
-    vec_field = ax.scatter(x,y, s=0.02, marker='o', c='r')
-    ax.text(0.01, 1.1-0.13*frame.YResolution/frame.XResolution, Sample_ID + ', thr_min={:.0e}, thr_max={:.0e}, SIFT_nfeatures={:d}'.format(thr_min, thr_max, SIFT_nfeatures), fontsize=fsize, transform=ax.transAxes)
-    if save_res_png :
-        png_name = os.path.splitext(fr)[0] + '_SIFT_kpts_eval_'+'_thr_min{:.5f}_thr_max{:.5f}.png'.format(thr_min, thr_max) 
-        fig2.savefig(png_name, dpi=300)
-    return(dmin, dmax, comp_time, src_pts)
 
 
 # This is a function used for selecting proper SIFT and other parameters for processing
@@ -11224,9 +11049,8 @@ class FIBSEM_dataset:
         CDF threshold for determining the maximum data value
     nbins : int
         number of histogram bins for building the PDF and CDF
-    sliding_minmax : boolean
-        if True - data min and max will be taken from data_min_sliding and data_max_sliding arrays
-        if False - same data_min_glob and data_max_glob will be used for all files
+    U8_conversion : str
+            Range selection for U8 conversion. Options are: 'global', 'sliding', and 'local'. Default is 'local'.
     TransformType : object reference
         Transformation model used by SIFT for determining the transformation matrix from Key-Point pairs.
         Choose from the following options:
@@ -11402,9 +11226,8 @@ class FIBSEM_dataset:
             CDF threshold for determining the maximum data value. Default is 1e-3.
         nbins : int
             Number of histogram bins for building the PDF and CDF. Default is 256.
-        sliding_minmax : boolean
-            If True - data min and max will be taken from data_min_sliding and data_max_sliding arrays. Default is True.
-            If False - same data_min_glob and data_max_glob will be used for all files.
+        U8_conversion : str
+            Range selection for U8 conversion. Options are: 'global', 'sliding', and 'local'. Default is 'local'.
         fit_params : list
             Example: ['SG', 501, 3]  - perform the above adjustment using Savitzky-Golay (SG) filter with parameters - window size 501, polynomial order 3.
             Default is ['SG', len(fls)//100+1, 3].
@@ -11532,7 +11355,7 @@ class FIBSEM_dataset:
         self.thr_min = kwargs.get("thr_min", 1e-3)
         self.thr_max = kwargs.get("thr_max", 1e-3)
         self.nbins = kwargs.get("nbins", 256)
-        self.sliding_minmax = kwargs.get("sliding_minmax", True)
+        self.U8_conversion = kwargs.get('U8_conversion', 'local')
         self.SIFT_nfeatures = kwargs.get("SIFT_nfeatures", 0)
         self.SIFT_nOctaveLayers = kwargs.get("SIFT_nOctaveLayers", 3)
         self.SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", 0.04)
@@ -11846,9 +11669,6 @@ class FIBSEM_dataset:
             CDF threshold for determining the maximum data value. Default is object attribute.
         nbins : int
             Number of histogram bins for building the PDF and CDF. Default is object attribute.
-        sliding_minmax : boolean
-            If True - data min and max will be taken from data_min_sliding and data_max_sliding arrays. Default is object attribute.
-            If False - same data_min_glob and data_max_glob will be used for all files.
         fit_params : list
             Example: ['SG', 501, 3]  - perform the above adjustment using Savitzky-Golay (SG) filter with parameters - window size 501, polynomial order 3.
             Default is object attribute.
@@ -11909,7 +11729,6 @@ class FIBSEM_dataset:
         thr_min = kwargs.get("thr_min", self.thr_min)
         thr_max = kwargs.get("thr_max", self.thr_max)
         nbins = kwargs.get("nbins", self.nbins)
-        sliding_minmax = kwargs.get("sliding_minmax", self.sliding_minmax)
         fit_params = kwargs.get("fit_params", self.fit_params)
 
         if hasattr(self, 'Mill_Volt_Rate_um_per_V'):
@@ -11930,7 +11749,6 @@ class FIBSEM_dataset:
                         'thr_min' : thr_min,
                         'thr_max' : thr_max,
                         'nbins' : nbins,
-                        'sliding_minmax' : sliding_minmax,
                         'fit_params' : fit_params,
                         'Mill_Volt_Rate_um_per_V' : Mill_Volt_Rate_um_per_V,
                         'FIBSEM_Data_xlsx' : FIBSEM_Data_xlsx,
@@ -12003,9 +11821,8 @@ class FIBSEM_dataset:
             CDF threshold for determining the maximum data value. Default is object attribute.
         nbins : int
             Number of histogram bins for building the PDF and CDF. Default is object attribute.
-        sliding_minmax : boolean
-            If True - data min and max will be taken from data_min_sliding and data_max_sliding arrays. Default is object attribute.
-            If False - same data_min_glob and data_max_glob will be used for all files.
+        U8_conversion : str
+            Range selection for U8 conversion. Options are: 'global', 'sliding', and 'local'. Default is 'local'.
         data_minmax : list of 5 parameters
             minmax_xlsx : str
                 path to Excel file with Min/Max data.
@@ -12065,8 +11882,13 @@ class FIBSEM_dataset:
             thr_min = kwargs.get("thr_min", self.thr_min)
             thr_max = kwargs.get("thr_max", self.thr_max)
             nbins = kwargs.get("nbins", self.nbins)
-            sliding_minmax = kwargs.get("sliding_minmax", self.sliding_minmax)
-            data_minmax = kwargs.get("data_minmax", self.data_minmax)
+            if hasattr(self, 'U8_conversion'):
+                U8_conversion = kwargs.get('U8_conversion', self.U8_conversion)
+            else:
+                U8_conversion = kwargs.get('U8_conversion', 'local')
+            if U8_conversion != 'local':
+                data_minmax = kwargs.get("data_minmax", self.data_minmax)
+                minmax_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding = data_minmax
             SIFT_nfeatures = kwargs.get("SIFT_nfeatures", self.SIFT_nfeatures)
             SIFT_nOctaveLayers = kwargs.get("SIFT_nOctaveLayers", self.SIFT_nOctaveLayers)
             SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", self.SIFT_contrastThreshold)
@@ -12078,7 +11900,6 @@ class FIBSEM_dataset:
             fill_value = kwargs.get('fill_value', 0)
             use_existing_data = kwargs.get('use_existing_data', False)
 
-            minmax_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding = data_minmax
             kpt_kwargs = {'ftype' : ftype,
                         'thr_min' : thr_min,
                         'thr_max' : thr_max,
@@ -12092,10 +11913,22 @@ class FIBSEM_dataset:
                         'interpolation' : interpolation,
                         'fill_value' : fill_value}
 
+
+            if U8_conversion == 'sliding':
+                params_s3 = []
+                for j, fl in enumerate(self.fls.ravel()):
+                    params_s3. append([fl, data_min_sliding[j], data_max_sliding[j], kpt_kwargs])
+            else:
+                if U8_conversion == 'global': 
+                    params_s3 = [[fl, data_min_glob, data_max_glob, kpt_kwargs] for fl in self.fls.ravel()]
+                else:
+                    params_s3 = [[fl, -1, -1, kpt_kwargs] for fl in self.fls.ravel()]
+            '''
             if sliding_minmax:
                 params_s3 = [[dts3[0], dts3[1], dts3[2], kpt_kwargs] for dts3 in zip(self.fls, data_min_sliding, data_max_sliding)]
             else:
-                params_s3 = [[fl, data_min_glob, data_max_glob, kpt_kwargs] for fl in self.fls]        
+                params_s3 = [[fl, data_min_glob, data_max_glob, kpt_kwargs] for fl in self.fls]
+            '''
             if use_DASK:
                 print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Using DASK distributed')
                 shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)

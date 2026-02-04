@@ -226,9 +226,8 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
         CDF threshold for determining the maximum data value
     nbins : int
         number of histogram bins for building the PDF and CDF
-    sliding_minmax : boolean
-        if True - data min and max will be taken from data_min_sliding and data_max_sliding arrays
-        if False - same data_min_glob and data_max_glob will be used for all files
+    U8_conversion : str
+        Range selection for U8 conversion. Options are: 'global', 'sliding', and 'local'. Default is 'local'.
     SIFT_nfeatures : int
         SIFT libary default is 0. The number of best features to retain.
         The features are ranked by their scores (measured in SIFT algorithm as the local contrast)
@@ -350,7 +349,6 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
         Calculate NCC and SNR vs Image B fraction over a set of frames.
     estimate_resolution_blobs_2D(**kwargs)
         Estimate transitions in the image, uses select_blobs_LoG_analyze_transitions(**kwargs).
-
 
 
 ## class FIBSEM_mosaic_dataset: 
