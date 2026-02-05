@@ -720,6 +720,7 @@ def select_blobs_LoG_analyze_transitions(image, **kwargs):
 def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
     '''
     Finds blobs in the given grayscale image using Laplasian of Gaussians (LoG). gleb.shtengel@gmail.com 10/2025
+    Uses DASK delayed, not DASK Client, so no need to provide the DASK client info.
     
     Parameters:
     ---------
