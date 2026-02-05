@@ -11919,13 +11919,13 @@ class FIBSEM_dataset:
 
             if U8_conversion == 'sliding':
                 params_s3 = []
-                for j, fl in enumerate(self.fls.ravel()):
+                for j, fl in enumerate(self.fls):
                     params_s3. append([fl, data_min_sliding[j], data_max_sliding[j], kpt_kwargs])
             else:
                 if U8_conversion == 'global': 
-                    params_s3 = [[fl, data_min_glob, data_max_glob, kpt_kwargs] for fl in self.fls.ravel()]
+                    params_s3 = [[fl, data_min_glob, data_max_glob, kpt_kwargs] for fl in self.fls]
                 else:
-                    params_s3 = [[fl, -1, -1, kpt_kwargs] for fl in self.fls.ravel()]
+                    params_s3 = [[fl, -1, -1, kpt_kwargs] for fl in self.fls]
             '''
             if sliding_minmax:
                 params_s3 = [[dts3[0], dts3[1], dts3[2], kpt_kwargs] for dts3 in zip(self.fls, data_min_sliding, data_max_sliding)]
