@@ -68,15 +68,15 @@ def check_DASK(DASK_client, **kwargs):
             hostname = socket.gethostname()
             status_update_address = 'http://' + hostname + ':{:d}/status'.format(dport)
             if verbose:
-                print(time.strftime('%Y/%m/%d  %H:%M:%S  ')+ prefix +':  DASK client exists. Will perform distributed computations')
+                print(time.strftime('%Y/%m/%d  %H:%M:%S  ') + prefix + ':  DASK client exists. Will perform distributed computations')
                 print('Use ' + status_update_address +' to monitor DASK progress')
             use_DASK = True
         else:
             if verbose:
-                print(time.strftime('%Y/%m/%d  %H:%M:%S')+ prefix +':  DASK client does not exist. Will perform local computations')
+                print(time.strftime('%Y/%m/%d  %H:%M:%S  ') + prefix + ':  DASK client does not exist. Will perform local computations')
     except:
         if verbose:
-            print(time.strftime('%Y/%m/%d  %H:%M:%S')+ prefix +':  DASK client does not exist. Will perform local computations')
+            print(time.strftime('%Y/%m/%d  %H:%M:%S  ') + prefix + ':  DASK client does not exist. Will perform local computations')
             
     return use_DASK, status_update_address
 

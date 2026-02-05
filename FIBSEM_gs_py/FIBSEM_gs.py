@@ -5187,7 +5187,7 @@ def generate_report_transf_matrix_from_xlsx(transf_matrix_xlsx_file, **kwargs):
                          orig_transf_matrix['T21 (0.0)'],
                          orig_transf_matrix['T22 (1.0)'])).T.reshape((len(orig_transf_matrix['T00 (Sxx)']), 3, 3))
    
-    if disp_res:
+    if verbose:
         print('Loading Cumulative Transformation Data')
     cum_transf_matrix = pd.read_excel(transf_matrix_xlsx_file, sheet_name='Cum. Transformation Matrix')
     tr_matr_cum = np.vstack((cum_transf_matrix['T00 (Sxx)'],
@@ -5200,7 +5200,7 @@ def generate_report_transf_matrix_from_xlsx(transf_matrix_xlsx_file, **kwargs):
                          cum_transf_matrix['T21 (0.0)'],
                          cum_transf_matrix['T22 (1.0)'])).T.reshape((len(cum_transf_matrix['T00 (Sxx)']), 3, 3))
     
-    if disp_res:
+    if verbose:
         print('Loading Intermediate Data')
 
     int_results = pd.read_excel(transf_matrix_xlsx_file, sheet_name='Intermediate Results')
@@ -5211,7 +5211,7 @@ def generate_report_transf_matrix_from_xlsx(transf_matrix_xlsx_file, **kwargs):
     Xshift_cum_orig = int_results['Xshift_cum_orig']
     Yshift_cum_orig = int_results['Yshift_cum_orig']
     
-    if disp_res:
+    if verbose:
         print('Loading Statistics')
     stat_results = pd.read_excel(transf_matrix_xlsx_file, sheet_name='Reg. Stat. Info')
     npts = stat_results['Npts']
@@ -5273,13 +5273,15 @@ def generate_report_transf_matrix_from_xlsx(transf_matrix_xlsx_file, **kwargs):
         axs5[0, 2].plot(error_FWHMx, 'red', linewidth = lwl, label = 'X-error FWHM')
         axs5[0, 2].text(0.03, 0.2, 'Mean X FWHM= {:.3f}   Median X FWHM= {:.3f}'.format(np.mean(error_FWHMx), np.median(error_FWHMx)), transform=axs5[0, 2].transAxes, fontsize = fs-1)
     except:
-        print('No Xerror_FWHM data')
+        if verbose:
+            print('No Xerror_FWHM data')
     try:
         error_FWHMy = stat_results['Yerror_FWHM']
         axs5[0, 2].plot(error_FWHMy, 'blue', linewidth = lwl, label = 'Y-error FWHM')
         axs5[0, 2].text(0.03, 0.1, 'Mean Y FWHM= {:.3f}   Median Y FWHM= {:.3f}'.format(np.mean(error_FWHMy), np.median(error_FWHMy)), transform=axs5[0, 2].transAxes, fontsize = fs-1)
     except:
-        print('No Yerror_FWHM data')
+        if verbose:
+            print('No Yerror_FWHM data')
 
     # plot scales terms
     axs5[1, 0].plot(transformation_matrix[:, 0, 0], 'r', linewidth = lwl, label = 'Sxx frame-to-frame')
