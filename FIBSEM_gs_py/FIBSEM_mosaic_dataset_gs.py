@@ -2204,7 +2204,7 @@ class FIBSEM_mosaic_dataset:
                 yshifts = (dst_pts_filtered - src_pts_transformed)[:,1]
                 
                 columns_shifts=['X-src', 'Y-src', 'X-src transformed', 'Y-src transformed', 'X-dst', 'Y-dst', 'X-error', 'Y-error', 'Int-src', 'Int-dst']
-                int_results = pd.DataFrame(np.vstack((np.array(src_pts_filtered).T, np.atrray(src_pts_transformed).T, np.array(dst_pts_filtered).T, xshifts, yshifts, src_intensities, dst_intensities)).T, columns = columns_shifts, index = None)
+                int_results = pd.DataFrame(np.vstack((np.array(src_pts_filtered).T, np.array(src_pts_transformed).T, np.array(dst_pts_filtered).T, xshifts, yshifts, src_intensities, dst_intensities)).T, columns = columns_shifts, index = None)
 
                 x, y = src_pts_filtered.T
                 M = np.sqrt(xshifts*xshifts+yshifts*yshifts)
