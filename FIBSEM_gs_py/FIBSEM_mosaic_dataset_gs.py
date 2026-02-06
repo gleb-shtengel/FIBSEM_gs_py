@@ -38,6 +38,7 @@ from scipy.signal import savgol_filter
 from scipy.signal import convolve2d
 from scipy.ndimage import gaussian_filter
 from scipy.optimize import curve_fit
+from scipy.ndimage import map_coordinates
 
 from FIBSEM_gs_py.FIBSEM_gs import (FIBSEM_frame,
                         ShiftTransform,
@@ -85,6 +86,34 @@ def build_weight_array(shape, **kwargs):
     indy_r = np.flip(indy)
     weights = np.clip((np.min(np.array([indx, indx_r, indy, indy_r]), axis=0) + weight_min), weight_min, weight_max)
     return weights
+
+
+def extract_image_intensity(image, smoothing_kernel, pts, **kwargs):
+    '''
+    Performs 2D convolution with kernel (skips convolution if kernel is not 2D array) and then evaluates image intensity at target points. gleb.shtengel@gmail.com 02.2026
+    Parameters:
+    -----------
+    image : 2D array
+        Source Image
+    smoothing_kernel : 2D array or anything
+        Smoothing kernel. if not 2D array, no smoothing is done
+    pts : 2D array or list of X,Y coordinates
+    
+    kwargs:
+    ----------
+    order : int
+        order=1 is bilinear (Default).
+
+    Returns:
+    ----------
+    intensities
+    '''
+    order = kwargs.get('order', 1)
+    try:
+        image = np.convolve(image, smoothing_kernel)
+    except:
+        pass
+    return map_coordinates(img, np.array(pts).T, order=order)
 
 
 def transform_tile(tile_params, deformation_field):
@@ -1423,7 +1452,7 @@ class FIBSEM_mosaic_dataset:
                 dump_loaded = True
             except Exception as ex1:
                 dump_loaded = False
-                if disp_res:
+                if verbose:
                     print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Failed to open Parameter dump filename: ', dump_filename)
                     print(ex1.message)
             if dump_loaded:
@@ -1431,7 +1460,7 @@ class FIBSEM_mosaic_dataset:
                     for key in tqdm(dump_data, desc='Recalling the data set parameters'):
                         setattr(self, key, dump_data[key])
                 except Exception as ex2:
-                    if disp_res:
+                    if verbose:
                         print('Parameter dump filename: ', dump_filename)
                         print('Failed to restore the object parameters')
                         print(ex2.message)
@@ -2035,6 +2064,9 @@ class FIBSEM_mosaic_dataset:
         save_res_png  = kwargs.get("save_res_png", True )
         start = kwargs.get('start', 'edges')
         estimation = kwargs.get('estimation', 'interval')
+        st = 1.0/np.sqrt(2.0)
+        def_smoothing_kernel = np.array([[st, 1.0, st],[1.0,1.0,1.0], [st, 1.0, st]]).astype(float)
+        smoothing_kernel = kwargs.get('smoothing_kernel', def_smoothing_kernel)
         verbose = kwargs.get('verbose', True)
         dpi = kwargs.get('dpi', 600)
 
@@ -2123,6 +2155,7 @@ class FIBSEM_mosaic_dataset:
         transformations_result = determine_transformations_files(param_SIFT)
         transform_matrix, fnm_matches, kpts, error_abs_mean, error_FWHMx, error_FWHMy, iteration = transformations_result
         n_matches = len(kpts[0])
+
         if verbose:
             print('SIFT_transformation_matrix = ', transformations_result[0])
             print('SIFT_fnms_matches: ', transformations_result[1])
@@ -2162,10 +2195,16 @@ class FIBSEM_mosaic_dataset:
 
             if n_matches > 0:
                 src_pts_filtered, dst_pts_filtered = kpts
+                src_intensities = extract_image_intensity(fnm_deformed1, smoothing_kernel, src_pts_filtered)
+                dst_intensities = extract_image_intensity(fnm_deformed2, smoothing_kernel, dst_pts_filtered)
+
                 src_pts_transformed = src_pts_filtered @ transform_matrix[0:2, 0:2].T + transform_matrix[0:2, 2]
                 xshifts = (dst_pts_filtered - src_pts_transformed)[:,0]
                 yshifts = (dst_pts_filtered - src_pts_transformed)[:,1]
                 
+                columns_shifts=['X-src', 'Y-src', 'X-src transformed', 'Y-src transformed', 'X-dst', 'Y-dst', 'X-error', 'Y-error', 'Int-src', 'Int-dst']
+                int_results = pd.DataFrame(np.vstack((np.array(src_pts_filtered).T, np.atrray(src_pts_transformed).T, np.array(dst_pts_filtered).T, xshifts, yshifts, src_intensities, dst_intensities)).T, columns = columns_shifts, index = None)
+
                 x, y = src_pts_filtered.T
                 M = np.sqrt(xshifts*xshifts+yshifts*yshifts)
                 xs = xshifts
@@ -2195,7 +2234,7 @@ class FIBSEM_mosaic_dataset:
                     print(save_filename)
                 fig.savefig(save_filename, dpi=dpi)
 
-        return fnm_deformed1, fnm_deformed2, transformations_result
+        return fnm_deformed1, fnm_deformed2, transformations_result, int_results
 
 
     def determine_transformations_ECC(self, **kwargs):
