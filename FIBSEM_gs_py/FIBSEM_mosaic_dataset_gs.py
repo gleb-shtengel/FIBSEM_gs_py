@@ -113,7 +113,7 @@ def extract_image_intensity(image, smoothing_kernel, pts, **kwargs):
         image = np.convolve(image, smoothing_kernel)
     except:
         pass
-    return map_coordinates(img, np.array(pts).T, order=order)
+    return map_coordinates(image, np.array(pts).T, order=order)
 
 
 def transform_tile(tile_params, deformation_field):
@@ -1454,7 +1454,7 @@ class FIBSEM_mosaic_dataset:
                 dump_loaded = False
                 if verbose:
                     print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Failed to open Parameter dump filename: ', dump_filename)
-                    print(ex1.message)
+                    print(str(ex1))
             if dump_loaded:
                 try:
                     for key in tqdm(dump_data, desc='Recalling the data set parameters'):
@@ -1463,7 +1463,7 @@ class FIBSEM_mosaic_dataset:
                     if verbose:
                         print('Parameter dump filename: ', dump_filename)
                         print('Failed to restore the object parameters')
-                        print(ex2.message)
+                        print(str(ex2))
 
 
     def save_parameters(self, **kwargs):
