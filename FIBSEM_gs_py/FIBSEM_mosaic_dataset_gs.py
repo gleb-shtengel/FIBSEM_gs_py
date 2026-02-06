@@ -2195,8 +2195,8 @@ class FIBSEM_mosaic_dataset:
 
             if n_matches > 0:
                 src_pts_filtered, dst_pts_filtered = kpts
-                src_intensities = extract_image_intensity(fnm_deformed1, smoothing_kernel, src_pts_filtered)
-                dst_intensities = extract_image_intensity(fnm_deformed2, smoothing_kernel, dst_pts_filtered)
+                src_intensities = extract_image_intensity(img1, smoothing_kernel, src_pts_filtered)
+                dst_intensities = extract_image_intensity(img2, smoothing_kernel, dst_pts_filtered)
 
                 src_pts_transformed = src_pts_filtered @ transform_matrix[0:2, 0:2].T + transform_matrix[0:2, 2]
                 xshifts = (dst_pts_filtered - src_pts_transformed)[:,0]
