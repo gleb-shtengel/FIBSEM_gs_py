@@ -1453,6 +1453,7 @@ class FIBSEM_mosaic_dataset:
             except Exception as ex1:
                 dump_loaded = False
                 if verbose:
+                    print('')
                     print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Failed to open Parameter dump filename: ', dump_filename)
                     print(str(ex1))
             if dump_loaded:
@@ -1461,8 +1462,8 @@ class FIBSEM_mosaic_dataset:
                         setattr(self, key, dump_data[key])
                 except Exception as ex2:
                     if verbose:
-                        print('Parameter dump filename: ', dump_filename)
-                        print('Failed to restore the object parameters')
+                        print('')
+                        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Failed to restore the object parameters from dump filename: ', dump_filename)
                         print(str(ex2))
 
 
