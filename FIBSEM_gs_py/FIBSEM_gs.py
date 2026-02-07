@@ -8008,6 +8008,9 @@ class FIBSEM_frame:
         header_new[70:74] = FirstPixelX_new_string
         FirstPixelY_new_string =  pack('>l', FirstPixelY_new)
         header_new[74:78] = FirstPixelY_new_string
+        SaveOversamples_new = 0
+        SaveOversamples_new_string =  pack('b', SaveOversamples_new)
+        header_new[138:139] = SaveOversamples_new_string
 
         # Create new Raw data array
         dt = np.dtype(np.int16).newbyteorder('>')
