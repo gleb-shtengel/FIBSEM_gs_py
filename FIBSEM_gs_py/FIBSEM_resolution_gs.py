@@ -1571,6 +1571,33 @@ def analyze_edge_transitions_image(image, **kwargs):
 ################################################################
 
 def plot_blob_map_and_results_single_image(image, results_xlsx, **kwargs):
+    '''
+    Plots the map of extracted blobs over the image. gleb.shtengel@gmail.com  06/2023
+    
+    Parameters:
+    ----------
+    image : 2D array
+        image array
+
+    results_file_xlsx : file name for Excel workbook with the blob data
+        
+    kwargs:
+    ----------
+    nbins : int
+        Number of bins for histogram. Default is 64.
+    save_png : boolean
+        Save the image into PNG file. Default is False.
+    save_fname : string
+        File name for to save the image. Default is created by results_xlsx.replace('.xlsx', '_map.png').
+    dpi : int
+        DPI, default is 300.
+
+    Returns:
+    ----------
+    save_fname : str
+
+    '''
+
     save_png = kwargs.get('save_png', False)
     saved_kwargs = read_kwargs_xlsx(results_xlsx, 'kwargs Info')
     pixel_size = saved_kwargs.get("pixel_size", 0.0)
@@ -1578,6 +1605,7 @@ def plot_blob_map_and_results_single_image(image, results_xlsx, **kwargs):
     top_text = saved_kwargs.get("top_text", '')
     bounds = saved_kwargs.get("bounds", [0.0, 0.0])
     nbins = kwargs.get('nbins', 64)
+    dpi = kwargs.get('dpi', 300)
     
     xs=7.0
     ysz, xsz = image.shape
@@ -1701,7 +1729,11 @@ def plot_blob_map_and_results_single_image(image, results_xlsx, **kwargs):
     fig.subplots_adjust(left=0.01, bottom=0.06, right=0.99, top=0.98, wspace=0.02, hspace=0.20)
     if save_png:
         ax.text(0.05, -0.05, save_fname, transform=ax.transAxes, fontsize=caption_fs)
-        fig.savefig(save_fname, dpi=300)
+        fig.savefig(save_fname, dpi=dpi)
+    else:
+        save_fname = 'Figure not saved'
+
+    return save_fname
 
 
 def plot_blob_examples_single_image(image, results_xlsx, **kwargs):
@@ -1803,7 +1835,6 @@ def plot_blob_examples_single_image(image, results_xlsx, **kwargs):
 
 
 
-
 ################################################################
 #
 #   helper functions to plot the results: Edge Transitions
@@ -1811,21 +1842,49 @@ def plot_blob_examples_single_image(image, results_xlsx, **kwargs):
 ################################################################
 
 def plot_edge_transition_analysis_details(image, results_xlsx, **kwargs):
+    '''
+    Plots the map of extracted edge points over the image and the analysis results. gleb.shtengel@gmail.com  06/2023
+    
+    Parameters:
+    ----------
+    image : 2D array
+        image array
+
+    results_file_xlsx : file name for Excel workbook with the blob data
+        
+    kwargs:
+    ----------
+    nbins : int
+        Number of bins for histogram. Default is 64.
+    color_index : str
+        Determins what parameter is used to color-code the detected transitions and transition plots.
+        Options are: 'Tr' - transition distance value (default), 'X' - x-coordinate of the transition point, 'Y' - y-coordinate of the transition point.
+    save_png : boolean
+        Save the image into PNG file. Default is False.
+    save_fname : string
+        File name for to save the image. Default is created by results_xlsx.replace('.xlsx', '_map.png').
+    fontsize : int
+        Font size for annotations. Default is 12.
+    dpi : int
+        DPI, default is 300.
+
+    Returns:
+    ----------
+    save_fname : str
+    '''
+
     save_png = kwargs.get('save_png', False)
+    save_fname = kwargs.get('save_fname', results_xlsx.replace('.xlsx', '_analysis.png'))
+    color_index = kwargs.get('color_index', 'Tr')
+    fontsize = kwargs.get('fontsize', 12)
+    dpi = kwargs.get('dpi', 300)
+
     saved_kwargs = read_kwargs_xlsx(results_xlsx, 'kwargs Info')
     edge_detector = saved_kwargs.get("edge_detector", '')
     section_length = saved_kwargs.get("section_length", 50)
     pixel_size = saved_kwargs.get("pixel_size", 0.0)
-    save_fname = kwargs.get('save_fname', results_xlsx.replace('.xlsx', '_analysis.png'))
     top_text = saved_kwargs.get("top_text", '')
     bounds = saved_kwargs.get("bounds", [0.0, 0.0])
-    st = 1.0/np.sqrt(2.0)
-    def_kernel = np.array([[st, 1.0, st],[1.0,1.0,1.0], [st, 1.0, st]]).astype(float)
-    def_kernel = def_kernel/def_kernel.sum()
-    kernel = saved_kwargs.get("kernel", def_kernel)
-    perform_smoothing = saved_kwargs.get('perform_smoothing', False)
-    fontsize = kwargs.get('fontsize', 12)
-    dpi = kwargs.get('dpi', 300)
 
     int_results = pd.read_excel(results_xlsx, sheet_name='Transition analysis results')
     X = int_results['X']
@@ -1846,62 +1905,50 @@ def plot_edge_transition_analysis_details(image, results_xlsx, **kwargs):
     transition_distances_selected = np.array(transition_distances[error_flags==0]).astype(float)
     tr_mean = np.mean(transition_distances_selected)
     tr_std = np.std(transition_distances_selected)
+
+    if color_index == 'X':
+        sorted_indices = np.argsort(X_selected).tolist()
+    elif color_index == 'Y':
+        sorted_indices = np.argsort(Y_selected).tolist()
+    else:
+        sorted_indices = np.argsort(transition_distances_selected).tolist()
+
+    transition_distances_selected = transition_distances_selected[sorted_indices]
+    X_selected = X_selected[sorted_indices]
+    Y_selected = Y_selected[sorted_indices]
+    cosXs_selected = cosXs_selected[sorted_indices]
+    cosYs_selected = cosYs_selected[sorted_indices]
+    
+    tr_x_to_plot = cosXs_selected*transition_distances_selected
+    tr_y_to_plot = cosYs_selected*transition_distances_selected
+    tr_plot_min = np.min((tr_x_to_plot, tr_y_to_plot))
+    tr_plot_max = np.max((tr_x_to_plot, tr_y_to_plot))
     
     img_vals_all = np.array(pd.read_excel(results_xlsx, sheet_name='Transitions Intensity Profiles'))
-    
-    # arnitraty ellips fit - replaced below with a fit forced to becentered at 0,0.
-    #a_points = np.array([(cX*tr, cY*tr) for cX, cY, tr in zip(cosXs_selected, cosYs_selected, transition_distances_selected)])
-    #ell = EllipseModel()
-    #ell.estimate(a_points)
-    #xc, yc, ae, be, thetae = ell.params
-    
-    if perform_smoothing:
-        grad = np.gradient(convolve2d(image, kernel, mode='same'))
-    else:
-        grad = np.gradient(image)
-    grad_array = np.array(grad)
-    abs_grad = np.sqrt(grad[0]*grad[0]+grad[1]*grad[1])
-    grad_min, grad_max = get_min_max_thresholds(abs_grad, thr_min=0.005, thr_max =0.005, disp_res=False)
-    
     theta = np.array(np.angle(cosXs_selected+1.0j*cosYs_selected)).astype(float)
     theta_ordered = np.sort(theta)
 
-    ysz, xsz = image.shape
-    # center point is (section_length-1)//2
-    dist_pix = np.arange(-section_length//2+1,section_length//2+1)
-    
     fig, axs = plt.subplots(2, 2, figsize=(10,10))
-    fig.subplots_adjust(left=0.01, bottom=0.08, right=0.99, top=0.94, wspace=0.10, hspace=0.20)
+    fig.subplots_adjust(left=0.01, bottom=0.05, right=0.99, top=0.90, wspace=0.10, hspace=0.20)
     axs[0,0].imshow(image, cmap='Greys_r')
-    #axs[0,0].plot(X, Y, linestyle='none', color='yellow', marker = 'o', markersize=1)
-    #axs[0,0].plot(X_selected, Y_selected, linestyle='none', color='lime', marker = 'o', markersize=1)
-    axs[0,0].axis(False)
-    axs[0,0].set_title('Image with Edge points  by ' + edge_detector + ' Detector', fontsize = fontsize)
+    dist_pix = np.arange(-section_length//2+1,section_length//2+1)
     for (j, X), Y, cosX, cosY, image_vals in zip(enumerate(X_selected), Y_selected, cosXs_selected, cosYs_selected, img_vals_all):
         x_positions = X + cosX*dist_pix
         y_positions = Y + cosY*dist_pix
-        my_col = plt.get_cmap("gist_rainbow_r")((ntr-j)/ntr)
         inds = np.where(np.logical_and(np.logical_and(x_positions>=0, x_positions<=xsz), np.logical_and(y_positions>=0, y_positions<=ysz)))
-        axs[0,0].plot([X], [Y], linestyle='none', color=my_col, marker = 'o', markersize=1)
+        my_col = plt.get_cmap("gist_rainbow_r")((ntr-j)/ntr)
+        axs[0,0].plot(X, Y, linestyle='none', color=my_col, marker = 'o', markersize=2)
         axs[0,0].plot(x_positions[inds], y_positions[inds], 'yellow', linewidth=0.5)
-        axs[1,1].plot(dist_pix, image_vals, color=my_col, linewidth=0.5)
-    axs[0,0].scatter(X_selected[0:3], Y_selected[0:3], color='red', facecolors='none', marker = 'o', s=50)
-    axs[0,0].scatter(X_selected[-4:-1], Y_selected[-4:-1], color='white', facecolors='none', marker = 'o', s=50)
+        axs[1,0].plot(dist_pix, image_vals, color=my_col, linewidth=0.5)
+        axs[1,1].plot(tr_x_to_plot[j], tr_y_to_plot[j], color=my_col, marker = 'o', markersize=2)
+    axs[0,0].axis(False)
+    axs[0,0].set_title('Image with Edge points')
     axs[0,1].text(0.5, 1.1, top_text, transform=axs[0,0].transAxes)
-    axs[1,1].grid(True)
-    axs[1,1].set_xlabel('Distance (nm)', fontsize = fontsize)
-    axs[1,1].set_ylabel('Interpolated Image Intensity', fontsize = fontsize)
-    axs[1,1].set_title('Analyzed Transitions: Intensity Profiles', fontsize = fontsize)
-    
-    '''
-    axs[1,1].imshow(abs_grad)
-    axs[1,1].plot(X, Y, linestyle='none', color='yellow', marker = 'o', markersize=1)
-    axs[1,1].plot(X_selected, Y_selected, linestyle='none', color='lime', marker = 'o', markersize=1)
-    axs[1,1].scatter(X_selected[0:3], Y_selected[0:3], color='red', facecolors='none', marker = 'o', s=50)
-    axs[1,1].scatter(X_selected[-4:-1], Y_selected[-4:-1], color='white', facecolors='none', marker = 'o', s=50)
-    axs[1,1].axis(False)
-    axs[1,1].set_title('Absolute Value of Image Gradient')
-    '''
+    axs[1,0].grid(True)
+    axs[1,0].set_xlabel('Distance (nm)')
+    axs[1,0].set_ylabel('Interpolated Image Intensity')
+    axs[1,0].set_title('Analyzed Transitions: Intensity Profiles')
+
     hist_res = axs[0,1].hist(transition_distances_selected, bins=64)
     axs[0,1].grid(True)
 
@@ -1915,12 +1962,7 @@ def plot_edge_transition_analysis_details(image, results_xlsx, **kwargs):
     axs[0,1].set_title(tr_str + ' Transition Distribution ('+ edge_detector + ' Detector)', fontsize = fontsize)
     axs[0,1].set_xlabel('Transition Distance (pix)', fontsize = fontsize)
     axs[0,1].set_ylabel('Count', fontsize = fontsize)
-
-    tr_x_to_plot = cosXs_selected*transition_distances_selected
-    tr_y_to_plot = cosYs_selected*transition_distances_selected
-    tr_plot_min = np.min((tr_x_to_plot, tr_y_to_plot))
-    tr_plot_max = np.max((tr_x_to_plot, tr_y_to_plot))
-    axs[1,0].scatter(tr_x_to_plot, tr_y_to_plot)
+    
     axs[1,0].axis('scaled')
     axs[1,0].grid(True)
     axs[1,0].set_title('Transition Distribution over Directions', fontsize = fontsize)
@@ -1943,7 +1985,6 @@ def plot_edge_transition_analysis_details(image, results_xlsx, **kwargs):
         axs[1,0].text(0.05, -0.18, save_fname, transform=axs[1,0].transAxes, fontsize = fontsize-2)
         fig.savefig(save_fname, dpi=dpi)
 
- 
 
 def plot_edge_transition_points_map(image, results_xlsx, **kwargs):
     save_png = kwargs.get('save_png', False)
