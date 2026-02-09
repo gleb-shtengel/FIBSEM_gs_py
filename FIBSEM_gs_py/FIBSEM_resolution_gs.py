@@ -1885,6 +1885,7 @@ def plot_edge_transition_analysis_details(image, results_xlsx, **kwargs):
     pixel_size = saved_kwargs.get("pixel_size", 0.0)
     top_text = saved_kwargs.get("top_text", '')
     bounds = saved_kwargs.get("bounds", [0.0, 0.0])
+    ysz, xsz = image.shape
 
     int_results = pd.read_excel(results_xlsx, sheet_name='Transition analysis results')
     X = int_results['X']
@@ -1984,6 +1985,9 @@ def plot_edge_transition_analysis_details(image, results_xlsx, **kwargs):
     if save_png:
         axs[1,0].text(0.05, -0.18, save_fname, transform=axs[1,0].transAxes, fontsize = fontsize-2)
         fig.savefig(save_fname, dpi=dpi)
+    else:
+        save_fname = 'Figure not saved'
+    return save_fname
 
 
 def plot_edge_transition_points_map(image, results_xlsx, **kwargs):
