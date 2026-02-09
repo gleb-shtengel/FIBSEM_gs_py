@@ -6395,7 +6395,7 @@ class FIBSEM_frame:
 
     # for Shan Xu's data files 
         if self.ftype == 0:
-            self.SaveOversamples = 0
+            self.SaveOversamples = kwargs.get('SaveOversamples', 0)
             fid = open(self.fname, "rb")
             fid.seek(0, 0)
             self.header = fid.read(1024) # Read in self.header
@@ -6449,7 +6449,7 @@ class FIBSEM_frame:
                 self.Detmax = unpack('>f',self.header[132:136])[0]                     # Detector maximum voltage
                 self.DecimatingFactor = unpack('>H',self.header[136:138])[0]           # Decimating factor
 
-            self.SaveOversamples = unpack('b',self.header[138:139])[0]                  # Average Oversamples (normal, False) or Save All Oversamples (for noise stdies, True)
+            self.SaveOversamples = kwargs.get('SaveOversamples', unpack('b',self.header[138:139])[0])                  # Average Oversamples (normal, False) or Save All Oversamples (for noise stdies, True)
             self.AI1 = unpack('b',self.header[151:152])[0]                              # self.AI Ch1
             self.AI2 = unpack('b',self.header[152:153])[0]                              # self.AI Ch2 
             self.AI3 = unpack('b',self.header[153:154])[0]                              # self.AI Ch3
