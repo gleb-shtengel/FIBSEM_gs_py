@@ -1892,11 +1892,11 @@ def plot_edge_transition_analysis_details(image, results_xlsx, **kwargs):
     X_grads = int_results['X grad']
     Y_grads = int_results['Y grad']
     error_flags = int_results['error_flag']
-    X_selected = X[error_flags==0]
-    Y_selected = Y[error_flags==0]
+    X_selected = np.array(X[error_flags==0])
+    Y_selected = np.array(Y[error_flags==0])
     ntr = len(X_selected)
-    X_grads_selected = X_grads[error_flags==0]
-    Y_grads_selected = Y_grads[error_flags==0]
+    X_grads_selected = np.array(X_grads[error_flags==0])
+    Y_grads_selected = np.array(Y_grads[error_flags==0])
     cosXs_selected = X_grads_selected/np.sqrt(X_grads_selected*X_grads_selected+Y_grads_selected*Y_grads_selected)
     cosYs_selected = Y_grads_selected/np.sqrt(X_grads_selected*X_grads_selected+Y_grads_selected*Y_grads_selected)
     
