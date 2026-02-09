@@ -1960,16 +1960,20 @@ def plot_edge_transition_analysis_details(image, results_xlsx, **kwargs):
     axs[0,1].text(0.05, 0.7, 'Mean value (nm): {:.3f}'.format(tr_mean*pixel_size), transform=axs[0,1].transAxes)
     axs[0,1].text(0.05, 0.65, 'STD (nm):       {:.3f}'.format(tr_std*pixel_size), transform=axs[0,1].transAxes)
     tr_str = '{:.2f} to {:.2f} '.format(bounds[0], bounds[1])
-    axs[0,1].set_title(tr_str + ' Transition Distribution ('+ edge_detector + ' Detector)', fontsize = fontsize)
-    axs[0,1].set_xlabel('Transition Distance (pix)', fontsize = fontsize)
-    axs[0,1].set_ylabel('Count', fontsize = fontsize)
+    axs[0,1].set_title(tr_str + ' Transition Distribution ')
+    axs[0,1].set_xlabel('Transition Distance (pix)')
+    axs[0,1].set_ylabel('Count')
     
-    axs[1,0].axis('scaled')
-    axs[1,0].grid(True)
-    axs[1,0].set_title('Transition Distribution over Directions', fontsize = fontsize)
-    axs[1,0].set_xlabel('Transition X component', fontsize = fontsize)
-    axs[1,0].set_ylabel('Transition Y component', fontsize = fontsize)
-   
+    axs[1,1].axis('scaled')
+    axs[1,1].grid(True)
+    axs[1,1].set_title('Transition Distribution over Directions')
+    axs[1,1].set_xlabel('Transition X component')
+    axs[1,1].set_ylabel('Transition Y component')
+    xi = np.min((tr_x_to_plot, -tr_x_to_plot, tr_y_to_plot, -tr_y_to_plot))
+    xa = -xi
+    axs[1,1].set_xlim((xi, xa))
+    axs[1,1].set_ylim((xi, xa))
+    
     try:
         # sin2x_fun
         #a*np.sin(2.0*x+b)+c
@@ -1977,10 +1981,10 @@ def plot_edge_transition_analysis_details(image, results_xlsx, **kwargs):
         tr_fit = sin2x_fun(theta_ordered, *p_opt)
         trX_fit = tr_fit*np.cos(theta_ordered)
         trY_fit = tr_fit*np.sin(theta_ordered)
-        axs[1,0].plot(trX_fit, trY_fit, c='magenta', label='centered fit')
-        axs[1,0].text(0.025, 0.95, 'Ellipticity: {:.3f}'.format(np.abs(p_opt[0]/p_opt[2])), transform=axs[1,0].transAxes, color='magenta')
+        axs[1,1].plot(trX_fit, trY_fit, c='magenta', label='centered fit')
+        axs[1,1].text(0.025, 0.95, 'Ellipticity: {:.3f}'.format(np.abs(p_opt[0]/p_opt[2])), transform=axs[1,1].transAxes, color='magenta')
     except:
-        axs[1,0].text(0.025, 0.95, 'Could not analyze Ellipticity', transform=axs[1,0].transAxes, color='magenta')
+        axs[1,1].text(0.025, 0.95, 'Could not analyze Ellipticity', transform=axs[1,1].transAxes, color='magenta')
 
     if save_png:
         axs[1,0].text(0.05, -0.18, save_fname, transform=axs[1,0].transAxes, fontsize = fontsize-2)
