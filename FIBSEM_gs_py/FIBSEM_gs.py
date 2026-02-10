@@ -4860,6 +4860,8 @@ def generate_report_mill_rate_xlsx(Mill_Rate_Data_xlsx, **kwargs):
     
     kwargs:
     ----------
+    xlim : tuple of two values
+        Optional range for X-axis. If it is not (0,0) (default, ignored) - the axis limits will be set to this range.
     Mill_Volt_Rate_um_per_V : float
         Milling Voltage to Z conversion (µm/V). Default is 31.235258870176065.
     verbose : boolean
@@ -4874,6 +4876,7 @@ def generate_report_mill_rate_xlsx(Mill_Rate_Data_xlsx, **kwargs):
     Sample_ID = saved_kwargs.get("Sample_ID", '')
     Saved_Mill_Volt_Rate_um_per_V = saved_kwargs.get("Mill_Volt_Rate_um_per_V", 31.235258870176065)
     Mill_Volt_Rate_um_per_V = kwargs.get("Mill_Volt_Rate_um_per_V", Saved_Mill_Volt_Rate_um_per_V)
+    xlim = kwargs.get('xlim', (0,0))
     
     if verbose:
         print('Loading Working Distance and Milling Y Voltage Data')
@@ -4912,6 +4915,8 @@ def generate_report_mill_rate_xlsx(Mill_Rate_Data_xlsx, **kwargs):
     axs[1].set_xlabel('Frame')
     ldm = 70
     data_dir_short = data_dir if len(data_dir)<ldm else '... '+ data_dir[-ldm:]
+    if xlim != (0,0):
+        axs[1].set_xlim(xlim)
     try:
         axs[0].text(-0.15, 1.05, Sample_ID + '    ' +  data_dir_short, fontsize = fs-2, transform=axs[0].transAxes)
     except:
@@ -4930,6 +4935,8 @@ def generate_report_ScanRate_EHT_xlsx(ScanRate_EHT_Data_xlsx, **kwargs):
     
     kwargs:
     ----------
+    xlim : tuple of two values
+        Optional range for X-axis. If it is not (0,0) (default, ignored) - the axis limits will be set to this range.
     verbose : boolean
         if True, intermediate printouts are enabled. Default is False.
 
@@ -4940,6 +4947,7 @@ def generate_report_ScanRate_EHT_xlsx(ScanRate_EHT_Data_xlsx, **kwargs):
     saved_kwargs = read_kwargs_xlsx(ScanRate_EHT_Data_xlsx, 'kwargs Info', **kwargs)
     data_dir = saved_kwargs.get("data_dir", '')
     Sample_ID = saved_kwargs.get("Sample_ID", '')
+    xlim = kwargs.get('xlim', (0,0))
     
     if verbose:
         print('Loading Scan Rate and EHT Data')
@@ -4974,6 +4982,8 @@ def generate_report_ScanRate_EHT_xlsx(ScanRate_EHT_Data_xlsx, **kwargs):
     for ax in axs:
         ax.grid(True)
         ax.legend(loc='upper left')
+    if xlim != (0,0):
+        axs[1].set_xlim(xlim)
     axs[0].set_title(data_dir)
     fig.savefig(os.path.join(data_dir, ScanRate_EHT_Data_xlsx.replace('.xlsx','_FIBSEM_Data_ScanRate_EHT.png')), dpi=300)
 
@@ -4989,6 +4999,8 @@ def generate_report_FOV_center_shift_xlsx(FOV_center_shift_xlsx, **kwargs):
     
     kwargs:
     ----------
+    xlim : tuple of two values
+        Optional range for X-axis. If it is not (0,0) (default, ignored) - the axis limits will be set to this range.
     verbose : boolean
         if True, intermediate printouts are enabled. Default is False.
 
@@ -4999,6 +5011,7 @@ def generate_report_FOV_center_shift_xlsx(FOV_center_shift_xlsx, **kwargs):
     saved_kwargs = read_kwargs_xlsx(FOV_center_shift_xlsx, 'kwargs Info', **kwargs)
     data_dir = saved_kwargs.get("data_dir", '')
     Sample_ID = saved_kwargs.get("Sample_ID", '')
+    xlim = kwargs.get('xlim', (0,0))
     
     if verbose:
         print('Loading FOV Center Location Data')
@@ -5034,6 +5047,8 @@ def generate_report_FOV_center_shift_xlsx(FOV_center_shift_xlsx, **kwargs):
     axs[1].set_xlabel('Frame')
     ldm = 70
     data_dir_short = data_dir if len(data_dir)<ldm else '... '+ data_dir[-ldm:]
+    if xlim != (0,0):
+        axs[1].set_xlim(xlim)
     try:
         axs[0].text(-0.15, 1.05, Sample_ID + '    ' +  data_dir_short, fontsize = fs-2, transform=axs[0].transAxes)
     except:
@@ -5052,6 +5067,8 @@ def generate_report_data_minmax_xlsx(minmax_xlsx_file, **kwargs):
 
     kwargs:
     ----------
+    xlim : tuple of two values
+        Optional range for X-axis. If it is not (0,0) (default, ignored) - the axis limits will be set to this range.
     verbose : boolean
         if True, intermediate printouts are enabled. Default is False.
     '''
@@ -5067,6 +5084,7 @@ def generate_report_data_minmax_xlsx(minmax_xlsx_file, **kwargs):
     fit_params_saved = saved_kwargs.get("fit_params", ['SG', 101, 3])
     fit_params = kwargs.get("fit_params", fit_params_saved)
     preserve_scales =  saved_kwargs.get("preserve_scales", True)  # If True, the transformation matrix will be adjusted using teh settings defined by fit_params below
+    xlim = kwargs.get('xlim', (0,0))
     
     if verbose:
         print('Loading MinMax Data')
@@ -5119,7 +5137,8 @@ def generate_report_data_minmax_xlsx(minmax_xlsx_file, **kwargs):
     ax0.text(len(frame_min)/20.0, data_min_glob+dxn*5.5, 'thr_max={:.1e}'.format(thr_max), fontsize = fs-2, c='r')
     ldm = 70
     data_dir_short = data_dir if len(data_dir)<ldm else '... '+ data_dir[-ldm:]
-
+    if xlim != (0,0):
+        axs[1].set_xlim(xlim)
     try:
         ax0.text(-0.15, 1.05, Sample_ID + '    ' +  data_dir_short, fontsize = fs-2, transform=ax0.transAxes)
     except:
