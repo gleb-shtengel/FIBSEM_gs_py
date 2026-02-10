@@ -7063,16 +7063,16 @@ class FIBSEM_frame:
             if images_to_save == 'Both' or images_to_save == 'A':
                 fnameA = os.path.splitext(self.fname)[0] + '_' + self.DetA.strip('\x00') + '.tif'
                 try:
-                    tiff.imsave(fnameA, self.RawImageA)
+                    tiff.imsave(fnameA, self.RawImageA.astype(np.int16))
                 except:
-                    tiff.imwrite(fnameA, self.RawImageA)
+                    tiff.imwrite(fnameA, self.RawImageA.astype(np.int16))
             if self.DetB != 'None':
                 if images_to_save == 'Both' or images_to_save == 'B':
                     fnameB = os.path.splitext(self.fname)[0] + '_' + self.DetB.strip('\x00') + '.tif'
                     try:
-                        tiff.imsave(fnameB, self.RawImageB)
+                        tiff.imsave(fnameB, self.RawImageB.astype(np.int16))
                     except:
-                        tiff.imwrite(fnameB, self.RawImageB)
+                        tiff.imwrite(fnameB, self.RawImageB.astype(np.int16))
         else:
             print('original File is already in TIF format')
         
