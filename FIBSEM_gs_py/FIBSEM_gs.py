@@ -1031,6 +1031,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     6. Plot the dependence of the image variance vs. image intensity.
     7. Perform free linear fit of the variance vs. intensity. SNR0 is calculated as <S^2>/<N^2>.
     8. Perform linear fit with forced zero Intercept (DarkCount) of the variance vs. intensity. SNR1 is calculated <S^2>/<N^2>.
+    9. Analyze contrast as (Ihigh - Ilow) / ((Ihigh + Ilow)/2 - DarkCount).
 
     Parameters:
     ----------
@@ -1050,11 +1051,13 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     nbins_disp : int
         Number of histogram bins for building the PDF and CDF to determine the data range for data display. Default is 256.
     thresholds_disp : list [thr_min_disp, thr_max_disp]
-        CDF threshold for determining the min and max data values for display. Default id [1e-3, 1e-3].
+        CDF thresholds for determining the min and max data values for display. Default id [1e-3, 1e-3].
     nbins_analysis : int
         Number of histogram bins for building the PDF and CDF to determine the data range for building the data histogram in Step 5. Default is 256.
-    thresholds_analysis: list [thr_min_analysis, thr_max_analysis]
-        CDF threshold for building the data histogram in Step 5. Default is [2e-2, 2e-2].
+    thresholds_SNR_analysis: list [thr_min_SNR_analysis, thr_max_SNR_analysis]
+        CDF thresholds for building the data histogram in Step 5. Default is [2e-2, 2e-2].
+    thresholds_contrast_analysis: list [thr_min_contrast_analysis, thr_max_contrast_analysis]
+        CDF thresholds for determining I low and Ihigh for Contrast Analysis (Step 9). Default is [0.25, 0.25].
     disp_res : boolean
         If True - plot/ display the results. Default is True.
     disp_res_SNR0 : boolean
@@ -1087,7 +1090,8 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     nbins_disp = kwargs.get("nbins_disp", 256)
     thresholds_disp = kwargs.get("thresholds_disp", [1e-3, 1e-3])
     nbins_analysis = kwargs.get("nbins_analysis", 100)
-    thresholds_analysis = kwargs.get("thresholds_analysis", [2e-2, 1e-2])
+    thresholds_SNR_analysis = kwargs.get("thresholds_SNR_analysis", [1e-2, 1e-2])
+    thresholds_contrast_analysis = kwargs.get("thresholds_contrast_analysis", [0.25, 0.25])
     disp_res = kwargs.get("disp_res", True)
     disp_res_SNR0 = kwargs.get("disp_res_SNR0", True)
     disp_res_SNR1 = kwargs.get("disp_res_SNR1", True)
@@ -1124,19 +1128,19 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     img_smoothed_filtered = img_smoothed[filter_array]
     imdiff_filtered = imdiff[filter_array]
     
-    range_disp = get_min_max_thresholds(img_smoothed, thr_min = thresholds_disp[0], thr_max = thresholds_disp[1], nbins = nbins_disp, disp_res = False)       
-    #range_analysis0 = get_min_max_thresholds(img_smoothed, thr_min = thresholds_analysis[0], thr_max = thresholds_analysis[1], nbins = nbins_analysis, disp_res = False)
-    range_analysis = get_min_max_thresholds(img_smoothed_filtered, thr_min = thresholds_analysis[0], thr_max = thresholds_analysis[1], nbins = nbins_analysis, disp_res = False)
+    range_disp = get_min_max_thresholds(img_smoothed, thr_min = thresholds_disp[0], thr_max = thresholds_disp[1], nbins = nbins_disp, disp_res = False)           
+    range_SNR_analysis = get_min_max_thresholds(img_smoothed_filtered, thr_min = thresholds_SNR_analysis[0], thr_max = thresholds_SNR_analysis[1], nbins = nbins_analysis, disp_res = False)
+    Ilow, Ihigh = get_min_max_thresholds(img_smoothed_filtered, thr_min = thresholds_contrast_analysis[0], thr_max = thresholds_contrast_analysis[1], nbins = nbins_analysis, disp_res = False)
     
     if disp_res:
         #print('Length of original image is: ', np.prod(img_smoothed.shape))
         #print('Length of filtered image is: ', np.prod(img_smoothed_filtered.shape))
         print('')
         print('The EM data range for display:            {:.2f} to {:.2f}'.format(range_disp[0], range_disp[1]))
-        #print('The EM data range0 for noise analysis:    {:.2f} to {:.2f}'.format(range_analysis0[0], range_analysis0[1]))
-        print('The EM data range for noise analysis:     {:.2f} to {:.2f}'.format(range_analysis[0], range_analysis[1]))
+        #print('The EM data range0 for noise analysis:    {:.2f} to {:.2f}'.format(range_SNR_analysis0[0], range_SNR_analysis0[1]))
+        print('The EM data range for noise analysis:     {:.2f} to {:.2f}'.format(range_SNR_analysis[0], range_SNR_analysis[1]))
     
-    bins_analysis = np.linspace(range_analysis[0], range_analysis[1], nbins_analysis)
+    bins_analysis = np.linspace(range_SNR_analysis[0], range_SNR_analysis[1], nbins_analysis)
     range_imdiff = get_min_max_thresholds(imdiff, thr_min = thresholds_disp[0], thr_max = thresholds_disp[1], nbins = nbins_disp, disp_res = False)
     ind_new = np.digitize(img_smoothed_filtered, bins_analysis)
     
@@ -1150,12 +1154,11 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     ysz = xsz/3.0*yx_ratio + 5.0
     xsz = xsz / max((xsz, ysz)) * 15.0
     ysz = ysz / max((xsz, ysz)) * 15.0
-
     low_mask = img*0.0+255.0
     high_mask = low_mask.copy()
     filter_mask = low_mask.copy()
-    low_mask[img_smoothed > range_analysis[0]] = np.nan
-    high_mask[img_smoothed < range_analysis[1]] = np.nan
+    low_mask[img_smoothed > range_SNR_analysis[0]] = np.nan
+    high_mask[img_smoothed < range_SNR_analysis[1]] = np.nan
     filter_mask[filter_array==True] = np.nan
     
     # np.product is deprecated, use np.prod instead
@@ -1168,18 +1171,15 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         fig.subplots_adjust(left=0.07, bottom=0.08, right=0.99, top=0.90, wspace=0.15, hspace=0.10)
         axs = axss.ravel()
         axs[0].text(-0.1, (0.98 + 0.1/yx_ratio), res_fname + ',       ' +  Notes, transform=axs[0].transAxes, fontsize=fs-2)
-
         axs[0].imshow(img, cmap="Greys", vmin = range_disp[0], vmax = range_disp[1])
         axs[0].axis(False)
         if len(image_name)>1:
             axs[0].set_title('Original Image: ' + image_name, color='r', fontsize=fs+1)
         else:
             axs[0].set_title('Original Image' + image_name, color='r', fontsize=fs+1)
-
         axs[1].imshow(img_smoothed, cmap="Greys", vmin = range_disp[0], vmax = range_disp[1])
         axs[1].axis(False)
         axs[1].set_title('Smoothed Image')
-        
         bbox=dict(facecolor='white', alpha=1.0, linewidth=0)
         if filter_nonzero:
             axs[1].imshow(filter_mask, cmap="brg")
@@ -1189,31 +1189,21 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         axs[1].text(0.03, 0.90, 'Excluded pixels with low intensity', bbox=bbox, transform=axs[1].transAxes, color='lime', fontsize=fs-1)
         if filter_nonzero:
             axs[1].text(0.03, 0.85, 'Excluded pixels high local gradients', bbox=bbox, transform=axs[1].transAxes, color='blue', fontsize=fs-1)
-
         axs[2].imshow(imdiff, cmap="Greys", vmin = range_imdiff[0], vmax = range_imdiff[1])
         axs[2].axis(False)
         axs[2].set_title('Image Difference', fontsize=fs+1)
-
-        '''
-        if filter_nonzero:
-            axs[2].imshow(filter_mask, cmap="gist_rainbow")
-            axs[2].text(0.0, 1.01, 'Image Difference', transform=axs[2].transAxes, fontsize=fs+1)
-            axs[2].text(0.4, 1.01, 'Excluded pixels masked red', transform=axs[2].transAxes, color='red', fontsize=fs+1)
-        else:
-            axs[2].set_title('Image Difference', fontsize=fs+1)
-        '''
 
     if disp_res:
         hist, bins, patches = axs[4].hist(img_smoothed_filtered.ravel(), range=range_disp, bins = nbins_disp)
     else:
         hist, bins = np.histogram(img_smoothed_filtered.ravel(), range=range_disp, bins = nbins_disp)
     bin_centers = np.array(bins[1:] - (bins[1]-bins[0])/2.0)
-    hist_center_ind = np.argwhere((bin_centers>range_analysis[0]) & (bin_centers<range_analysis[1]))
+    hist_center_ind = np.argwhere((bin_centers>range_SNR_analysis[0]) & (bin_centers<range_SNR_analysis[1]))
     hist_smooth = savgol_filter(np.array(hist), (nbins_disp//10)*2+1, 7)
     I_peak = bin_centers[hist_smooth.argmax()]
     C_peak = hist_smooth.max()
     Ipeak_lbl = '$I_{peak}$' +'={:.1f}'.format(I_peak)
-    
+   
     if disp_res:
         axs[4].plot(bin_centers[hist_center_ind], hist_smooth[hist_center_ind], color='grey', linestyle='dashed', linewidth=2)
         axs[4].plot(I_peak, C_peak, 'rd', label = Ipeak_lbl)
@@ -1224,13 +1214,15 @@ def Single_Image_Noise_Statistics(img, **kwargs):
             axs[4].set_title('Histogram of the Smoothed Image', fontsize=fs+1)
         axs[4].grid(True)
         axs[4].set_xlabel('Image Intensity', fontsize=fs+1)
-        for patch in np.array(patches)[bin_centers<range_analysis[0]]:
+        for patch in np.array(patches)[bin_centers<range_SNR_analysis[0]]:
             patch.set_facecolor('lime')
-        for patch in np.array(patches)[bin_centers>range_analysis[1]]:
+        for patch in np.array(patches)[bin_centers>range_SNR_analysis[1]]:
             patch.set_facecolor('red')
         ylim4=np.array(axs[4].get_ylim())
-        axs[4].plot([range_analysis[0], range_analysis[0]],[ylim4[0]-1000, ylim4[1]], color='lime', linestyle='dashed', label='Ilow')
-        axs[4].plot([range_analysis[1], range_analysis[1]],[ylim4[0]-1000, ylim4[1]], color='red', linestyle='dashed', label='Ihigh')
+        axs[4].plot([range_SNR_analysis[0], range_SNR_analysis[0]],[ylim4[0]-1000, ylim4[1]], color='lime', linestyle='dashed', label='Ilow')
+        axs[4].plot([range_SNR_analysis[1], range_SNR_analysis[1]],[ylim4[0]-1000, ylim4[1]], color='red', linestyle='dashed', label='Ihigh')
+        axs[4].plot([Ilow, Ilow, ],[ylim4[0]-1000, ylim4[1]], color='blue', linestyle='dashed', label='Clow')
+        axs[4].plot([Ihigh, Ihigh],[ylim4[0]-1000, ylim4[1]], color='magenta', linestyle='dashed', label='Chigh')
         axs[4].set_ylim(ylim4)
         txt1 = 'Smoothing Kernel'
         axs[4].text(0.69, 0.955, txt1, transform=axs[4].transAxes, backgroundcolor='white', fontsize=fs-1)
@@ -1254,14 +1246,14 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         
     try:
         popt = np.polyfit(mean_vals, var_vals, 1)
-        I_array = np.array((range_analysis[0], range_analysis[1], I_peak))
+        I_array = np.array((range_SNR_analysis[0], range_SNR_analysis[1], I_peak))
         Var_array = np.polyval(popt, I_array)
         Var_peak = Var_array[2]
     except:
         if disp_res:
             print("np.polyfit could not converge")
         popt = np.array([np.var(imdiff)/np.mean(img_smoothed-DarkCount), 0])
-        I_array = np.array((range_analysis[0], range_analysis[1], I_peak))
+        I_array = np.array((range_SNR_analysis[0], range_SNR_analysis[1], I_peak))
         Var_peak = np.var(imdiff)
     var_fit = np.polyval(popt, mean_vals)
     I0 = -popt[1]/popt[0]
@@ -1279,24 +1271,20 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         axs[3].set_title('Noise Distribution', fontsize=fs+1)
         axs[3].set_xlabel('Image Intensity Mean', fontsize=fs+1)
         axs[3].set_ylabel('Image Intensity Variance', fontsize=fs+1)
-        lbl_low = '$I_{low}$'+', thr={:.1e}'.format(thresholds_analysis[0])
-        lbl_high = '$I_{high}$'+', thr={:.1e}'.format(thresholds_analysis[1])
-        axs[3].plot([range_analysis[0], range_analysis[0]],[ylim3[0]-1000, ylim3[1]], color='lime', linestyle='dashed', label=lbl_low)
-        axs[3].plot([range_analysis[1], range_analysis[1]],[ylim3[0]-1000, ylim3[1]], color='red', linestyle='dashed', label=lbl_high)
+        lbl_low = '$I_{low}$'+', thr={:.1e}'.format(thresholds_SNR_analysis[0])
+        lbl_high = '$I_{high}$'+', thr={:.1e}'.format(thresholds_SNR_analysis[1])
+        axs[3].plot([range_SNR_analysis[0], range_SNR_analysis[0]],[ylim3[0]-1000, ylim3[1]], color='lime', linestyle='dashed', label=lbl_low)
+        axs[3].plot([range_SNR_analysis[1], range_SNR_analysis[1]],[ylim3[0]-1000, ylim3[1]], color='red', linestyle='dashed', label=lbl_high)
         axs[3].legend(loc='upper center', fontsize=fs+1)
         axs[3].set_ylim(ylim3)
     
-    PSNR = (I_peak-I0)/np.sqrt(Var_peak)
-    PSNR_header = (I_peak-DarkCount)/np.sqrt(Var_peak)
-    DSNR = (range_analysis[1]-range_analysis[0])/np.sqrt(Var_peak)
-    
     img_smoothed_filtered_resc = (img_smoothed_filtered - I0)/popt[0]
     imdiff_filtered_resc = imdiff_filtered / popt[0]
-    #SNR0 = np.mean(img_smoothed_filtered_resc*img_smoothed_filtered_resc)/np.mean(img_smoothed_filtered_resc)
     SNR0 = np.mean(img_smoothed_filtered_resc*img_smoothed_filtered_resc)/np.var(imdiff_filtered_resc)
+    contrast  = (Ihigh - Ilow)/((Ilow + Ihigh)/2.0-I0)
+    
     img_smoothed_filtered_resc1 = (img_smoothed_filtered - DarkCount)/Slope_header
     imdiff_filtered_resc1 = imdiff_filtered / Slope_header
-    #SNR1 = np.mean(img_smoothed_filtered_resc1*img_smoothed_filtered_resc1)/np.mean(img_smoothed_filtered_resc1)
     SNR1 = np.mean(img_smoothed_filtered_resc1*img_smoothed_filtered_resc1)/np.var(imdiff_filtered_resc1)
     
     if disp_res:
@@ -1308,6 +1296,19 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         print('Free Fit Offset: {:.2f}'.format(I0))
         print('Slope of Free Fit: {:.2f}'.format(popt[0]))
         print('Free Fit         : SNR0 <S^2>/<N^2> = {:.2f}'.format(SNR0))
+        print('')
+        print('Data range: Ilow = {:.2f}, Ihigh = {:.2f}'.format(Ilow, Ihigh))
+        print('Dark Count = {:.2f}'.format(I0))
+        print('Contrast = {:.2f}'.format(contrast))
+        
+        txt1 = '$I_{low}$' + ' = {:.2f}'.format(Ilow)
+        axs[4].text(0.65, 0.72, txt1, transform=axs[4].transAxes, color='blue', fontsize=fs+1)
+        txt2 = '$I_{high}$' + ' = {:.2f}'.format(Ihigh)
+        axs[4].text(0.65, 0.65, txt2, transform=axs[4].transAxes, color='magenta', fontsize=fs+1)
+        txt3 = '$I_{0}$' +' = {:.1f}'.format(I0)
+        axs[4].text(0.65, 0.58, txt3, transform=axs[4].transAxes, color='black', fontsize=fs+1)
+        txt4 = 'Contrast = {:.2f}'.format(contrast)
+        axs[4].text(0.65, 0.51, txt4, transform=axs[4].transAxes, color='black', fontsize=fs+1)
         
         if disp_res_SNR0:
             txt1 = 'Zero Int, Free Fit:    ' +'$I_{0}$' +'={:.1f}'.format(I0)
