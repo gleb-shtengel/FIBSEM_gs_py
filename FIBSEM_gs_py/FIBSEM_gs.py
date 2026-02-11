@@ -1299,7 +1299,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         print('')
         print('Data range: Ilow = {:.2f}, Ihigh = {:.2f}'.format(Ilow, Ihigh))
         print('Dark Count = {:.2f}'.format(I0))
-        print('Contrast = {:.2f}'.format(contrast))
+        print('Contrast = {:.3f}'.format(contrast))
         
         txt1 = '$I_{low}$' + ' = {:.2f}'.format(Ilow)
         axs[4].text(0.65, 0.72, txt1, transform=axs[4].transAxes, color='blue', fontsize=fs+1)
@@ -1307,7 +1307,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         axs[4].text(0.65, 0.65, txt2, transform=axs[4].transAxes, color='magenta', fontsize=fs+1)
         txt3 = '$I_{0}$' +' = {:.1f}'.format(I0)
         axs[4].text(0.65, 0.58, txt3, transform=axs[4].transAxes, color='black', fontsize=fs+1)
-        txt4 = 'Contrast = {:.2f}'.format(contrast)
+        txt4 = 'Contrast = {:.3f}'.format(contrast)
         axs[4].text(0.65, 0.51, txt4, transform=axs[4].transAxes, color='black', fontsize=fs+1)
         
         if disp_res_SNR0:
