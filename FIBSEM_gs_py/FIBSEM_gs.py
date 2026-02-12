@@ -42,7 +42,7 @@ except:
 from scipy.signal import savgol_filter
 from scipy import ndimage
 from scipy.signal import convolve2d
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import gaussian_filter, map_coordinates
 from scipy.optimize import curve_fit
 
 #from sklearn import __version__ as sklearn_version
