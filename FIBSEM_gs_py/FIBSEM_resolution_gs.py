@@ -923,8 +923,8 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
         print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Starting DASK computations: blob analysis')
     with ProgressBar():
         results = compute(*blob_futures)
-    tr_results = np.array([result[0]. for result in results])
-    error_flags = np.array([result[1]. for result in results])
+    tr_results = np.array([result[0] for result in results])
+    error_flags = np.array([result[1] for result in results])
 
     #error_flags = np.array(error_flags)
     #tr_results = np.array(tr_results)
