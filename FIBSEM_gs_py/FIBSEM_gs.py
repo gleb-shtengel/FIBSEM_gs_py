@@ -8091,8 +8091,8 @@ def list_to_kp(inp_list):
     kp.angle = inp_list[1]
     kp.size = inp_list[2]
     kp.response = inp_list[3]
-    kp.octave = inp_list[4]
-    kp.class_id = inp_list[5]
+    kp.class_id = inp_list[4]
+    kp.octave = inp_list[5]
     return kp
 
 
