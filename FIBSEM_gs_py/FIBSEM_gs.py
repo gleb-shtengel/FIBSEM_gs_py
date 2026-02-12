@@ -8859,7 +8859,7 @@ def determine_transformations_files(params_dsf):
 
     if try_existing:
         try:
-            transform_matrix, fnm_matches_loc, kpts, error_abs_mean_loc, error_FWHMx_loc, error_FWHMy_loc, iteration_loc = pickle.load(open(fnm_matches, 'rb'))
+            transform_matrix, fnm_matches_loc, kpts, ints, error_abs_mean_loc, error_FWHMx_loc, error_FWHMy_loc, iteration_loc = pickle.load(open(fnm_matches, 'rb'))
             error_abs_mean = error_abs_mean_loc
             error_FWHMx = error_FWHMx_loc
             error_FWHMy = error_FWHMy_loc
@@ -9204,7 +9204,7 @@ def process_transformation_matrix_dataset(transformation_matrix, FOVtrend_x, FOV
         failed_to_open_fnms = []
         for j, fnm_matches in enumerate(tqdm(fnms_matches, desc='Recalculating the shifts for preserved scales: ')):
             try:
-                transform_matrix, fnm_matches_loc, [src_pts, dst_pts], error_abs_mean_loc, error_FWHMx_loc, error_FWHMy_loc, iteration_loc = pickle.load(open(fnm_matches, 'rb'))
+                transform_matrix, fnm_matches_loc, [src_pts, dst_pts], ints, error_abs_mean_loc, error_FWHMx_loc, error_FWHMy_loc, iteration_loc = pickle.load(open(fnm_matches, 'rb'))
                 try:
                     txs[j+1] = np.mean(tr_matr_cum[j, 0, 0] * dst_pts[:, 0] + tr_matr_cum[j, 0, 1] * dst_pts[:, 1]
                                        - tr_matr_cum[j+1, 0, 0] * src_pts[:, 0] - tr_matr_cum[j+1, 0, 1] * src_pts[:, 1])
@@ -9373,7 +9373,7 @@ def calculate_residual_deformation_fields_dataset(tr_matr_cum, image_shape, fnms
                     print('calculate_residual_deformation_fields_dataset: Step: ', j)
                     print(fnm_matches)
                     print(tr_matr_cum[j])
-                transform_matrix, fnm_matches_loc, [src_pts, dst_pts], error_abs_mean_loc, error_FWHMx_loc, error_FWHMy_loc, iteration_loc = pickle.load(open(fnm_matches, 'rb'))
+                transform_matrix, fnm_matches_loc, [src_pts, dst_pts], ints, error_abs_mean_loc, error_FWHMx_loc, error_FWHMy_loc, iteration_loc = pickle.load(open(fnm_matches, 'rb'))
                 deformation_fields[j+1] = determine_residual_deformation_field(src_pts, dst_pts, tr_matr_cum[j], tr_matr_cum[j+1], image_shape,
                                                                                 deformation_type = '1DY',
                                                                                 deformation_sigma = deformation_sigma,
@@ -9643,7 +9643,7 @@ def SIFT_evaluation_dataset(fs, **kwargs):
 
     params1 = [fs[0], dmin, dmax, kwargs]
     fnm_1 = extract_keypoints_descr_files(params1, deformation_field)
-    kpp1s, des1 = pickle.load(open(fnm_1, 'rb'))
+    kpp1s, des1, int1 = pickle.load(open(fnm_1, 'rb'))
     n_kpts = len(kpp1s)
     params2 = [fs[1], dmin, dmax, kwargs]
     fnm_2 = extract_keypoints_descr_files(params2, deformation_field)
