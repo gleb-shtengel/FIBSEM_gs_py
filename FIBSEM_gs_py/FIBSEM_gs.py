@@ -9007,15 +9007,18 @@ def determine_transformations_files(params_dsf):
                 error_FWHMy = np.nan
 
         # find corresponding intensoties
+        
         src_pts_c = np.array(src_pts).view(dtype=np.complex64).reshape(-1)
+        #src_pts_sorted_inds = np.argsort(src_pts_c)
+        #src_pts_c = src_pts_c[src_pts_sorted_inds]
+        #src_ints = src_ints[src_pts_sorted_inds]
         src_pts_selected_c = np.array(kpts[0]).view(dtype=np.complex64).reshape(-1)
         src_selected_inds = np.searchsorted(src_pts_c, src_pts_selected_c)
         src_selected_ints = src_ints[src_selected_inds]
 
-        dst_pts_c = np.array(dst_pts).view(dtype=np.complex64).reshape(-1)
-        dst_pts_selected_c = np.array(kpts[1]).view(dtype=np.complex64).reshape(-1)
-        dst_selected_inds = np.searchsorted(dst_pts_c, dst_pts_selected_c)
-        dst_selected_ints = dst_ints[dst_selected_inds]
+        #dst_pts_c = np.array(dst_pts).view(dtype=np.complex64).reshape(-1)
+        #dst_pts_selected_c = np.array(kpts[1]).view(dtype=np.complex64).reshape(-1)
+        dst_selected_ints = dst_ints[src_selected_inds]
 
         ints = [src_selected_ints, dst_selected_ints]
 
