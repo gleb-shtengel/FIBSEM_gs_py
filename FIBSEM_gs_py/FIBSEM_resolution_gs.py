@@ -881,6 +881,7 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
     ind_sorted = np.flip(np.argsort(subset_mags))
     blobs_LoG = np.array(blobs_LoG)[ind_sorted]
     
+    '''
     for j, blob in enumerate(tqdm(blobs_LoG, desc='Step2: Analyzing blobs', display=verbose)):
         z, y, x, r = blob
         xc = int(x)
@@ -896,9 +897,37 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
                                              transition_high_limit = transition_high_limit)
         tr_results.append(tr_result)
         error_flags.append(error_flag)
-        
-    error_flags = np.array(error_flags)
-    tr_results = np.array(tr_results)
+    '''
+    @delayed
+    def analyze_blob_local(subset, blob, dx2, pixel_size, bounds, bands, min_thr, transition_low_limit, transition_high_limit):
+        z, y, x, r = blob
+        xc = int(x)
+        yc = int(y)
+        zc = int(z)
+        subset = volume[zc-dx2:zc+dx2, yc-dx2:yc+dx2, xc-dx2:xc+dx2]
+        tr_result, error_flag = analyze_blob(subset,
+                                             pixel_size = pixel_size,
+                                             bounds = bounds,
+                                             bands = bands,
+                                             min_thr = min_thr,
+                                             transition_low_limit = transition_low_limit,
+                                             transition_high_limit = transition_high_limit)
+        return tr_result, error_flag
+    blob_futures = []
+    if verbose:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Setting up DASK computations: blob analysis')
+    for blob in blobs_LoG:
+        blob_futures.append(analyze_blob_local(subset, blob, dx2, pixel_size, bounds, bands, min_thr, transition_low_limit, transition_high_limit))
+
+    if verbose:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Starting DASK computations: blob analysis')
+    with ProgressBar():
+        results = compute(*blob_futures)
+    tr_results = np.array([result[0]. for result in results])
+    error_flags = np.array([result[1]. for result in results])
+
+    #error_flags = np.array(error_flags)
+    #tr_results = np.array(tr_results)
     if len(error_flags[error_flags==0]) > 0:
     #blobs_LoG = blobs_LoG[error_flags==0]
         Xpt1 = tr_results[error_flags==0, 1]
