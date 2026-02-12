@@ -8492,7 +8492,7 @@ def extract_image_intensity(image, smoothing_kernel, pts, **kwargs):
     '''
     order = kwargs.get('order', 1)
     smoothing_kernel = kwargs.get('smoothing_kernel', np.nan)
-    if np.any(np.invert(np.isnan(smoothing_kernel)))
+    if np.any(np.invert(np.isnan(smoothing_kernel))):
         image = np.convolve(image, smoothing_kernel)
     return map_coordinates(image, np.array(pts).T, order=order)
 
