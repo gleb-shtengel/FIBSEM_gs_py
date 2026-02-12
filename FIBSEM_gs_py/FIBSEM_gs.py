@@ -8622,7 +8622,7 @@ def extract_keypoints_descr_files(params, deformation_field):
 
         kps, dess = sift.detectAndCompute(img[yi_eval:ya_eval, xi_eval:xa_eval], None)
 
-        coords = np.array([kp.pt for kp in kps]).reshape(-1, 2)
+        coords = np.flip(np.array([kp.pt for kp in kps]), axis=1)
         ints = extract_image_intensity(img[yi_eval:ya_eval, xi_eval:xa_eval], smoothing_kernel, coords, order=order) / 255.0 * (d2-d1) + d1
 
         if xi_eval >0 or yi_eval>0:   # add shifts to ke-pint coordinates to convert them to full image coordinated
