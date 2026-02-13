@@ -2166,6 +2166,7 @@ class FIBSEM_mosaic_dataset:
             if n_matches>0:
                 fig0, axs0 = plt.subplots(1,3, figsize=(10,3))
                 fig0.suptitle(Sample_ID + ',  thr_min={:.0e}, thr_max={:.0e}, data range: {:.1f} ÷ {:.1f}'.format(thr_min, thr_max, dmin, dmax), fontsize=fsz-1)
+                fig.subplots_adjust(left=0.6, bottom=0.06, right=0.99, top=0.95, wspace=0.05)
                 axx = axs0[0]
                 axx.set_xlabel('SIFT: X Error (pixels)')
                 axx.set_ylabel('Count')
@@ -2214,6 +2215,10 @@ class FIBSEM_mosaic_dataset:
 
                 for ax in axs0.ravel():
                     ax.grid(True)
+                if save_res_png:
+                    save_filename0 = os.path.splitext(save_filename)[0] + '_plots.png'
+                    axs[0].text(0.0, -0.25, save_filename0, fontsize = 5, transform=axs[0].transAxes)
+                    fig.savefig(save_filename0, dpi=dpi)
 
             fig, axs = plt.subplots(1, 2, figsize=(10, 5.5))
             fig.subplots_adjust(left=0.01, bottom=0.01, right=0.99, top=0.95, wspace=0.05)
