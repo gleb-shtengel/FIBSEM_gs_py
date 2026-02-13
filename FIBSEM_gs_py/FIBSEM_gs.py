@@ -9723,7 +9723,7 @@ def SIFT_evaluation_dataset(fs, **kwargs):
     axy.set_xlabel('SIFT: Y Error (pixels)')
     axy.set_ylabel('Count')
     ax_int = axs[1,0]
-    ax_int.set_xlabel('Ratio of Img1/Img0 Key-Points Intensities')
+    ax_int.set_xlabel('Ratio of Img1/Img0 Key-Point Intensities')
     ax_int.set_ylabel('Count')
 
     if n_matches > 1:
