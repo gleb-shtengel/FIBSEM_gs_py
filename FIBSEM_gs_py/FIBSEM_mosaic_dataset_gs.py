@@ -2266,7 +2266,7 @@ class FIBSEM_mosaic_dataset:
                     print(save_filename)
                 fig.savefig(save_filename, dpi=dpi)
 
-        return fnm_deformed1, fnm_deformed2, transformations_result, int_results, kpt_ints
+        return fnm_deformed1, fnm_deformed2, transformations_result, int_results
 
 
     def determine_transformations_ECC(self, **kwargs):
