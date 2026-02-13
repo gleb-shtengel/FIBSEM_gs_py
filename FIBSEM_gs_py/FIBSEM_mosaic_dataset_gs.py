@@ -2144,13 +2144,13 @@ class FIBSEM_mosaic_dataset:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   # of keypoints = {:d} and {:d}, # of matches = {:d}'.format(n_kpts1, n_kpts2, n_matches))
             if n_matches>0:
                 src_pts_filtered, dst_pts_filtered = kpts
-                int_ratios = kpt_ints[1]/kpt_ints[0]
+                src_intensities, dst_intensities = kpt_ints
+                int_ratios = dst_intensities/src_intensities
                 src_pts_transformed = src_pts_filtered @ transform_matrix[0:2, 0:2].T + transform_matrix[0:2, 2]
                 xshifts = (dst_pts_filtered - src_pts_transformed)[:,0]
                 yshifts = (dst_pts_filtered - src_pts_transformed)[:,1]
                 print('Mean X-error={:.3f}, median X-error={:.3f}, FWHMx={:.3f}'.format(np.mean(xshifts), np.median(xshifts), error_FWHMx))
-                print('Mean Y-error={:.3f}, median Y-error={:.3f}, FWHMy={:.3f}'.format(np.mean(yshifts), np.median(yshifts), error_FWHMy))
-                print('Mean Int1/Int0 kpt ratio ={:.4f}, median Int1/Int0 kpt ratio={:.4f}, FWHMi={:.4f}'.format(np.mean(int_ratios), np.median(int_ratios), FWHM_int))
+                print('Mean Y-error={:.3f}, median Y-error={:.3f}, FWHMy={:.3f}'.format(np.mean(yshifts), np.median(yshifts), error_FWHMy)) 
             else:
                 print('No Matches detected')
 
@@ -2177,6 +2177,8 @@ class FIBSEM_mosaic_dataset:
 
                 hist_int, bins_int, patches_int = axs[1,0].hist(int_ratios, bins = 64)
                 FWHM_int, indi_int, inda_int, mx_int, mx_int_ind = find_FWHM(bins_int, hist_int[:-1], verbose=False, estimation=estimation, start=start, max_aver_aperture=5)
+                if verbose:
+                    print('Mean Int1/Int0 kpt ratio ={:.4f}, median Int1/Int0 kpt ratio={:.4f}, FWHMi={:.4f}'.format(np.mean(int_ratios), np.median(int_ratios), FWHM_int))
                 db_int = (bins_int[1]-bins_int[0])/2.0
                 ax_int.plot([bins_int[indi_int], bins_int[inda_int]], [mx_int/2.0, mx_int/2.0], 'r', linewidth = 4)
                 ax_int.plot([bins_int[mx_int_ind]+db_int], [mx_int], 'rd')
