@@ -2165,8 +2165,8 @@ class FIBSEM_mosaic_dataset:
 
             if n_matches>0:
                 fig0, axs0 = plt.subplots(1,3, figsize=(10,3))
-                fig0.suptitle(Sample_ID + ',  thr_min={:.0e}, thr_max={:.0e}, data range: {:.1f} ÷ {:.1f}'.format(thr_min, thr_max, dmin, dmax), fontsize=fsz-1)
-                fig0.subplots_adjust(left=0.06, bottom=0.06, right=0.99, top=0.95, wspace=0.05)
+                
+                fig0.subplots_adjust(left=0.06, bottom=0.06, right=0.99, top=0.95, wspace=0.10)
                 axx = axs0[0]
                 axx.set_xlabel('SIFT: X Error (pixels)')
                 axx.set_ylabel('Count')
@@ -2176,7 +2176,8 @@ class FIBSEM_mosaic_dataset:
                 ax_int = axs0[2]
                 ax_int.set_xlabel('Img1/Img0 Key-Pt Intensity Ratio')
                 ax_int.set_ylabel('Count')
-                axs0[0].text(0.01, 1.01, 'SIFT_nOctaveLayers={:d},  SIFT_edgeThreshold={:.3f}, SIFT_contrastThreshold={:.3f},  SIFT_sigma={:.3f}'.format(SIFT_nOctaveLayers, SIFT_edgeThreshold, SIFT_contrastThreshold, SIFT_sigma), fontsize=fsz-2, transform=axs0[0].transAxes)
+                axs0[0].text(0.01, 1.07, Sample_ID + ',  thr_min={:.0e}, thr_max={:.0e}, data range: {:.1f} ÷ {:.1f}'.format(thr_min, thr_max, dmin, dmax), transform=axs0[0].transAxes, fontsize=fsz-2)
+                axs0[0].text(0.01, 1.02, 'SIFT_nOctaveLayers={:d},  SIFT_edgeThreshold={:.3f}, SIFT_contrastThreshold={:.3f},  SIFT_sigma={:.3f}'.format(SIFT_nOctaveLayers, SIFT_edgeThreshold, SIFT_contrastThreshold, SIFT_sigma), fontsize=fsz-2, transform=axs0[0].transAxes)
 
                 hist_int, bins_int, patches_int = ax_int.hist(int_ratios, bins = 64)
                 FWHM_int, indi_int, inda_int, mx_int, mx_int_ind = find_FWHM(bins_int, hist_int[:-1], verbose=False, estimation=estimation, start=start, max_aver_aperture=5)
@@ -2207,18 +2208,12 @@ class FIBSEM_mosaic_dataset:
                 axy.text(0.05, 0.9, 'mean={:.3f}'.format(np.mean(yshifts)), transform=axy.transAxes, fontsize=fsz)
                 axy.text(0.05, 0.8, 'median={:.3f}'.format(np.median(yshifts)), transform=axy.transAxes, fontsize=fsz)
                 axy.text(0.05, 0.7, 'FWHM={:.3f}'.format(error_FWHMy), transform=axy.transAxes, fontsize=fsz)
-
-                axt=axx  # print Transformation Matrix data over axx plot
-                axt.text(0.65, 0.8, 'Transf. Matrix:', transform=axt.transAxes, fontsize=fsz)
-                axt.text(0.55, 0.7, '{:.4f} {:.4f} {:.4f}'.format(transform_matrix[0,0], transform_matrix[0,1], transform_matrix[0,2]), transform=axt.transAxes, fontsize=fsz-1)
-                axt.text(0.55, 0.6, '{:.4f} {:.4f} {:.4f}'.format(transform_matrix[1,0], transform_matrix[1,1], transform_matrix[1,2]), transform=axt.transAxes, fontsize=fsz-1)
-
                 for ax in axs0.ravel():
                     ax.grid(True)
                 if save_res_png:
                     save_filename0 = os.path.splitext(save_filename)[0] + '_plots.png'
                     axs0[0].text(0.0, -0.25, save_filename0, fontsize = 5, transform=axs0[0].transAxes)
-                    fig.savefig(save_filename0, dpi=dpi)
+                    fig0.savefig(save_filename0, dpi=dpi)
 
             fig, axs = plt.subplots(1, 2, figsize=(10, 5.5))
             fig.subplots_adjust(left=0.01, bottom=0.01, right=0.99, top=0.95, wspace=0.05)
