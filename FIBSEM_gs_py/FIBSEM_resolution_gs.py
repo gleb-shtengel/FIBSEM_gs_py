@@ -880,7 +880,8 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
     subset_mags = np.array(subset_mags)
     ind_sorted = np.flip(np.argsort(subset_mags))
     blobs_LoG = np.array(blobs_LoG)[ind_sorted]
-    
+    lazy_results = []
+
     for j, blob in enumerate(tqdm(blobs_LoG, desc='Step2: Analyzing blobs', display=verbose)):
         z, y, x, r = blob
         xc = int(x)
@@ -898,7 +899,7 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
         tr_results.append(tr_result)
         error_flags.append(error_flag)
         '''
-        lazy_result = append(dask.delayed(analyze_blob)(subset,
+        lazy_results = append(dask.delayed(analyze_blob)(subset,
                                              pixel_size = pixel_size,
                                              bounds = bounds,
                                              bands = bands,
@@ -909,7 +910,7 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
     #error_flags = np.array(error_flags)
     #tr_results = np.array(tr_results)
     with ProgressBar():
-        results = lazy_result.compute()
+        results = compute(*lazy_results)
     tr_results = np.array([result[0] for result in results])
     error_flags = np.array([result[1] for result in results])
     if len(error_flags[error_flags==0]) > 0:
