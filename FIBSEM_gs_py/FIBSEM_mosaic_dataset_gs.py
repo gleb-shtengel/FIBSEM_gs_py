@@ -2159,12 +2159,13 @@ class FIBSEM_mosaic_dataset:
             symsize = 2
             fsize_text = 5
             fsize_label = 10
+            fsz = 12
             scale = 100
             width = 0.0010
 
             if n_matches>0:
                 fig0, axs0 = plt.subplots(1,3, figsize=(10,4))
-                fig0.suptitle(Sample_ID + ',  thr_min={:.0e}, thr_max={:.0e}, SIFT_contrastThreshold={:.3f}'.format(thr_min, thr_max, SIFT_contrastThreshold), fontsize=fszl)
+                fig0.suptitle(Sample_ID + ',  thr_min={:.0e}, thr_max={:.0e}, SIFT_contrastThreshold={:.3f}'.format(thr_min, thr_max, SIFT_contrastThreshold), fontsize=fsz-1)
 
                 axx = axs0[0]
                 axx.set_xlabel('SIFT: X Error (pixels)')
@@ -2212,8 +2213,6 @@ class FIBSEM_mosaic_dataset:
                 axt.text(0.65, 0.8, 'Transf. Matrix:', transform=axt.transAxes, fontsize=fsz)
                 axt.text(0.55, 0.7, '{:.4f} {:.4f} {:.4f}'.format(transform_matrix[0,0], transform_matrix[0,1], transform_matrix[0,2]), transform=axt.transAxes, fontsize=fsz-1)
                 axt.text(0.55, 0.6, '{:.4f} {:.4f} {:.4f}'.format(transform_matrix[1,0], transform_matrix[1,1], transform_matrix[1,2]), transform=axt.transAxes, fontsize=fsz-1)
-
-
 
             fig, axs = plt.subplots(1, 2, figsize=(10, 5.5))
             fig.subplots_adjust(left=0.01, bottom=0.01, right=0.99, top=0.95, wspace=0.05)
