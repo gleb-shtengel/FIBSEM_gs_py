@@ -8623,7 +8623,7 @@ def extract_keypoints_descr_files(params, deformation_field):
         kps, dess = sift.detectAndCompute(img[yi_eval:ya_eval, xi_eval:xa_eval], None)
 
         coords = np.flip(np.array([kp.pt for kp in kps]), axis=1)
-        ints = extract_image_intensity(img[yi_eval:ya_eval, xi_eval:xa_eval], smoothing_kernel, coords, order=order) / 255.0 * (d2-d1) + d1
+        kpt_ints = extract_image_intensity(img[yi_eval:ya_eval, xi_eval:xa_eval], smoothing_kernel, coords, order=order) / 255.0 * (d2-d1) + d1
 
         if xi_eval >0 or yi_eval>0:   # add shifts to ke-pint coordinates to convert them to full image coordinated
             for j, kp in enumerate(kps):
@@ -8632,7 +8632,7 @@ def extract_keypoints_descr_files(params, deformation_field):
         if verbose:
             print('File: ', fl, ', extracted {:d} keypoints'.format(len(kps)))
         key_points = [kp_to_list(kp) for kp in kps]
-        kpd = [key_points, dess, ints]
+        kpd = [key_points, dess, kpt_ints]
         
         pickle.dump(kpd, open(fnm, 'wb')) # converts array to binary and writes to output
         #pickle.dump(dess, open(fnm, 'wb')) # converts array to binary and writes to output
@@ -8873,51 +8873,51 @@ def determine_transformations_files(params_dsf):
                 self.params = determine_regularized_affine_transform(src, dst, l2_matrix, targ_vector)
             RegularizedAffineTransform.estimate = estimate
 
-        kpp1s, des1s, ints1s = pickle.load(open(fnm_1, 'rb'))
-        kpp2s, des2s, ints2s = pickle.load(open(fnm_2, 'rb'))
+        kpp1s, des1s, kpt_ints1s = pickle.load(open(fnm_1, 'rb'))
+        kpp2s, des2s, kpt_ints2s = pickle.load(open(fnm_2, 'rb'))
         if verbose:
             print('')
             print('File 1: ', fnm_1)
-            print('File 1 loaded: # of kpts={:d}, # of desc={:d}, # of ints={:d}'.format(len(kpp1s), len(des1s), len(ints1s)))
+            print('File 1 loaded: # of kpts={:d}, # of desc={:d}, # of kpt_ints={:d}'.format(len(kpp1s), len(des1s), len(kpt_ints1s)))
             print('File 2: ', fnm_2)
-            print('File 2 loaded: # of kpts={:d}, # of desc={:d}, # of ints={:d}'.format(len(kpp2s), len(des2s), len(ints2s)))
+            print('File 2 loaded: # of kpts={:d}, # of desc={:d}, # of kpt_ints={:d}'.format(len(kpp2s), len(des2s), len(kpt_ints2s)))
         if 'image_margins' in kwargs:
             ymargin, xmargin =  kwargs['image_margins']
             ysz, xsz = kwargs['image_shape']
             # if margins are provided, apply margin filtering of kpts
             kp1 = []
             des1 = []
-            ints1 = []
-            for kpp1i, des1i, ints1i in zip(kpp1s, des1s, ints1s):
+            kpt_ints1 = []
+            for kpp1i, des1i, kpt_ints1i in zip(kpp1s, des1s, kpt_ints1s):
                     kp1i = list_to_kp(kpp1i)
                     if kp1i.pt[0] > (xsz - xmargin) and kp1i.pt[1] > (ysz - ymargin):
                         kp1.append(kp1i)
                         des1.append(des1i)
-                        ints1.append(ints1i)
+                        kpt_ints1.append(kpt_ints1i)
             kp2 = []
             des2 = []
-            ints2 = []
-            for kpp2i, des2i, ints2i in zip(kpp2s, des2s, ints2s):
+            kpt_ints2 = []
+            for kpp2i, des2i, kpt_ints2i in zip(kpp2s, des2s, kpt_ints2s):
                     kp2i = list_to_kp(kpp2i)
                     if kp2i.pt[0] < xmargin and kp2i.pt[1] < ymargin:
                         kp2.append(kp2i)
                         des2.append(des2i)
-                        ints2.append(ints2i)
+                        kpt_ints2.append(kpt_ints2i)
             des1 = np.array(des1)
             des2 = np.array(des2)
-            ints1 = np.array(ints1)
-            ints2 = np.array(ints2)
+            kpt_ints1 = np.array(kpt_ints1)
+            kpt_ints2 = np.array(kpt_ints2)
         else:
             kp1 = [list_to_kp(kpp1) for kpp1 in kpp1s]     # this converts a list of lists to a list of keypoint objects to be used by a matcher later
             kp2 = [list_to_kp(kpp2) for kpp2 in kpp2s]     # same for the second frame
             des1 = des1s
             des2 = des2s
-            ints1 = ints1s
-            ints2 = ints2s
+            kpt_ints1 = kpt_ints1s
+            kpt_ints2 = kpt_ints2s
 
         if verbose:
-            print('File 1 with margin limits applied: # of kpts={:d}, # of desc={:d}, # of ints={:d}'.format(len(kp1), len(des1), len(ints1)))
-            print('File 2 with margin limits applied: # of kpts={:d}, # of desc={:d}, # of ints={:d}'.format(len(kp2), len(des2), len(ints2)))
+            print('File 1 with margin limits applied: # of kpts={:d}, # of desc={:d}, # of kpt_ints={:d}'.format(len(kp1), len(des1), len(kpt_ints1)))
+            print('File 2 with margin limits applied: # of kpts={:d}, # of desc={:d}, # of kpt_ints={:d}'.format(len(kp2), len(des2), len(kpt_ints2)))
 
         # establish matches
         if BFMatcher:    # if BFMatcher==True - use BF (Brute Force) matcher
@@ -8962,9 +8962,9 @@ def determine_transformations_files(params_dsf):
                 good.append(m)
 
         src_pts = np.float32([ kp1[m.queryIdx].pt for m in good ]).reshape(-1, 2)
-        src_ints = np.float32([ints1[m.queryIdx] for m in good ])
+        src_ints = np.float32([kpt_ints1[m.queryIdx] for m in good ])
         dst_pts = np.float32([ kp2[m.trainIdx].pt for m in good ]).reshape(-1, 2)
-        dst_ints = np.float32([ints2[m.trainIdx] for m in good ])
+        dst_ints = np.float32([kpt_ints2[m.trainIdx] for m in good ])
 
         if verbose:
             print('Number of Matches after Low Ratio Test: ', len(src_pts))
@@ -9020,16 +9020,16 @@ def determine_transformations_files(params_dsf):
         #dst_pts_selected_c = np.array(kpts[1]).view(dtype=np.complex64).reshape(-1)
         dst_selected_ints = dst_ints[src_selected_inds]
 
-        ints = [src_selected_ints, dst_selected_ints]
+        kpt_ints = [src_selected_ints, dst_selected_ints]
 
         if verbose:
             print('Transformation Matrix : ', transform_matrix)
             print('Number of Matches : ', len(kpts[0]))
             print('error_abs_mean={:.3f}, error_FWHMx={:.3f}, error_FWHMy={:.3f}'.format(error_abs_mean, error_FWHMx, error_FWHMy))
         if save_matches:
-            int_results = [transform_matrix, fnm_matches, kpts, ints, error_abs_mean, error_FWHMx, error_FWHMy, iteration, ]
+            int_results = [transform_matrix, fnm_matches, kpts, kpt_ints, error_abs_mean, error_FWHMx, error_FWHMy, iteration, ]
             pickle.dump(int_results, open(fnm_matches, 'wb'))
-    return transform_matrix, fnm_matches, kpts, ints, error_abs_mean, error_FWHMx, error_FWHMy, iteration
+    return transform_matrix, fnm_matches, kpts, kpt_ints, error_abs_mean, error_FWHMx, error_FWHMy, iteration
 
 
 def build_filename(fname, **kwargs):
@@ -9207,7 +9207,7 @@ def process_transformation_matrix_dataset(transformation_matrix, FOVtrend_x, FOV
         failed_to_open_fnms = []
         for j, fnm_matches in enumerate(tqdm(fnms_matches, desc='Recalculating the shifts for preserved scales: ')):
             try:
-                transform_matrix, fnm_matches_loc, [src_pts, dst_pts], ints, error_abs_mean_loc, error_FWHMx_loc, error_FWHMy_loc, iteration_loc = pickle.load(open(fnm_matches, 'rb'))
+                transform_matrix, fnm_matches_loc, [src_pts, dst_pts], kpt_ints, error_abs_mean_loc, error_FWHMx_loc, error_FWHMy_loc, iteration_loc = pickle.load(open(fnm_matches, 'rb'))
                 try:
                     txs[j+1] = np.mean(tr_matr_cum[j, 0, 0] * dst_pts[:, 0] + tr_matr_cum[j, 0, 1] * dst_pts[:, 1]
                                        - tr_matr_cum[j+1, 0, 0] * src_pts[:, 0] - tr_matr_cum[j+1, 0, 1] * src_pts[:, 1])
@@ -9376,7 +9376,7 @@ def calculate_residual_deformation_fields_dataset(tr_matr_cum, image_shape, fnms
                     print('calculate_residual_deformation_fields_dataset: Step: ', j)
                     print(fnm_matches)
                     print(tr_matr_cum[j])
-                transform_matrix, fnm_matches_loc, [src_pts, dst_pts], ints, error_abs_mean_loc, error_FWHMx_loc, error_FWHMy_loc, iteration_loc = pickle.load(open(fnm_matches, 'rb'))
+                transform_matrix, fnm_matches_loc, [src_pts, dst_pts], kpt_ints, error_abs_mean_loc, error_FWHMx_loc, error_FWHMy_loc, iteration_loc = pickle.load(open(fnm_matches, 'rb'))
                 deformation_fields[j+1] = determine_residual_deformation_field(src_pts, dst_pts, tr_matr_cum[j], tr_matr_cum[j+1], image_shape,
                                                                                 deformation_type = '1DY',
                                                                                 deformation_sigma = deformation_sigma,
@@ -9496,7 +9496,7 @@ def SIFT_evaluation_dataset(fs, **kwargs):
 
     Returns:
     ----------
-    dmin, dmax, comp_time, transform_matrix, n_matches, iteration, kpts, ints, error_FWHMx, error_FWHMy
+    dmin, dmax, comp_time, transform_matrix, n_matches, iteration, kpts, kpt_ints, error_FWHMx, error_FWHMy
     '''
     memory_profiling = kwargs.get('memory_profiling', False)
     if memory_profiling:
@@ -9606,9 +9606,11 @@ def SIFT_evaluation_dataset(fs, **kwargs):
 
     hist, bins, patches = axs[0,0].hist(img, bins = nbins)
     axs[0,0].set_xlim(xi, xa)
-    axs[0,0].plot([dmin, dmin], [0, np.max(hist)], 'r', linestyle = '--')
-    axs[0,0].plot([dmax, dmax], [0, np.max(hist)], 'g', linestyle = '--')
+    axs[0,0].plot([dmin, dmin], [0, np.max(hist)], 'r', linestyle = '--', label = 'data_min={:.1f}'.format(dmin))
+    axs[0,0].plot([dmax, dmax], [0, np.max(hist)], 'g', linestyle = '--', label = 'data_max={:.1f}'.format(dmax))
     axs[0,0].set_ylabel('Count', fontsize = fsz)
+
+    '''
     pdf = hist / (frame.XResolution * frame.YResolution)
     cdf = np.cumsum(pdf)
     xCDF = bins[0:-1]+(bins[1]-bins[0])/2.0
@@ -9626,6 +9628,7 @@ def SIFT_evaluation_dataset(fs, **kwargs):
     axs[1,0].set_xlim(xi, xa)
     axs[1,0].legend(loc='center', fontsize=fsz)
     axs[0,0].set_title('Data Min and Max with thr_min={:.0e},  thr_max={:.0e}'.format(thr_min, thr_max), fontsize = fsz)
+    '''
 
     minmax = []
     for j,f in enumerate(fs):
@@ -9646,7 +9649,7 @@ def SIFT_evaluation_dataset(fs, **kwargs):
 
     params1 = [fs[0], dmin, dmax, kwargs]
     fnm_1 = extract_keypoints_descr_files(params1, deformation_field)
-    kpp1s, des1, int1 = pickle.load(open(fnm_1, 'rb'))
+    kpp1s, des1, kpt_int1 = pickle.load(open(fnm_1, 'rb'))
     n_kpts = len(kpp1s)
     params2 = [fs[1], dmin, dmax, kwargs]
     fnm_2 = extract_keypoints_descr_files(params2, deformation_field)
@@ -9679,8 +9682,9 @@ def SIFT_evaluation_dataset(fs, **kwargs):
                             elapsed_time))
 
     n_matches_tot = np.array([len(res[2][0]) for res in results])
-    transform_matrix, fnm_matches, kpts, ints, error_abs_mean, error_FWHMx, error_FWHMy, iteration = results[np.argmin(n_matches_tot)]
+    transform_matrix, fnm_matches, kpts, kpt_ints, error_abs_mean, error_FWHMx, error_FWHMy, iteration = results[np.argmin(n_matches_tot)]
     n_matches = len(kpts[0])
+
     print('')
     if number_of_repeats > 1:
         print('Repeated registration calculations {:d} times'.format(number_of_repeats))
@@ -9715,7 +9719,21 @@ def SIFT_evaluation_dataset(fs, **kwargs):
     axx.set_xlabel('SIFT: X Error (pixels)')
     axy = axs[1,1]
     axy.set_xlabel('SIFT: Y Error (pixels)')
+    ax_int = ax[1,0]
+    ax_int.set_xlabel('Ratio of Img0/Img1 Key-Points Intensities')
+
     if n_matches > 1:
+        int_ratios = kpt_ints[1]/kpt_ints[0]
+        
+        hist_int, bins_int, patches_int = axs[1,0].hist(int_ratios, bins = 64)
+        FWHM_int, indi_int, inda_int, mx_int, mx_int_ind = find_FWHM(xbins, xcounts[:-1], verbose=False, estimation=estimation, start=start, max_aver_aperture=5)
+        db_int = (bins_int[1]-bins_int[0])/2.0
+        ax_int.plot([bins_int[indi_int], bins_int[inda_int]], [mx_int/2.0, mx_int/2.0], 'r', linewidth = 4)
+        ax_int.plot([bins_int[mx_int_ind]+db_int], [mx_int], 'rd')
+        ax_int.text(0.05, 0.9, 'mean={:.3f}'.format(np.mean(int_ratios)), transform=ax_int.transAxes, fontsize=fsz)
+        ax_int.text(0.05, 0.8, 'median={:.3f}'.format(np.median(int_ratios)), transform=ax_int.transAxes, fontsize=fsz)
+        ax_int.text(0.05, 0.7, 'FWHM={:.3f}'.format(FWHM_int), transform=ax_int.transAxes, fontsize=fsz)
+
         xcounts, xbins, xhist_patches = axx.hist(xshifts, bins=64)
         error_FWHMx, indxi, indxa, mxx, mxx_ind = find_FWHM(xbins, xcounts[:-1], verbose=False, estimation=estimation, start=start, max_aver_aperture=5)
         dbx = (xbins[1]-xbins[0])/2.0
@@ -9835,7 +9853,7 @@ def SIFT_evaluation_dataset(fs, **kwargs):
                     format_bytes(vms_after - vms_before),
                     format_bytes(shared_after - shared_before),
                     elapsed_time))
-    return(dmin, dmax, comp_time, transform_matrix, n_matches, iteration, kpts, ints, error_FWHMx, error_FWHMy)
+    return(dmin, dmax, comp_time, transform_matrix, n_matches, iteration, kpts, kpt_ints, error_FWHMx, error_FWHMy)
 
 
 def check_registration(img0, img1, **kwargs):
@@ -11690,13 +11708,13 @@ class FIBSEM_dataset:
                                 'memory_profiling' : memory_profiling,
                                 'save_res_png'  : save_res_png}
         
-        dmin, dmax, comp_time, transform_matrix, n_matches, iteration, kpts, ints, error_FWHMx, error_FWHMy = SIFT_evaluation_dataset(eval_fls, **SIFT_evaluation_kwargs)
+        dmin, dmax, comp_time, transform_matrix, n_matches, iteration, kpts, kpt_ints, error_FWHMx, error_FWHMy = SIFT_evaluation_dataset(eval_fls, **SIFT_evaluation_kwargs)
         src_pts_filtered, dst_pts_filtered = kpts
         print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Transformation Matrix determined using '+ TransformType.__name__ +' using ' + solver + ' solver')
         print(transform_matrix)
         print('{:d} keypoint matches were detected with {:.1f} pixel outlier threshold'.format(n_matches, drmax))
         print('Number of iterations: {:d}'.format(iteration))
-        return dmin, dmax, comp_time, transform_matrix, n_matches, iteration, kpts, ints, error_FWHMx, error_FWHMy
+        return dmin, dmax, comp_time, transform_matrix, n_matches, iteration, kpts, kpt_ints, error_FWHMx, error_FWHMy
 
 
     def convert_raw_data_to_tif_files(self, **kwargs):
@@ -12144,14 +12162,14 @@ class FIBSEM_dataset:
             if use_DASK:
                 print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Using DASK distributed')
                 futures4 = DASK_client.map(determine_transformations_files, params_s4, retries = DASK_client_retries)
-                #determine_transformations_files returns (transform_matrix, fnm_matches, kpts, ints, error_abs_mean, error_FWHMx, error_FWHMy, iteration)
+                #determine_transformations_files returns (transform_matrix, fnm_matches, kpts, kpt_ints, error_abs_mean, error_FWHMx, error_FWHMy, iteration)
                 results_s4 = DASK_client.gather(futures4)
             else:
                 print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Using Local Computation')
                 results_s4 = []
                 for param_s4 in tqdm(params_s4, desc = 'Extracting Transformation Parameters: '):
                     results_s4.append(determine_transformations_files(param_s4))
-            #determine_transformations_files returns (transform_matrix, fnm_matches, kpts, ints, error_abs_mean, error_FWHMx, error_FWHMy, iteration)
+            #determine_transformations_files returns (transform_matrix, fnm_matches, kpts, kpt_ints, error_abs_mean, error_FWHMx, error_FWHMy, iteration)
             self.transformation_matrix = np.nan_to_num(np.array([result[0] for result in results_s4]))
             self.fnms_matches = [result[1] for result in results_s4]
             self.npts = np.nan_to_num(np.array([len(result[2][0])  for result in results_s4]))
