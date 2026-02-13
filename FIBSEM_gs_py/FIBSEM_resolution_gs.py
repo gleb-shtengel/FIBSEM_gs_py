@@ -899,7 +899,7 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
         tr_results.append(tr_result)
         error_flags.append(error_flag)
         '''
-        lazy_results.append(dask.delayed(analyze_blob)(subset,
+        lazy_results.append(delayed(analyze_blob)(subset,
                                              pixel_size = pixel_size,
                                              bounds = bounds,
                                              bands = bands,
