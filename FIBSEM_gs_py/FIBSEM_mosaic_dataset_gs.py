@@ -2174,10 +2174,10 @@ class FIBSEM_mosaic_dataset:
                 axy.set_xlabel('SIFT: Y Error (pixels)')
                 axy.set_ylabel('Count')
                 ax_int = axs0[2]
-                ax_int.set_xlabel('Ratio of Img1/Img0 Key-Point Intensities')
+                ax_int.set_xlabel('Img1/Img0 Key-Pt Intensity Ratio')
                 ax_int.set_ylabel('Count')
 
-                hist_int, bins_int, patches_int = axs[1,0].hist(int_ratios, bins = 64)
+                hist_int, bins_int, patches_int = ax_int.hist(int_ratios, bins = 64)
                 FWHM_int, indi_int, inda_int, mx_int, mx_int_ind = find_FWHM(bins_int, hist_int[:-1], verbose=False, estimation=estimation, start=start, max_aver_aperture=5)
                 if verbose:
                     print('Mean Int1/Int0 kpt ratio ={:.4f}, median Int1/Int0 kpt ratio={:.4f}, FWHMi={:.4f}'.format(np.mean(int_ratios), np.median(int_ratios), FWHM_int))

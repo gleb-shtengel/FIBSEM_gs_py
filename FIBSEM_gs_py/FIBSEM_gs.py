@@ -9723,12 +9723,12 @@ def SIFT_evaluation_dataset(fs, **kwargs):
     axy.set_xlabel('SIFT: Y Error (pixels)')
     axy.set_ylabel('Count')
     ax_int = axs[1,0]
-    ax_int.set_xlabel('Ratio of Img1/Img0 Key-Point Intensities')
+    ax_int.set_xlabel('Img1/Img0 Key-Pt Intensity Ratio')
     ax_int.set_ylabel('Count')
 
     if n_matches > 1:
         int_ratios = kpt_ints[1]/kpt_ints[0]
-        hist_int, bins_int, patches_int = axs[1,0].hist(int_ratios, bins = 64)
+        hist_int, bins_int, patches_int = ax_int.hist(int_ratios, bins = 64)
         FWHM_int, indi_int, inda_int, mx_int, mx_int_ind = find_FWHM(bins_int, hist_int[:-1], verbose=False, estimation=estimation, start=start, max_aver_aperture=5)
         db_int = (bins_int[1]-bins_int[0])/2.0
         ax_int.plot([bins_int[indi_int], bins_int[inda_int]], [mx_int/2.0, mx_int/2.0], 'r', linewidth = 4)
