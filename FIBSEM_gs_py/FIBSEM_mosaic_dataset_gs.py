@@ -1959,6 +1959,8 @@ class FIBSEM_mosaic_dataset:
                 max data values (one per file) for I8 conversion.
             data_minmax_glob : 2D float array
                 min and max data values without sliding averaging.
+        I0 : float
+            Dark Count used for Intensity calculation. Default is self.Scaling[1,0].
         SIFT_nfeatures : int
             The number of best features to retain. Default is object attribute. SIFT library default is 0 (all features retained).
             The features are ranked by their scores (measured in SIFT algorithm as the local contrast)
@@ -2010,6 +2012,7 @@ class FIBSEM_mosaic_dataset:
         thr_min = kwargs.get("thr_min", self.thr_min)
         thr_max = kwargs.get("thr_max", self.thr_max)
         nbins = kwargs.get("nbins", self.nbins)
+        I0 = kwargs.get('I0', self.Scaling[1,0] )
         SIFT_nfeatures = kwargs.get("SIFT_nfeatures", self.SIFT_nfeatures)
         SIFT_nOctaveLayers = kwargs.get("SIFT_nOctaveLayers", self.SIFT_nOctaveLayers)
         SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", self.SIFT_contrastThreshold)
@@ -2146,7 +2149,7 @@ class FIBSEM_mosaic_dataset:
             if n_matches>0:
                 src_pts_filtered, dst_pts_filtered = kpts
                 src_intensities, dst_intensities = kpt_ints
-                int_ratios = dst_intensities/src_intensities
+                int_ratios = (dst_intensities-I0)/(src_intensities-I0)
                 src_pts_transformed = src_pts_filtered @ transform_matrix[0:2, 0:2].T + transform_matrix[0:2, 2]
                 xshifts = (dst_pts_filtered - src_pts_transformed)[:,0]
                 yshifts = (dst_pts_filtered - src_pts_transformed)[:,1]
@@ -2154,7 +2157,6 @@ class FIBSEM_mosaic_dataset:
                 print('Mean Y-error={:.3f}, median Y-error={:.3f}, FWHMy={:.3f}'.format(np.mean(yshifts), np.median(yshifts), error_FWHMy)) 
             else:
                 print('No Matches detected')
-
             fs=12
             symsize = 2
             fsize_text = 5
@@ -2165,8 +2167,7 @@ class FIBSEM_mosaic_dataset:
 
             if n_matches>0:
                 fig0, axs0 = plt.subplots(1,3, figsize=(10,3))
-                
-                fig0.subplots_adjust(left=0.06, bottom=0.10, right=0.99, top=0.90, wspace=0.20)
+                fig0.subplots_adjust(left=0.06, bottom=0.15, right=0.99, top=0.87, wspace=0.20)
                 axx = axs0[0]
                 axx.set_xlabel('SIFT: X Error (pixels)')
                 axx.set_ylabel('Count')
@@ -2176,7 +2177,7 @@ class FIBSEM_mosaic_dataset:
                 ax_int = axs0[2]
                 ax_int.set_xlabel('Img1/Img0 Key-Pt Intensity Ratio')
                 ax_int.set_ylabel('Count')
-                axs0[0].text(0.01, 1.09, Sample_ID + ',  thr_min={:.0e}, thr_max={:.0e}, data range: {:.1f} ÷ {:.1f}'.format(thr_min, thr_max, dmin, dmax), transform=axs0[0].transAxes, fontsize=fsz)
+                axs0[0].text(0.01, 1.09, Sample_ID + ',  thr_min={:.0e}, thr_max={:.0e}, data range: {:.1f} ÷ {:.1f}, I0={:.1f}'.format(thr_min, thr_max, dmin, dmax, I0), transform=axs0[0].transAxes, fontsize=fsz)
                 axs0[0].text(0.01, 1.02, 'SIFT_nOctaveLayers={:d},  SIFT_edgeThreshold={:.3f}, SIFT_contrastThreshold={:.3f},  SIFT_sigma={:.3f}'.format(SIFT_nOctaveLayers, SIFT_edgeThreshold, SIFT_contrastThreshold, SIFT_sigma), fontsize=fsz, transform=axs0[0].transAxes)
 
                 hist_int, bins_int, patches_int = ax_int.hist(int_ratios, bins = 64)
