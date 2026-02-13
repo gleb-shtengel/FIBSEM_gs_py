@@ -9726,7 +9726,7 @@ def SIFT_evaluation_dataset(fs, **kwargs):
         int_ratios = kpt_ints[1]/kpt_ints[0]
         
         hist_int, bins_int, patches_int = axs[1,0].hist(int_ratios, bins = 64)
-        FWHM_int, indi_int, inda_int, mx_int, mx_int_ind = find_FWHM(xbins, xcounts[:-1], verbose=False, estimation=estimation, start=start, max_aver_aperture=5)
+        FWHM_int, indi_int, inda_int, mx_int, mx_int_ind = find_FWHM(bins_int, hist_int[:-1], verbose=False, estimation=estimation, start=start, max_aver_aperture=5)
         db_int = (bins_int[1]-bins_int[0])/2.0
         ax_int.plot([bins_int[indi_int], bins_int[inda_int]], [mx_int/2.0, mx_int/2.0], 'r', linewidth = 4)
         ax_int.plot([bins_int[mx_int_ind]+db_int], [mx_int], 'rd')
@@ -9839,6 +9839,10 @@ def SIFT_evaluation_dataset(fs, **kwargs):
         print('RANSAC_initial_fraction = {:.4f}, max_iter={:d}'.format(RANSAC_initial_fraction, max_iter))
         print('drmax={:.3f}'.format(drmax))
         print('# of keypoints = {:d}, # of matches ={:d}'.format(n_kpts, n_matches))
+        if n_matches>0:
+            print('Mean X-error={:.3f}, median X-error={:.3f}, FWHMx={:.3f}'.format(np.mean(xshifts), np.median(xshifts), error_FWHMx))
+            print('Mean Y-error={:.3f}, median Y-error={:.3f}, FWHMy={:.3f}'.format(np.mean(yshifts), np.median(yshifts), error_FWHMy))
+            print('Mean Int1/Int0 kpt ratio ={:.3f}, median Int1/Int0 kpt ratio={:.3f}, FWHMi={:.3f}'.format(np.mean(int_ratios), np.median(int_ratios), FWHM_int))
 
     if save_res_png :
         fig2_fnm = os.path.join(data_dir, (os.path.splitext(os.path.split(fs[0])[-1])[0]+'_SIFT_vmap_'+TransformType.__name__ + '_' + solver +'_thr_min{:.0e}_thr_max{:.0e}.png'.format(thr_min, thr_max)))
