@@ -9604,11 +9604,12 @@ def SIFT_evaluation_dataset(fs, **kwargs):
     fig, axs = plt.subplots(2,2, figsize=(12,8))
     fig.suptitle(Sample_ID + ',  thr_min={:.0e}, thr_max={:.0e}, SIFT_contrastThreshold={:.3f}'.format(thr_min, thr_max, SIFT_contrastThreshold), fontsize=fszl)
 
-    hist, bins, patches = axs[0,0].hist(img, bins = nbins)
+    hist, bins, patches = axs[0,0].hist(img, bins = nbins, label = 'Intensity PDF')
     axs[0,0].set_xlim(xi, xa)
     axs[0,0].plot([dmin, dmin], [0, np.max(hist)], 'r', linestyle = '--', label = 'data_min={:.1f}'.format(dmin))
     axs[0,0].plot([dmax, dmax], [0, np.max(hist)], 'g', linestyle = '--', label = 'data_max={:.1f}'.format(dmax))
     axs[0,0].set_ylabel('Count', fontsize = fsz)
+    axs[0,0].legend(loc='center', fontsize=fsz)
 
     '''
     pdf = hist / (frame.XResolution * frame.YResolution)
@@ -9717,22 +9718,24 @@ def SIFT_evaluation_dataset(fs, **kwargs):
 
     axx = axs[0,1]
     axx.set_xlabel('SIFT: X Error (pixels)')
+    axx.set_ylabel('Count')
     axy = axs[1,1]
     axy.set_xlabel('SIFT: Y Error (pixels)')
+    axy.set_ylabel('Count')
     ax_int = axs[1,0]
-    ax_int.set_xlabel('Ratio of Img0/Img1 Key-Points Intensities')
+    ax_int.set_xlabel('Ratio of Img1/Img0 Key-Points Intensities')
+    ax_int.set_ylabel('Count')
 
     if n_matches > 1:
         int_ratios = kpt_ints[1]/kpt_ints[0]
-        
         hist_int, bins_int, patches_int = axs[1,0].hist(int_ratios, bins = 64)
         FWHM_int, indi_int, inda_int, mx_int, mx_int_ind = find_FWHM(bins_int, hist_int[:-1], verbose=False, estimation=estimation, start=start, max_aver_aperture=5)
         db_int = (bins_int[1]-bins_int[0])/2.0
         ax_int.plot([bins_int[indi_int], bins_int[inda_int]], [mx_int/2.0, mx_int/2.0], 'r', linewidth = 4)
         ax_int.plot([bins_int[mx_int_ind]+db_int], [mx_int], 'rd')
-        ax_int.text(0.05, 0.9, 'mean={:.3f}'.format(np.mean(int_ratios)), transform=ax_int.transAxes, fontsize=fsz)
-        ax_int.text(0.05, 0.8, 'median={:.3f}'.format(np.median(int_ratios)), transform=ax_int.transAxes, fontsize=fsz)
-        ax_int.text(0.05, 0.7, 'FWHM={:.3f}'.format(FWHM_int), transform=ax_int.transAxes, fontsize=fsz)
+        ax_int.text(0.05, 0.9, 'mean={:.4f}'.format(np.mean(int_ratios)), transform=ax_int.transAxes, fontsize=fsz)
+        ax_int.text(0.05, 0.8, 'median={:.4f}'.format(np.median(int_ratios)), transform=ax_int.transAxes, fontsize=fsz)
+        ax_int.text(0.05, 0.7, 'FWHM={:.4f}'.format(FWHM_int), transform=ax_int.transAxes, fontsize=fsz)
 
         xcounts, xbins, xhist_patches = axx.hist(xshifts, bins=64)
         error_FWHMx, indxi, indxa, mxx, mxx_ind = find_FWHM(xbins, xcounts[:-1], verbose=False, estimation=estimation, start=start, max_aver_aperture=5)
@@ -9842,7 +9845,7 @@ def SIFT_evaluation_dataset(fs, **kwargs):
         if n_matches>0:
             print('Mean X-error={:.3f}, median X-error={:.3f}, FWHMx={:.3f}'.format(np.mean(xshifts), np.median(xshifts), error_FWHMx))
             print('Mean Y-error={:.3f}, median Y-error={:.3f}, FWHMy={:.3f}'.format(np.mean(yshifts), np.median(yshifts), error_FWHMy))
-            print('Mean Int1/Int0 kpt ratio ={:.3f}, median Int1/Int0 kpt ratio={:.3f}, FWHMi={:.3f}'.format(np.mean(int_ratios), np.median(int_ratios), FWHM_int))
+            print('Mean Int1/Int0 kpt ratio ={:.4f}, median Int1/Int0 kpt ratio={:.4f}, FWHMi={:.4f}'.format(np.mean(int_ratios), np.median(int_ratios), FWHM_int))
 
     if save_res_png :
         fig2_fnm = os.path.join(data_dir, (os.path.splitext(os.path.split(fs[0])[-1])[0]+'_SIFT_vmap_'+TransformType.__name__ + '_' + solver +'_thr_min{:.0e}_thr_max{:.0e}.png'.format(thr_min, thr_max)))
