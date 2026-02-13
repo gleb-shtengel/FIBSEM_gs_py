@@ -47,6 +47,7 @@ from FIBSEM_gs_py.FIBSEM_gs import (FIBSEM_frame,
                         RegularizedAffineTransform,
                         get_min_max_thresholds,
                         extract_keypoints_descr_files,
+                        extract_image_intensity, 
                         determine_transformations_files,
                         convert_tr_matr_into_deformation_field,
                         evaluate_FIBSEM_frames_dataset)
@@ -86,34 +87,6 @@ def build_weight_array(shape, **kwargs):
     indy_r = np.flip(indy)
     weights = np.clip((np.min(np.array([indx, indx_r, indy, indy_r]), axis=0) + weight_min), weight_min, weight_max)
     return weights
-
-
-def extract_image_intensity(image, smoothing_kernel, pts, **kwargs):
-    '''
-    Performs 2D convolution with kernel (skips convolution if kernel is not 2D array) and then evaluates image intensity at target points. gleb.shtengel@gmail.com 02.2026
-    Parameters:
-    -----------
-    image : 2D array
-        Source Image
-    smoothing_kernel : 2D array or anything
-        Smoothing kernel. if not 2D array, no smoothing is done
-    pts : 2D array or list of X,Y coordinates
-    
-    kwargs:
-    ----------
-    order : int
-        order=1 is bilinear (Default).
-
-    Returns:
-    ----------
-    intensities
-    '''
-    order = kwargs.get('order', 1)
-    try:
-        image = np.convolve(image, smoothing_kernel)
-    except:
-        pass
-    return map_coordinates(image, np.array(pts).T, order=order)
 
 
 def transform_tile(tile_params, deformation_field):
@@ -2103,9 +2076,9 @@ class FIBSEM_mosaic_dataset:
         fnms_kpts = []
         for j, param_s3 in enumerate(tqdm(params_s3, desc='Extracting Key Points and Descriptors: ', display=verbose)):
             fnms_kpts.append(extract_keypoints_descr_files(param_s3, deformation_field))
-        kpp1s, des1 = pickle.load(open(fnms_kpts[0], 'rb'))
+        kpp1s, des1, kpt_int1 = pickle.load(open(fnms_kpts[0], 'rb'))
         n_kpts1 = len(kpp1s)
-        kpp2s, des2 = pickle.load(open(fnms_kpts[1], 'rb'))
+        kpp2s, des2, kpt_int2 = pickle.load(open(fnms_kpts[1], 'rb'))
         n_kpts2 = len(kpp2s)
 
         params_SIFT = []
@@ -2154,7 +2127,7 @@ class FIBSEM_mosaic_dataset:
         param_SIFT = [fname1, fname2, dt_kwargs]
 
         transformations_result = determine_transformations_files(param_SIFT)
-        transform_matrix, fnm_matches, kpts, error_abs_mean, error_FWHMx, error_FWHMy, iteration = transformations_result
+        transform_matrix, fnm_matches, kpts, kpt_ints, error_abs_mean, error_FWHMx, error_FWHMy, iteration = transformations_result
         n_matches = len(kpts[0])
 
         if verbose:
@@ -2235,7 +2208,7 @@ class FIBSEM_mosaic_dataset:
                     print(save_filename)
                 fig.savefig(save_filename, dpi=dpi)
 
-        return fnm_deformed1, fnm_deformed2, transformations_result, int_results
+        return fnm_deformed1, fnm_deformed2, transformations_result, int_results, kpt_ints
 
 
     def determine_transformations_ECC(self, **kwargs):

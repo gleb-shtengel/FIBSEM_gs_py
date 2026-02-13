@@ -908,7 +908,8 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
 
     #error_flags = np.array(error_flags)
     #tr_results = np.array(tr_results)
-    results = lazy_result.compute()
+    with ProgressBar():
+        results = lazy_result.compute()
     tr_results = np.array([result[0] for result in results])
     error_flags = np.array([result[1] for result in results])
     if len(error_flags[error_flags==0]) > 0:
