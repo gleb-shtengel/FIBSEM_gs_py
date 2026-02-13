@@ -2164,7 +2164,7 @@ class FIBSEM_mosaic_dataset:
             width = 0.0010
 
             if n_matches>0:
-                fig0, axs0 = plt.subplots(1,3, figsize=(10,4))
+                fig0, axs0 = plt.subplots(1,3, figsize=(10,3))
                 fig0.suptitle(Sample_ID + ',  thr_min={:.0e}, thr_max={:.0e}, data range: {:.1f} ÷ {:.1f}'.format(thr_min, thr_max, dmin, dmax), fontsize=fsz-1)
                 axx = axs0[0]
                 axx.set_xlabel('SIFT: X Error (pixels)')
