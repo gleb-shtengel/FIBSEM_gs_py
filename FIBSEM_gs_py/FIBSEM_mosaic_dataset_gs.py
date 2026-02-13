@@ -2177,7 +2177,7 @@ class FIBSEM_mosaic_dataset:
                 ax_int = axs0[2]
                 ax_int.set_xlabel('Img1/Img0 Key-Pt Intensity Ratio')
                 ax_int.set_ylabel('Count')
-                axs0[0].text(0.05, 1.10, Sample_ID + ',  thr_min={:.0e}, thr_max={:.0e}, data range: {:.1f} ÷ {:.1f}, I0={:.1f}'.format(thr_min, thr_max, dmin, dmax, I0), transform=axs0[0].transAxes, fontsize=fsz)
+                axs0[0].text(0.05, 1.11, Sample_ID + ',  thr_min={:.0e}, thr_max={:.0e}, data range: {:.1f} ÷ {:.1f}, I0={:.1f}'.format(thr_min, thr_max, dmin, dmax, I0), transform=axs0[0].transAxes, fontsize=fsz)
                 axs0[0].text(0.01, 1.02, 'SIFT_nOctaveLayers={:d},  SIFT_edgeThreshold={:.3f}, SIFT_contrastThreshold={:.3f},  SIFT_sigma={:.3f}'.format(SIFT_nOctaveLayers, SIFT_edgeThreshold, SIFT_contrastThreshold, SIFT_sigma), fontsize=fsz, transform=axs0[0].transAxes)
 
                 hist_int, bins_int, patches_int = ax_int.hist(int_ratios, bins = 64)
@@ -2213,7 +2213,7 @@ class FIBSEM_mosaic_dataset:
                     ax.grid(True)
                 if save_res_png:
                     save_filename0 = os.path.splitext(save_filename)[0] + '_plots.png'
-                    axs0[0].text(0.0, -0.24, save_filename0, fontsize = 5, transform=axs0[0].transAxes)
+                    axs0[0].text(0.0, -0.25, save_filename0, fontsize = 5, transform=axs0[0].transAxes)
                     fig0.savefig(save_filename0, dpi=dpi)
 
             fig, axs = plt.subplots(1, 2, figsize=(10, 5.5))
