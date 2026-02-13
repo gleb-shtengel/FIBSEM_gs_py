@@ -2159,14 +2159,14 @@ class FIBSEM_mosaic_dataset:
             symsize = 2
             fsize_text = 5
             fsize_label = 10
-            fsz = 12
+            fsz = 10
             scale = 100
             width = 0.0010
 
             if n_matches>0:
                 fig0, axs0 = plt.subplots(1,3, figsize=(10,3))
                 
-                fig0.subplots_adjust(left=0.06, bottom=0.06, right=0.99, top=0.95, wspace=0.10)
+                fig0.subplots_adjust(left=0.06, bottom=0.10, right=0.99, top=0.90, wspace=0.20)
                 axx = axs0[0]
                 axx.set_xlabel('SIFT: X Error (pixels)')
                 axx.set_ylabel('Count')
@@ -2176,8 +2176,8 @@ class FIBSEM_mosaic_dataset:
                 ax_int = axs0[2]
                 ax_int.set_xlabel('Img1/Img0 Key-Pt Intensity Ratio')
                 ax_int.set_ylabel('Count')
-                axs0[0].text(0.01, 1.07, Sample_ID + ',  thr_min={:.0e}, thr_max={:.0e}, data range: {:.1f} ÷ {:.1f}'.format(thr_min, thr_max, dmin, dmax), transform=axs0[0].transAxes, fontsize=fsz-2)
-                axs0[0].text(0.01, 1.02, 'SIFT_nOctaveLayers={:d},  SIFT_edgeThreshold={:.3f}, SIFT_contrastThreshold={:.3f},  SIFT_sigma={:.3f}'.format(SIFT_nOctaveLayers, SIFT_edgeThreshold, SIFT_contrastThreshold, SIFT_sigma), fontsize=fsz-2, transform=axs0[0].transAxes)
+                axs0[0].text(0.01, 1.09, Sample_ID + ',  thr_min={:.0e}, thr_max={:.0e}, data range: {:.1f} ÷ {:.1f}'.format(thr_min, thr_max, dmin, dmax), transform=axs0[0].transAxes, fontsize=fsz)
+                axs0[0].text(0.01, 1.02, 'SIFT_nOctaveLayers={:d},  SIFT_edgeThreshold={:.3f}, SIFT_contrastThreshold={:.3f},  SIFT_sigma={:.3f}'.format(SIFT_nOctaveLayers, SIFT_edgeThreshold, SIFT_contrastThreshold, SIFT_sigma), fontsize=fsz, transform=axs0[0].transAxes)
 
                 hist_int, bins_int, patches_int = ax_int.hist(int_ratios, bins = 64)
                 FWHM_int, indi_int, inda_int, mx_int, mx_int_ind = find_FWHM(bins_int, hist_int[:-1], verbose=False, estimation=estimation, start=start, max_aver_aperture=5)
