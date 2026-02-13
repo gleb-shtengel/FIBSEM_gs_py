@@ -9609,7 +9609,7 @@ def SIFT_evaluation_dataset(fs, **kwargs):
     axs[0,0].plot([dmin, dmin], [0, np.max(hist)], 'r', linestyle = '--', label = 'data_min={:.1f}'.format(dmin))
     axs[0,0].plot([dmax, dmax], [0, np.max(hist)], 'g', linestyle = '--', label = 'data_max={:.1f}'.format(dmax))
     axs[0,0].set_ylabel('Count', fontsize = fsz)
-    axs[0,0].legend(loc='center', fontsize=fsz)
+    axs[0,0].legend(loc='upper right', fontsize=fsz)
 
     '''
     pdf = hist / (frame.XResolution * frame.YResolution)
