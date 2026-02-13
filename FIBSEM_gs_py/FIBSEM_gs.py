@@ -9476,6 +9476,8 @@ def SIFT_evaluation_dataset(fs, **kwargs):
     SIFT_sigma : double
         SIFT library default is 1.6.  The sigma of the Gaussian applied to the input image at the octave #0.
         If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
+    I0 : float
+        Dark Count used for Intensity calculation. Default is 0.0.
     deformation_field : 2D array
          Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
     deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
@@ -9532,6 +9534,7 @@ def SIFT_evaluation_dataset(fs, **kwargs):
     save_matches = kwargs.get("save_matches", True)      # If True, matches will be saved into individual files
     save_res_png  = kwargs.get("save_res_png", True)
     verbose = kwargs.get('verbose', False)
+    I0 = kwargs.get('I0', 0.0)
     SIFT_nfeatures = kwargs.get("SIFT_nfeatures", 0)
     SIFT_nOctaveLayers = kwargs.get('SIFT_nOctaveLayers', 3)
     SIFT_edgeThreshold = kwargs.get("SIFT_edgeThreshold", 0.025)
@@ -9630,7 +9633,6 @@ def SIFT_evaluation_dataset(fs, **kwargs):
     axs[1,0].legend(loc='center', fontsize=fsz)
     axs[0,0].set_title('Data Min and Max with thr_min={:.0e},  thr_max={:.0e}'.format(thr_min, thr_max), fontsize = fsz)
     '''
-
     minmax = []
     for j,f in enumerate(fs):
         minmax.append(FIBSEM_frame(f, ftype=ftype, calculate_scaled_images=False).get_image_min_max(image_name = 'RawImageA', thr_min=thr_min, thr_max=thr_max, nbins=nbins))
@@ -9727,7 +9729,7 @@ def SIFT_evaluation_dataset(fs, **kwargs):
     ax_int.set_ylabel('Count')
 
     if n_matches > 1:
-        int_ratios = kpt_ints[1]/kpt_ints[0]
+        int_ratios = (kpt_ints[1] - I0) / (kpt_ints[0] - I0)
         hist_int, bins_int, patches_int = ax_int.hist(int_ratios, bins = 64)
         FWHM_int, indi_int, inda_int, mx_int, mx_int_ind = find_FWHM(bins_int, hist_int[:-1], verbose=False, estimation=estimation, start=start, max_aver_aperture=5)
         db_int = (bins_int[1]-bins_int[0])/2.0
@@ -11602,6 +11604,8 @@ class FIBSEM_dataset:
         SIFT_sigma : double
             The sigma of the Gaussian applied to the input image at the octave #0. Default is object attribute. SIFT library default is 1.6.
             If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
+        I0 : float
+            Dark Count used for Intensity calculation. Default is self.Scaling[1,0].
         BFMatcher : boolean
             If True, the BF Matcher is used for Key-Point matching, otherwise FLANN will be used. Default is object attribute.
         save_matches : boolean
@@ -11664,6 +11668,7 @@ class FIBSEM_dataset:
         RANSAC_initial_fraction = kwargs.get("RANSAC_initial_fraction", self.RANSAC_initial_fraction)
         drmax = kwargs.get("drmax", self.drmax)
         max_iter = kwargs.get("max_iter", self.max_iter)
+        I0 = kwargs.get('I0', self.Scaling[1,0])
         SIFT_nfeatures = kwargs.get("SIFT_nfeatures", self.SIFT_nfeatures)
         SIFT_nOctaveLayers = kwargs.get("SIFT_nOctaveLayers", self.SIFT_nOctaveLayers)
         SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", self.SIFT_contrastThreshold)
@@ -11702,6 +11707,7 @@ class FIBSEM_dataset:
                                 'RANSAC_initial_fraction' : RANSAC_initial_fraction,
                                 'drmax' : drmax,
                                 'max_iter' : max_iter,
+                                'I0' : I0,
                                 'SIFT_Transform' : TransformType,
                                 'SIFT_nfeatures' : SIFT_nfeatures,
                                 'SIFT_nOctaveLayers' : SIFT_nOctaveLayers,
