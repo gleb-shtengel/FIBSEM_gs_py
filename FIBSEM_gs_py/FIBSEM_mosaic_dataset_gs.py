@@ -2022,6 +2022,7 @@ class FIBSEM_mosaic_dataset:
         RANSAC_initial_fraction = kwargs.get("RANSAC_initial_fraction", self.RANSAC_initial_fraction)
         drmax = kwargs.get("drmax", self.drmax)
         max_iter = kwargs.get("max_iter", self.max_iter)
+        Sample_ID = kwargs.get('Sample_ID', self.Sample_ID)
         if hasattr('self', 'SIFT_nmatches_min'):
             SIFT_nmatches_min = kwargs.get('SIFT_nmatches_min', self.SIFT_nmatches_min)
         else:
