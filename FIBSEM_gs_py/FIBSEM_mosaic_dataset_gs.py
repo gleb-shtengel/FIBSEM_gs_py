@@ -2142,6 +2142,15 @@ class FIBSEM_mosaic_dataset:
             print('RANSAC_initial_fraction = {:.4f}, max_iter={:d}'.format(RANSAC_initial_fraction, max_iter))
             print('drmax={:.3f}'.format(drmax))
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   # of keypoints = {:d} and {:d}, # of matches = {:d}'.format(n_kpts1, n_kpts2, n_matches))
+            if n_matches>0:
+                src_pts_filtered, dst_pts_filtered = kpts
+                src_intensities, dst_intensities = kpt_ints
+                src_pts_transformed = src_pts_filtered @ transform_matrix[0:2, 0:2].T + transform_matrix[0:2, 2]
+                xshifts = (dst_pts_filtered - src_pts_transformed)[:,0]
+                yshifts = (dst_pts_filtered - src_pts_transformed)[:,1]
+                print('Mean X-error={:.3f}, median X-error={:.3f}, FWHMx={:.3f}'.format(np.mean(xshifts), np.median(xshifts), error_FWHMx))
+                print('Mean Y-error={:.3f}, median Y-error={:.3f}, FWHMy={:.3f}'.format(np.mean(yshifts), np.median(yshifts), error_FWHMy))
+                print('Mean Int1/Int0 kpt ratio ={:.4f}, median Int1/Int0 kpt ratio={:.4f}, FWHMi={:.4f}'.format(np.mean(int_ratios), np.median(int_ratios), FWHM_int))
 
             fs=12
             symsize = 2
@@ -2149,6 +2158,58 @@ class FIBSEM_mosaic_dataset:
             fsize_label = 10
             scale = 100
             width = 0.0010
+
+            if n_matches>0:
+                fig0, axs0 = plt.subplots(1,3, figsize=(10,4))
+                fig0.suptitle(Sample_ID + ',  thr_min={:.0e}, thr_max={:.0e}, SIFT_contrastThreshold={:.3f}'.format(thr_min, thr_max, SIFT_contrastThreshold), fontsize=fszl)
+
+                axx = axs0[0]
+                axx.set_xlabel('SIFT: X Error (pixels)')
+                axx.set_ylabel('Count')
+                axy = axs0[1]
+                axy.set_xlabel('SIFT: Y Error (pixels)')
+                axy.set_ylabel('Count')
+                ax_int = axs0[2]
+                ax_int.set_xlabel('Ratio of Img1/Img0 Key-Point Intensities')
+                ax_int.set_ylabel('Count')
+
+                int_ratios = dst_intensities/src_intensities
+                hist_int, bins_int, patches_int = axs[1,0].hist(int_ratios, bins = 64)
+                FWHM_int, indi_int, inda_int, mx_int, mx_int_ind = find_FWHM(bins_int, hist_int[:-1], verbose=False, estimation=estimation, start=start, max_aver_aperture=5)
+                db_int = (bins_int[1]-bins_int[0])/2.0
+                ax_int.plot([bins_int[indi_int], bins_int[inda_int]], [mx_int/2.0, mx_int/2.0], 'r', linewidth = 4)
+                ax_int.plot([bins_int[mx_int_ind]+db_int], [mx_int], 'rd')
+                ax_int.text(0.05, 0.9, 'mean={:.4f}'.format(np.mean(int_ratios)), transform=ax_int.transAxes, fontsize=fsz)
+                ax_int.text(0.05, 0.8, 'median={:.4f}'.format(np.median(int_ratios)), transform=ax_int.transAxes, fontsize=fsz)
+                ax_int.text(0.05, 0.7, 'FWHM={:.4f}'.format(FWHM_int), transform=ax_int.transAxes, fontsize=fsz)
+
+                xcounts, xbins, xhist_patches = axx.hist(xshifts, bins=64)
+                error_FWHMx, indxi, indxa, mxx, mxx_ind = find_FWHM(xbins, xcounts[:-1], verbose=False, estimation=estimation, start=start, max_aver_aperture=5)
+                dbx = (xbins[1]-xbins[0])/2.0
+                #axx.plot([xbins[indxi]+dbx, xbins[indxa]+dbx], [mxx/2.0, mxx/2.0], 'r', linewidth = 4)
+                axx.plot([xbins[indxi], xbins[indxa]], [mxx/2.0, mxx/2.0], 'r', linewidth = 4)
+                axx.plot([xbins[mxx_ind]+dbx], [mxx], 'rd')
+                axx.text(0.05, 0.9, 'mean={:.3f}'.format(np.mean(xshifts)), transform=axx.transAxes, fontsize=fsz)
+                axx.text(0.05, 0.8, 'median={:.3f}'.format(np.median(xshifts)), transform=axx.transAxes, fontsize=fsz)
+                axx.text(0.05, 0.7, 'FWHM={:.3f}'.format(error_FWHMx), transform=axx.transAxes, fontsize=fsz)
+                axx.set_title('data range: {:.1f} ÷ {:.1f}'.format(dmin, dmax), fontsize=fsz)
+                ycounts, ybins, yhist_patches = axy.hist(yshifts, bins=64)
+                error_FWHMy, indyi, indya, mxy, mxy_ind = find_FWHM(ybins, ycounts[:-1], verbose=False, estimation=estimation, start=start, max_aver_aperture=5)
+                dby = (ybins[1]-ybins[0
+                    ])/2.0
+                #axy.plot([ybins[indyi] + dby, ybins[indya] + dby], [mxy/2.0, mxy/2.0], 'r', linewidth = 4)
+                axy.plot([ybins[indyi], ybins[indya]], [mxy/2.0, mxy/2.0], 'r', linewidth = 4)
+                axy.plot([ybins[mxy_ind] + dby], [mxy], 'rd')
+                axy.text(0.05, 0.9, 'mean={:.3f}'.format(np.mean(yshifts)), transform=axy.transAxes, fontsize=fsz)
+                axy.text(0.05, 0.8, 'median={:.3f}'.format(np.median(yshifts)), transform=axy.transAxes, fontsize=fsz)
+                axy.text(0.05, 0.7, 'FWHM={:.3f}'.format(error_FWHMy), transform=axy.transAxes, fontsize=fsz)
+
+                axt=axx  # print Transformation Matrix data over axx plot
+                axt.text(0.65, 0.8, 'Transf. Matrix:', transform=axt.transAxes, fontsize=fsz)
+                axt.text(0.55, 0.7, '{:.4f} {:.4f} {:.4f}'.format(transform_matrix[0,0], transform_matrix[0,1], transform_matrix[0,2]), transform=axt.transAxes, fontsize=fsz-1)
+                axt.text(0.55, 0.6, '{:.4f} {:.4f} {:.4f}'.format(transform_matrix[1,0], transform_matrix[1,1], transform_matrix[1,2]), transform=axt.transAxes, fontsize=fsz-1)
+
+
 
             fig, axs = plt.subplots(1, 2, figsize=(10, 5.5))
             fig.subplots_adjust(left=0.01, bottom=0.01, right=0.99, top=0.95, wspace=0.05)
@@ -2168,14 +2229,7 @@ class FIBSEM_mosaic_dataset:
             axs[0].text(0.01, 1.00 - 0.175*frame.XResolution/frame.YResolution, 'Image Margins: {:d}, {:d}'.format(*pair_margins), fontsize=fsize_text, transform=axs[0].transAxes)
 
             if n_matches > 0:
-                src_pts_filtered, dst_pts_filtered = kpts
-                src_intensities = extract_image_intensity(img1, smoothing_kernel, src_pts_filtered)
-                dst_intensities = extract_image_intensity(img2, smoothing_kernel, dst_pts_filtered)
-
-                src_pts_transformed = src_pts_filtered @ transform_matrix[0:2, 0:2].T + transform_matrix[0:2, 2]
-                xshifts = (dst_pts_filtered - src_pts_transformed)[:,0]
-                yshifts = (dst_pts_filtered - src_pts_transformed)[:,1]
-                
+    
                 columns_shifts=['X-src', 'Y-src', 'X-src transformed', 'Y-src transformed', 'X-dst', 'Y-dst', 'X-error', 'Y-error', 'Int-src', 'Int-dst']
                 int_results = pd.DataFrame(np.vstack((np.array(src_pts_filtered).T, np.array(src_pts_transformed).T, np.array(dst_pts_filtered).T, xshifts, yshifts, src_intensities, dst_intensities)).T, columns = columns_shifts, index = None)
 
