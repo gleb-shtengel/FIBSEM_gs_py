@@ -882,7 +882,7 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
     blobs_LoG = np.array(blobs_LoG)[ind_sorted]
     lazy_results = []
 
-    for j, blob in enumerate(tqdm(blobs_LoG, desc='Step2: Analyzing blobs', display=verbose)):
+    for j, blob in enumerate(tqdm(blobs_LoG, desc='Step3: Setting up DASK computations: blob analysis', display=verbose)):
         z, y, x, r = blob
         xc = int(x)
         yc = int(y)
@@ -909,6 +909,8 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
 
     #error_flags = np.array(error_flags)
     #tr_results = np.array(tr_results)
+    if verbose:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Starting DASK computations: blob analysis')
     with ProgressBar():
         results = compute(*lazy_results)
     tr_results = np.array([result[0] for result in results])
