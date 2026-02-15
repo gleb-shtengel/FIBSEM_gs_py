@@ -201,6 +201,8 @@ def get_min_max_thresholds(image, **kwargs):
         number of histogram bins for building the PDF and CDF
     log  : bolean
         If True, the histogram will have log scale. Default is false
+    xlim : tuple of two floats.
+        Default is auto-generated
     disp_res : bolean
         If True display the results. Default is True.
     save_res : boolean
@@ -246,11 +248,12 @@ def get_min_max_thresholds(image, **kwargs):
         axs[1].set_ylabel('CDF', fontsize = fsz)
         xi = data_min - (np.abs(data_max-data_min)/2)
         xa = data_max + (np.abs(data_max-data_min)/2)
+        xlim = kwargs.get('xlim', (xi, xa))
         rys = [[0, np.max(hist)], [0, 1]]
         for ax, ry in zip(axs, rys):
             ax.plot([data_min, data_min], ry, 'r', linestyle = '--', label = 'data_min={:.1f}'.format(data_min))
             ax.plot([data_max, data_max], ry, 'g', linestyle = '--', label = 'data_max={:.1f}'.format(data_max))
-            ax.set_xlim(xi, xa)
+            ax.set_xlim(xlim)
             ax.grid(True)
         axs[1].legend(loc='center', fontsize=fsz)
         axs[1].set_title('Data Min and max with thr_min={:.0e},  thr_max={:.0e}'.format(thr_min, thr_max), fontsize = fsz)
