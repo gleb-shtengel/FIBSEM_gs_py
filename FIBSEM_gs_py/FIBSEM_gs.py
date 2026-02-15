@@ -1057,7 +1057,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     thresholds_SNR_analysis: list [thr_min_SNR_analysis, thr_max_SNR_analysis]
         CDF thresholds for building the data histogram in Step 5. Default is [2e-2, 2e-2].
     thresholds_contrast_analysis: list [thr_min_contrast_analysis, thr_max_contrast_analysis]
-        CDF thresholds for determining I low and Ihigh for Contrast Analysis (Step 9). Default is [0.25, 0.25].
+        CDF thresholds for determining I low and Ihigh for Contrast Analysis (Step 9). Default is [np.nan, np.nan] - no contrast calculations.
     disp_res : boolean
         If True - plot/ display the results. Default is True.
     disp_res_SNR0 : boolean
@@ -1091,7 +1091,11 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     thresholds_disp = kwargs.get("thresholds_disp", [1e-3, 1e-3])
     nbins_analysis = kwargs.get("nbins_analysis", 100)
     thresholds_SNR_analysis = kwargs.get("thresholds_SNR_analysis", [1e-2, 1e-2])
-    thresholds_contrast_analysis = kwargs.get("thresholds_contrast_analysis", [0.25, 0.25])
+    thresholds_contrast_analysis = kwargs.get("thresholds_contrast_analysis", [np.nan, np.nan])
+    if thresholds_contrast_analysis == [np.nan, np.nan]:
+        perform_contrast_analysis = False
+    else:
+        perform_contrast_analysis = True
     disp_res = kwargs.get("disp_res", True)
     disp_res_SNR0 = kwargs.get("disp_res_SNR0", True)
     disp_res_SNR1 = kwargs.get("disp_res_SNR1", True)
@@ -1130,15 +1134,17 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     
     range_disp = get_min_max_thresholds(img_smoothed, thr_min = thresholds_disp[0], thr_max = thresholds_disp[1], nbins = nbins_disp, disp_res = False)           
     range_SNR_analysis = get_min_max_thresholds(img_smoothed_filtered, thr_min = thresholds_SNR_analysis[0], thr_max = thresholds_SNR_analysis[1], nbins = nbins_analysis, disp_res = False)
-    Ilow, Ihigh = get_min_max_thresholds(img_smoothed_filtered, thr_min = thresholds_contrast_analysis[0], thr_max = thresholds_contrast_analysis[1], nbins = nbins_analysis, disp_res = False)
+    if perform_contrast_analysis:
+        Ilow, Ihigh = get_min_max_thresholds(img_smoothed_filtered, thr_min = thresholds_contrast_analysis[0], thr_max = thresholds_contrast_analysis[1], nbins = nbins_analysis, disp_res = False)
     
     if disp_res:
         #print('Length of original image is: ', np.prod(img_smoothed.shape))
         #print('Length of filtered image is: ', np.prod(img_smoothed_filtered.shape))
         print('')
         print('The EM data range for display:            {:.2f} to {:.2f}'.format(range_disp[0], range_disp[1]))
-        #print('The EM data range0 for noise analysis:    {:.2f} to {:.2f}'.format(range_SNR_analysis0[0], range_SNR_analysis0[1]))
         print('The EM data range for noise analysis:     {:.2f} to {:.2f}'.format(range_SNR_analysis[0], range_SNR_analysis[1]))
+        if perform_contrast_analysis:
+            print('The EM data range for contrast analysis:     {:.2f} to {:.2f}'.format(Ilow, Ihig))
     
     bins_analysis = np.linspace(range_SNR_analysis[0], range_SNR_analysis[1], nbins_analysis)
     range_imdiff = get_min_max_thresholds(imdiff, thr_min = thresholds_disp[0], thr_max = thresholds_disp[1], nbins = nbins_disp, disp_res = False)
@@ -1221,8 +1227,9 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         ylim4=np.array(axs[4].get_ylim())
         axs[4].plot([range_SNR_analysis[0], range_SNR_analysis[0]],[ylim4[0]-1000, ylim4[1]], color='lime', linestyle='dashed', label='Ilow')
         axs[4].plot([range_SNR_analysis[1], range_SNR_analysis[1]],[ylim4[0]-1000, ylim4[1]], color='red', linestyle='dashed', label='Ihigh')
-        axs[4].plot([Ilow, Ilow, ],[ylim4[0]-1000, ylim4[1]], color='blue', linestyle='dashed', label='Clow')
-        axs[4].plot([Ihigh, Ihigh],[ylim4[0]-1000, ylim4[1]], color='magenta', linestyle='dashed', label='Chigh')
+        if perform_contrast_analysis:
+            axs[4].plot([Ilow, Ilow, ],[ylim4[0]-1000, ylim4[1]], color='blue', linestyle='dashed', label='Clow')
+            axs[4].plot([Ihigh, Ihigh],[ylim4[0]-1000, ylim4[1]], color='magenta', linestyle='dashed', label='Chigh')
         axs[4].set_ylim(ylim4)
         txt1 = 'Smoothing Kernel'
         axs[4].text(0.69, 0.955, txt1, transform=axs[4].transAxes, backgroundcolor='white', fontsize=fs-1)
@@ -1271,8 +1278,8 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         axs[3].set_title('Noise Distribution', fontsize=fs+1)
         axs[3].set_xlabel('Image Intensity Mean', fontsize=fs+1)
         axs[3].set_ylabel('Image Intensity Variance', fontsize=fs+1)
-        lbl_low = '$I_{low}$'+', thr={:.1e}'.format(thresholds_SNR_analysis[0])
-        lbl_high = '$I_{high}$'+', thr={:.1e}'.format(thresholds_SNR_analysis[1])
+        lbl_low = '$I_{SNR_low}$'+', thr={:.1e}'.format(thresholds_SNR_analysis[0])
+        lbl_high = '$I_{SNR_high}$'+', thr={:.1e}'.format(thresholds_SNR_analysis[1])
         axs[3].plot([range_SNR_analysis[0], range_SNR_analysis[0]],[ylim3[0]-1000, ylim3[1]], color='lime', linestyle='dashed', label=lbl_low)
         axs[3].plot([range_SNR_analysis[1], range_SNR_analysis[1]],[ylim3[0]-1000, ylim3[1]], color='red', linestyle='dashed', label=lbl_high)
         axs[3].legend(loc='upper center', fontsize=fs+1)
@@ -1281,7 +1288,8 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     img_smoothed_filtered_resc = (img_smoothed_filtered - I0)/popt[0]
     imdiff_filtered_resc = imdiff_filtered / popt[0]
     SNR0 = np.mean(img_smoothed_filtered_resc*img_smoothed_filtered_resc)/np.var(imdiff_filtered_resc)
-    contrast  = (Ihigh - Ilow)/((Ilow + Ihigh)/2.0-I0)
+    if perform_contrast_analysis:
+        contrast  = (Ihigh - Ilow)/((Ilow + Ihigh)/2.0-I0)
     
     img_smoothed_filtered_resc1 = (img_smoothed_filtered - DarkCount)/Slope_header
     imdiff_filtered_resc1 = imdiff_filtered / Slope_header
@@ -1297,18 +1305,19 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         print('Slope of Free Fit: {:.2f}'.format(popt[0]))
         print('Free Fit         : SNR0 <S^2>/<N^2> = {:.2f}'.format(SNR0))
         print('')
-        print('Data range: Ilow = {:.2f}, Ihigh = {:.2f}'.format(Ilow, Ihigh))
-        print('Dark Count = {:.2f}'.format(I0))
-        print('Contrast = {:.3f}'.format(contrast))
+        if perform_contrast_analysis:
+            print('Data range: I_contrast_low = {:.2f}, I_contrast_high = {:.2f}'.format(Ilow, Ihigh))
+            print('Dark Count = {:.2f}'.format(I0))
+            print('Contrast = {:.3f}'.format(contrast))
         
-        txt1 = '$I_{low}$' + ' = {:.2f}'.format(Ilow)
-        axs[4].text(0.65, 0.72, txt1, transform=axs[4].transAxes, color='blue', fontsize=fs+1)
-        txt2 = '$I_{high}$' + ' = {:.2f}'.format(Ihigh)
-        axs[4].text(0.65, 0.65, txt2, transform=axs[4].transAxes, color='magenta', fontsize=fs+1)
-        txt3 = '$I_{0}$' +' = {:.1f}'.format(I0)
-        axs[4].text(0.65, 0.58, txt3, transform=axs[4].transAxes, color='black', fontsize=fs+1)
-        txt4 = 'Contrast = {:.3f}'.format(contrast)
-        axs[4].text(0.65, 0.51, txt4, transform=axs[4].transAxes, color='black', fontsize=fs+1)
+            txt1 = '$I_{contrast_low}$' + ' = {:.2f}'.format(Ilow)
+            axs[4].text(0.65, 0.72, txt1, transform=axs[4].transAxes, color='blue', fontsize=fs+1)
+            txt2 = '$I_{contrast_high}$' + ' = {:.2f}'.format(Ihigh)
+            axs[4].text(0.65, 0.65, txt2, transform=axs[4].transAxes, color='magenta', fontsize=fs+1)
+            txt3 = '$I_{0}$' +' = {:.1f}'.format(I0)
+            axs[4].text(0.65, 0.58, txt3, transform=axs[4].transAxes, color='black', fontsize=fs+1)
+            txt4 = 'Contrast = {:.3f}'.format(contrast)
+            axs[4].text(0.65, 0.51, txt4, transform=axs[4].transAxes, color='black', fontsize=fs+1)
         
         if disp_res_SNR0:
             txt1 = 'Zero Int, Free Fit:    ' +'$I_{0}$' +'={:.1f}'.format(I0)
