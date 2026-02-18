@@ -1144,7 +1144,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         print('The EM data range for display:            {:.2f} to {:.2f}'.format(range_disp[0], range_disp[1]))
         print('The EM data range for noise analysis:     {:.2f} to {:.2f}'.format(range_SNR_analysis[0], range_SNR_analysis[1]))
         if perform_contrast_analysis:
-            print('The EM data range for contrast analysis:     {:.2f} to {:.2f}'.format(Ilow, Ihig))
+            print('The EM data range for contrast analysis:     {:.2f} to {:.2f}'.format(Ilow, Ihigh))
     
     bins_analysis = np.linspace(range_SNR_analysis[0], range_SNR_analysis[1], nbins_analysis)
     range_imdiff = get_min_max_thresholds(imdiff, thr_min = thresholds_disp[0], thr_max = thresholds_disp[1], nbins = nbins_disp, disp_res = False)
