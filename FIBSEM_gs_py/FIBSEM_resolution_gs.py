@@ -907,6 +907,8 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
         blobs_LoG = np.array(blobs_LoG)[ind_sorted]
         lazy_results = []
 
+        if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Setting up DASK computations: blob analysis')
         for j, blob in enumerate(tqdm(blobs_LoG, desc='Step3: Setting up DASK computations: blob analysis', display=verbose)):
             z, y, x, r = blob
             xc = int(x)
