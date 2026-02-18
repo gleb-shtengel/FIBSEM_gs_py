@@ -3794,12 +3794,8 @@ def mrc_stack_estimate_resolution_blobs_2D(mrc_filename, **kwargs):
     default_results_file_xlsx = os.path.join(data_dir, 'Dataset_2D_blob_analysis_results.xlsx')
     results_file_xlsx = kwargs.get('results_file_xlsx', default_results_file_xlsx)
 
-    if use_DASK:
-        verbose = False
-        disp_res = False
-    else:
-        verbose = kwargs.get('verbose', False)
-        disp_res = kwargs.get('disp_res', False)
+    verbose = kwargs.get('verbose', False)
+    disp_res = kwargs.get('disp_res', False)
 
     title = kwargs.get('title', '')
     nbins = kwargs.get('nbins', 64)
