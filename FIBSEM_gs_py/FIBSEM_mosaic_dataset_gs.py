@@ -1998,7 +1998,8 @@ class FIBSEM_mosaic_dataset:
             A path for saving PNG data. Default is auto-generated as os.path.join(self.data_dir, os.path.split(fnm_matches)[1].replace('_matches.bin') + '_SIFT_test.png').
         Returns:
         ----------
-        fnm_deformed1, fnm_deformed2, transformations_result
+        fnm_deformed1, fnm_deformed2, transformations_result, int_results
+            int_results is pd.Dataframe with columns: ['X-src', 'Y-src', 'X-src transformed', 'Y-src transformed', 'X-dst', 'Y-dst', 'X-error', 'Y-error', 'Int-src', 'Int-dst']
         '''
         ftype = kwargs.get("ftype", self.ftype)
         left_crop = kwargs.get('left_crop', 0)

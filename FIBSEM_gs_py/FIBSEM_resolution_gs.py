@@ -861,145 +861,190 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
     with ProgressBar():
         results = compute(*blob_futures)
     # Concatenate results
-    blobs_LoG = np.vstack([r for r in results if r.size > 0])
-    if verbose:
-        print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step1: Search Blobs using Laplasian of Gaussians, found {:d} blobs'.format(len(blobs_LoG)))
+    blobs_LoG_list = [r for r in results if r.size > 0]
+    if len(blobs_LoG_list)>0:
+        blobs_LoG = np.vstack(blobs_LoG_list)
+        if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step1: Search Blobs using Laplasian of Gaussians, found {:d} blobs'.format(len(blobs_LoG)))
+        error_flags = []
+        tr_results = []
+        subset_mags = []
+        hst_datas = []
 
-    error_flags = []
-    tr_results = []
-    subset_mags = []
-    hst_datas = []
-
-    for j, blob in enumerate(tqdm(blobs_LoG, desc='Step2: Sortings blobs by magnitude', display=verbose)):
-        z, y, x, r = blob
-        xc = int(x)
-        yc = int(y)
-        zc = int(z)
-        subset_mags.append(np.mean(volume[zc-1:zc+1, yc-1:yc+1, xc-1:xc+1]))
-    
-    subset_mags = np.array(subset_mags)
-    ind_sorted = np.flip(np.argsort(subset_mags))
-    blobs_LoG = np.array(blobs_LoG)[ind_sorted]
-    lazy_results = []
-
-    for j, blob in enumerate(tqdm(blobs_LoG, desc='Step3: Setting up DASK computations: blob analysis', display=verbose)):
-        z, y, x, r = blob
-        xc = int(x)
-        yc = int(y)
-        zc = int(z)
-        subset = volume[zc-dx2:zc+dx2, yc-dx2:yc+dx2, xc-dx2:xc+dx2]
-        '''
-        tr_result, error_flag = analyze_blob(subset,
-                                             pixel_size = pixel_size,
-                                             bounds = bounds,
-                                             bands = bands,
-                                             min_thr = min_thr,
-                                             transition_low_limit = transition_low_limit,
-                                             transition_high_limit = transition_high_limit)
-        tr_results.append(tr_result)
-        error_flags.append(error_flag)
-        '''
-        lazy_results.append(delayed(analyze_blob)(subset,
-                                             pixel_size = pixel_size,
-                                             bounds = bounds,
-                                             bands = bands,
-                                             min_thr = min_thr,
-                                             transition_low_limit = transition_low_limit,
-                                             transition_high_limit = transition_high_limit))
-
-    #error_flags = np.array(error_flags)
-    #tr_results = np.array(tr_results)
-    if verbose:
-        print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Starting DASK computations: blob analysis')
-    with ProgressBar():
-        results = compute(*lazy_results)
-    tr_results = np.array([result[0] for result in results])
-    error_flags = np.array([result[1] for result in results])
-    if len(error_flags[error_flags==0]) > 0:
-    #blobs_LoG = blobs_LoG[error_flags==0]
-        Xpt1 = tr_results[error_flags==0, 1]
-        Xpt2 = tr_results[error_flags==0, 2]
-        Ypt1 = tr_results[error_flags==0, 3]
-        Ypt2 = tr_results[error_flags==0, 4]
-        Zpt1 = tr_results[error_flags==0, 5]
-        Zpt2 = tr_results[error_flags==0, 6]
-        Xslp1 = tr_results[error_flags==0, 7]
-        Xslp2 = tr_results[error_flags==0, 8]
-        Yslp1 = tr_results[error_flags==0, 9]
-        Yslp2 = tr_results[error_flags==0, 10]
-        Zslp1 = tr_results[error_flags==0, 11]
-        Zslp2 = tr_results[error_flags==0, 12]
-        XYpt_selected = [Xpt1, Xpt2, Ypt1, Ypt2]
-        Xpt_selected = [Xpt1, Xpt2]
-        Ypt_selected = [Ypt1, Ypt2]
-        Zpt_selected = [Zpt1, Zpt2]
-        Xslp_selected = [Xslp1, Xslp2]
-        Yslp_selected = [Yslp1, Yslp2]
-        Zslp_selected = [Zslp1, Zslp2]
-        tr_mean = np.mean(XYpt_selected)
-        tr_std = np.std(XYpt_selected)
-        tr_sets = [[Xpt_selected, Ypt_selected, Zpt_selected],
-            [Xslp_selected, Yslp_selected, Zslp_selected]]
-
-        if save_data_xlsx:
-            xlsx_writer = pd.ExcelWriter(results_file_xlsx, engine='xlsxwriter')
-            trans_str = '{:.2f} to {:.2f} transition (nm)'.format(bounds[0], bounds[1])
-            columns=['Z', 'Y', 'X', 'R', 'Amp',
-                trans_str + ' X-pt1',
-                trans_str + ' X-pt2',
-                trans_str + ' Y-pt1',
-                trans_str + ' Y-pt2',
-                trans_str + ' Z-pt1',
-                trans_str + ' Z-pt2',
-                trans_str + ' X-slp1',
-                trans_str + ' X-slp2',
-                trans_str + ' Y-slp1',
-                trans_str + ' Y-slp2',
-                trans_str + ' Z-slp1',
-                trans_str + ' Z-slp2',
-                'error_flag']
-            if save_good_blobs_only:
-                if verbose:
-                    print('Saving only good blob data')
-                transition_results = pd.DataFrame(np.column_stack((np.array(blobs_LoG[error_flags==0]), tr_results[error_flags==0, :], error_flags[error_flags==0])), columns = columns, index = None)
-            else:
-                if verbose:
-                    print('Saving all blob data')
-                transition_results = pd.DataFrame(np.column_stack((np.array(blobs_LoG), tr_results, error_flags)), columns = columns, index = None)
-            transition_results.to_excel(xlsx_writer, index=None, sheet_name='Transition analysis results')
-            kwargs_info = pd.DataFrame([kwargs]).T # prepare to be save in transposed format
-            kwargs_info.to_excel(xlsx_writer, header=False, sheet_name='kwargs Info')
+        for j, blob in enumerate(tqdm(blobs_LoG, desc='Step2: Sortings blobs by magnitude', display=verbose)):
+            z, y, x, r = blob
+            xc = int(x)
+            yc = int(y)
+            zc = int(z)
+            subset_mags.append(np.mean(volume[zc-1:zc+1, yc-1:yc+1, xc-1:xc+1]))
         
-        fexts =['_{:.0f}{:.0f}pts'.format(bounds[0]*100, bounds[1]*100), '_{:.0f}{:.0f}slp'.format(bounds[0]*100, bounds[1]*100)]
-        sheet_names = ['{:.0f}%-{:.0f}% summary (pts)'.format(bounds[0]*100, bounds[1]*100),
-            '{:.0f}%-{:.0f}% summary (slopes)'.format(bounds[0]*100, bounds[1]*100)]    
+        subset_mags = np.array(subset_mags)
+        ind_sorted = np.flip(np.argsort(subset_mags))
+        blobs_LoG = np.array(blobs_LoG)[ind_sorted]
+        lazy_results = []
 
-        hranges = [(0, 10.0), 
-               (0, 10.0)]  # histogram range for the transition distance (in nm))
-        for [tr_xs, tr_ys, tr_zs], fext, sheet_name, hrange in zip(tr_sets, fexts, sheet_names, hranges):
-            tr_x = np.array(tr_xs).flatten()
-            tr_y = np.array(tr_ys).flatten()
-            tr_z = np.array(tr_zs).flatten()
-            dsets = [tr_x, tr_y, tr_z]
-            hst_data =  np.zeros((len(dsets), 4))
-            cc_data =  np.zeros((nbins, len(dsets)+1))
-            for (j, dset) in enumerate(dsets):
-                hst_res = np.array(add_hist(dset, nbins=nbins, hrange=hrange, ax=0, col='red', label=''), dtype=object)
-                hst_data[j, :] = hst_res[2:6]
-                cc_data[:, j+1] = hst_res[1]
-            hst_datas.append(hst_data)
-            cell_text = [['{:.2f}'.format(d) for d in dd] for dd in hst_data]
+        for j, blob in enumerate(tqdm(blobs_LoG, desc='Step3: Setting up DASK computations: blob analysis', display=verbose)):
+            z, y, x, r = blob
+            xc = int(x)
+            yc = int(y)
+            zc = int(z)
+            subset = volume[zc-dx2:zc+dx2, yc-dx2:yc+dx2, xc-dx2:xc+dx2]
+            '''
+            tr_result, error_flag = analyze_blob(subset,
+                                                 pixel_size = pixel_size,
+                                                 bounds = bounds,
+                                                 bands = bands,
+                                                 min_thr = min_thr,
+                                                 transition_low_limit = transition_low_limit,
+                                                 transition_high_limit = transition_high_limit)
+            tr_results.append(tr_result)
+            error_flags.append(error_flag)
+            '''
+            lazy_results.append(delayed(analyze_blob)(subset,
+                                                 pixel_size = pixel_size,
+                                                 bounds = bounds,
+                                                 bands = bands,
+                                                 min_thr = min_thr,
+                                                 transition_low_limit = transition_low_limit,
+                                                 transition_high_limit = transition_high_limit))
+
+        #error_flags = np.array(error_flags)
+        #tr_results = np.array(tr_results)
+        if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Starting DASK computations: blob analysis')
+        with ProgressBar():
+            results = compute(*lazy_results)
+        tr_results = np.array([result[0] for result in results])
+        error_flags = np.array([result[1] for result in results])
+        if len(error_flags[error_flags==0]) > 0:
+        #blobs_LoG = blobs_LoG[error_flags==0]
+            Xpt1 = tr_results[error_flags==0, 1]
+            Xpt2 = tr_results[error_flags==0, 2]
+            Ypt1 = tr_results[error_flags==0, 3]
+            Ypt2 = tr_results[error_flags==0, 4]
+            Zpt1 = tr_results[error_flags==0, 5]
+            Zpt2 = tr_results[error_flags==0, 6]
+            Xslp1 = tr_results[error_flags==0, 7]
+            Xslp2 = tr_results[error_flags==0, 8]
+            Yslp1 = tr_results[error_flags==0, 9]
+            Yslp2 = tr_results[error_flags==0, 10]
+            Zslp1 = tr_results[error_flags==0, 11]
+            Zslp2 = tr_results[error_flags==0, 12]
+            XYpt_selected = [Xpt1, Xpt2, Ypt1, Ypt2]
+            Xpt_selected = [Xpt1, Xpt2]
+            Ypt_selected = [Ypt1, Ypt2]
+            Zpt_selected = [Zpt1, Zpt2]
+            Xslp_selected = [Xslp1, Xslp2]
+            Yslp_selected = [Yslp1, Yslp2]
+            Zslp_selected = [Zslp1, Zslp2]
+            tr_mean = np.mean(XYpt_selected)
+            tr_std = np.std(XYpt_selected)
+            tr_sets = [[Xpt_selected, Ypt_selected, Zpt_selected],
+                [Xslp_selected, Yslp_selected, Zslp_selected]]
+
             if save_data_xlsx:
-                columns = ['Hist. Peak', 'Median', 'Mean', 'STD']
-                rows = ['X', 'Y', 'Z']
-                n_cols = len(columns)
-                n_rows = len(rows)
-                transition_summary = pd.DataFrame(hst_data, columns = columns, index = None)
-                transition_summary.insert(0, '', rows)
-                transition_summary.to_excel(xlsx_writer, index=None, sheet_name=sheet_name)
-        if save_data_xlsx:
-            xlsx_writer.close()
+                xlsx_writer = pd.ExcelWriter(results_file_xlsx, engine='xlsxwriter')
+                trans_str = '{:.2f} to {:.2f} transition (nm)'.format(bounds[0], bounds[1])
+                columns=['Z', 'Y', 'X', 'R', 'Amp',
+                    trans_str + ' X-pt1',
+                    trans_str + ' X-pt2',
+                    trans_str + ' Y-pt1',
+                    trans_str + ' Y-pt2',
+                    trans_str + ' Z-pt1',
+                    trans_str + ' Z-pt2',
+                    trans_str + ' X-slp1',
+                    trans_str + ' X-slp2',
+                    trans_str + ' Y-slp1',
+                    trans_str + ' Y-slp2',
+                    trans_str + ' Z-slp1',
+                    trans_str + ' Z-slp2',
+                    'error_flag']
+                if save_good_blobs_only:
+                    if verbose:
+                        print('Saving only good blob data')
+                    transition_results = pd.DataFrame(np.column_stack((np.array(blobs_LoG[error_flags==0]), tr_results[error_flags==0, :], error_flags[error_flags==0])), columns = columns, index = None)
+                else:
+                    if verbose:
+                        print('Saving all blob data')
+                    transition_results = pd.DataFrame(np.column_stack((np.array(blobs_LoG), tr_results, error_flags)), columns = columns, index = None)
+                transition_results.to_excel(xlsx_writer, index=None, sheet_name='Transition analysis results')
+                kwargs_info = pd.DataFrame([kwargs]).T # prepare to be save in transposed format
+                kwargs_info.to_excel(xlsx_writer, header=False, sheet_name='kwargs Info')
+            
+            fexts =['_{:.0f}{:.0f}pts'.format(bounds[0]*100, bounds[1]*100), '_{:.0f}{:.0f}slp'.format(bounds[0]*100, bounds[1]*100)]
+            sheet_names = ['{:.0f}%-{:.0f}% summary (pts)'.format(bounds[0]*100, bounds[1]*100),
+                '{:.0f}%-{:.0f}% summary (slopes)'.format(bounds[0]*100, bounds[1]*100)]    
+
+            hranges = [(0, 10.0), 
+                   (0, 10.0)]  # histogram range for the transition distance (in nm))
+            for [tr_xs, tr_ys, tr_zs], fext, sheet_name, hrange in zip(tr_sets, fexts, sheet_names, hranges):
+                tr_x = np.array(tr_xs).flatten()
+                tr_y = np.array(tr_ys).flatten()
+                tr_z = np.array(tr_zs).flatten()
+                dsets = [tr_x, tr_y, tr_z]
+                hst_data =  np.zeros((len(dsets), 4))
+                cc_data =  np.zeros((nbins, len(dsets)+1))
+                for (j, dset) in enumerate(dsets):
+                    hst_res = np.array(add_hist(dset, nbins=nbins, hrange=hrange, ax=0, col='red', label=''), dtype=object)
+                    hst_data[j, :] = hst_res[2:6]
+                    cc_data[:, j+1] = hst_res[1]
+                hst_datas.append(hst_data)
+                cell_text = [['{:.2f}'.format(d) for d in dd] for dd in hst_data]
+                if save_data_xlsx:
+                    columns = ['Hist. Peak', 'Median', 'Mean', 'STD']
+                    rows = ['X', 'Y', 'Z']
+                    n_cols = len(columns)
+                    n_rows = len(rows)
+                    transition_summary = pd.DataFrame(hst_data, columns = columns, index = None)
+                    transition_summary.insert(0, '', rows)
+                    transition_summary.to_excel(xlsx_writer, index=None, sheet_name=sheet_name)
+            if save_data_xlsx:
+                xlsx_writer.close()
+        else:
+            Xpt1 = []
+            Xpt2 = []
+            Ypt1 = []
+            Ypt2 = []
+            Zpt1 = []
+            Zpt2 = []
+            Xslp1 = []
+            Xslp2 = []
+            Yslp1 = []
+            Yslp2 = []
+            Zslp1 = []
+            Zslp2 = []
+            XYpt_selected = []
+            Xpt_selected = []
+            Ypt_selected = []
+            Zpt_selected = []
+            Xslp_selected = []
+            Yslp_selected = []
+            Zslp_selected = []
+            tr_mean = 0.0
+            tr_std = 0.0
+            tr_sets = [[Xpt_selected, Ypt_selected, Zpt_selected],
+                [Xslp_selected, Yslp_selected, Zslp_selected]]
+            save_data_xlsx = False
+            results_file_xlsx = 'Data not saved'
+
+        if verbose and len(error_flags[error_flags==0]) > 0:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step2: Analyzed Blobs/Transitions, selected {:d}'.format(len(blobs_LoG)))
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step2: Analyzed selected {:d} Blobs, found {:d} good ones'.format(len(error_flags), len(error_flags[error_flags==0])))
+            if save_data_xlsx:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step3: Saving the results into file:  ' + results_file_xlsx)
+            else:
+                print('Data is NOT saved')
+        else:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step2: Analyzed selected {:d} Blobs, found {:d} good ones'.format(len(error_flags), len(error_flags[error_flags==0])))
+            print('Data is NOT saved')
+
+        if save_good_blobs_only:
+            return results_file_xlsx, blobs_LoG[error_flags==0], error_flags[error_flags==0], tr_results[error_flags==0], hst_datas
+        else:
+            return results_file_xlsx, blobs_LoG, error_flags, tr_results, hst_datas
     else:
+        if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step1: No blobs found using Laplasian of Gaussians')
         Xpt1 = []
         Xpt2 = []
         Ypt1 = []
@@ -1025,24 +1070,7 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
             [Xslp_selected, Yslp_selected, Zslp_selected]]
         save_data_xlsx = False
         results_file_xlsx = 'Data not saved'
-
-    if verbose and len(error_flags[error_flags==0]) > 0:
-        print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step2: Analyzed Blobs/Transitions, selected {:d}'.format(len(blobs_LoG)))
-        print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step2: Analyzed selected {:d} Blobs, found {:d} good ones'.format(len(error_flags), len(error_flags[error_flags==0])))
-        if save_data_xlsx:
-            print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step3: Saving the results into file:  ' + results_file_xlsx)
-        else:
-            print('Data is NOT saved')
-    else:
-        print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step2: Analyzed selected {:d} Blobs, found {:d} good ones'.format(len(error_flags), len(error_flags[error_flags==0])))
-        print('Data is NOT saved')
-
-    if save_good_blobs_only:
-        return results_file_xlsx, blobs_LoG[error_flags==0], error_flags[error_flags==0], tr_results[error_flags==0], hst_datas
-    else:
         return results_file_xlsx, blobs_LoG, error_flags, tr_results, hst_datas
-
-
 
 ############################################
 #
