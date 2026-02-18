@@ -692,7 +692,7 @@ def Single_Image_SNR(img, **kwargs):
     ycr = np.linspace(-ysz//2+1, ysz//2, ysz)
 
     if verbose:
-        print('Extracting Noise-Free Autocorrelation value using ', extrapolate_signal)
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Extracting Noise-Free Autocorrelation value using ', extrapolate_signal)
     
     mag_acr_peak_x, mag_NFacr_x, ind_acr_x, mag_acr_x = find_autocorrelation_peak(xcr, data_ACR[ysz//2, :],
                                                                     extrapolate_signal = extrapolate_signal,
@@ -890,7 +890,7 @@ def Single_Image_Noise_ROIs(img, Noise_ROIs, Hist_ROI, **kwargs):
     
     range_analysis = get_min_max_thresholds(img_hist_filtered, thr_min = thresholds_analysis[0], thr_max = thresholds_analysis[1], nbins = nbins_analysis, disp_res=False)
     if disp_res:
-        print('The EM data range for noise analysis: {:.1f} - {:.1f},  DarkCount={:.1f}'.format(range_analysis[0], range_analysis[1], DarkCount))
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   The EM data range for noise analysis: {:.1f} - {:.1f},  DarkCount={:.1f}'.format(range_analysis[0], range_analysis[1], DarkCount))
     bins_analysis = np.linspace(range_analysis[0], range_analysis[1], nbins_analysis)
     
     yx_ratio = img.shape[0]/img.shape[1]
@@ -1141,10 +1141,10 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         #print('Length of original image is: ', np.prod(img_smoothed.shape))
         #print('Length of filtered image is: ', np.prod(img_smoothed_filtered.shape))
         print('')
-        print('The EM data range for display:            {:.2f} to {:.2f}'.format(range_disp[0], range_disp[1]))
-        print('The EM data range for noise analysis:     {:.2f} to {:.2f}'.format(range_SNR_analysis[0], range_SNR_analysis[1]))
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   The EM data range for display:            {:.2f} to {:.2f}'.format(range_disp[0], range_disp[1]))
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   The EM data range for noise analysis:     {:.2f} to {:.2f}'.format(range_SNR_analysis[0], range_SNR_analysis[1]))
         if perform_contrast_analysis:
-            print('The EM data range for contrast analysis:     {:.2f} to {:.2f}'.format(Ilow, Ihigh))
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   The EM data range for contrast analysis:     {:.2f} to {:.2f}'.format(Ilow, Ihigh))
     
     bins_analysis = np.linspace(range_SNR_analysis[0], range_SNR_analysis[1], nbins_analysis)
     range_imdiff = get_min_max_thresholds(imdiff, thr_min = thresholds_disp[0], thr_max = thresholds_disp[1], nbins = nbins_disp, disp_res = False)
@@ -1297,7 +1297,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     
     if disp_res:
         print('')
-        print('Used Dark Count Offset: {:.2f}'.format(DarkCount))
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Used Dark Count Offset: {:.2f}'.format(DarkCount))
         print('Slope of linear fit with header offset: {:.2f}'.format(Slope_header))
         print('Fit w DarkCount  : SNR1 <S^2>/<N^2> = {:.2f}'.format(SNR1))
         print('')
@@ -1306,7 +1306,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         print('Free Fit         : SNR0 <S^2>/<N^2> = {:.2f}'.format(SNR0))
         print('')
         if perform_contrast_analysis:
-            print('Data range: I_contrast_low = {:.2f}, I_contrast_high = {:.2f}'.format(Ilow, Ihigh))
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Data range: I_contrast_low = {:.2f}, I_contrast_high = {:.2f}'.format(Ilow, Ihigh))
             print('Dark Count = {:.2f}'.format(I0))
             print('Contrast = {:.3f}'.format(contrast))
         
@@ -1558,7 +1558,7 @@ def Perform_2D_fit(img, estimator, **kwargs):
         img_correction_array = img * 0.0
         
     if disp_res:
-        print('Estimator coefficients ' + coeff_columns + ' : ', coefs)
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Estimator coefficients ' + coeff_columns + ' : ', coefs)
         print('Estimator intercept: ', intercept)
         
         fig, axs = plt.subplots(2,2, figsize = (12, 8))
@@ -1835,7 +1835,7 @@ def Two_Image_FSC(img1, img2, **kwargs):
                               fr_cutoff = fr_cutoff)
     if fitOK > 0:
         if verbose:
-                print('Cannot determine BW accurately: not enough points')
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Cannot determine BW accurately: not enough points')
     '''
     If the disp_res input is set to True, an output plot is generated. 
     '''
@@ -1907,7 +1907,7 @@ def Two_Image_FSC(img1, img2, **kwargs):
         
     if disp_res:
         ax.set_position([0.1, 0.05, 0.85, 0.28])
-        print('FSC BW = {:.5f}'.format(FSC_bw))
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   FSC BW = {:.5f}'.format(FSC_bw))
         if save_res_png:
             fig.savefig(res_fname, dpi=dpi)
             print('Saved the results into the file: ', res_fname)
@@ -2626,7 +2626,7 @@ def plot_cross_sections_mrc_stack(mrc_filename, **kwargs):
     if (not XZ_section) and ZY_section:
         fig.subplots_adjust(left=0.0, bottom=0.0, right=1.0, top=1.0, wspace=0.025*(xy_ratio**2)+addtl_sp)
     
-    print('Generating Cross-Section Images')
+    print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Generating Cross-Section Images')
     
     if XZ_section and ZY_section:
         widths_um = [stack_size[0], stack_size[0], stack_size[2]]
@@ -2825,7 +2825,7 @@ def bin_crop_mrc_stack(mrc_filename, **kwargs):
         voxel_size_angstr_new.y = voxel_size_new.y * 10.0
         voxel_size_angstr_new.z = voxel_size_new.z * 10.0
     except:
-        print('Incorrect voxel size entry')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Incorrect voxel size entry')
         print('will use : ', voxel_size_new)
     nx, ny, nz = np.int32(header['nx']), np.int32(header['ny']), np.int32(header['nz'])
     xi = kwargs.get('xi', 0)
@@ -2843,7 +2843,7 @@ def bin_crop_mrc_stack(mrc_filename, **kwargs):
     binned_mrc_filename = os.path.splitext(binned_copped_filename)[0] + '.mrc'
     binned_mrc_filename = os.path.normpath(binned_mrc_filename)
     dt = type(mrc_obj.data[0,0,0])
-    print('Source mrc_mode: {:d}, source data type:'.format(mrc_mode), dt)
+    print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Source mrc_mode: {:d}, source data type:'.format(mrc_mode), dt)
     print('Source Voxel Size (Angstroms): {:2f} x {:2f} x {:2f}'.format(voxel_size_angstr.x, voxel_size_angstr.y, voxel_size_angstr.z))
     if mode == 'sum':
         mrc_mode = 1
@@ -3335,13 +3335,13 @@ def destreak_mrc_stack_with_kernel(mrc_filename, destreak_kernel, data_min, data
     mrc_obj.close()
     
     if disp_res:
-        print('Source mrc_mode: {:d}, source data type:'.format(mrc_mode), dt)
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Source mrc_mode: {:d}, source data type:'.format(mrc_mode), dt)
         print('Source Data Shape:  {:d} x {:d} x {:d}'.format(nx, ny, nz))
         print('Source Voxel Size (Angstroms): {:2f} x {:2f} x {:2f}'.format(voxel_size_angstr_from_mrc.x, voxel_size_angstr_from_mrc.y, voxel_size_angstr_from_mrc.z))
     mrc_mode = 1
     dt = np.int16
     if disp_res:
-        print('Result mrc_mode: {:d}, source data type:'.format(mrc_mode), dt)
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Result mrc_mode: {:d}, source data type:'.format(mrc_mode), dt)
         print('Result Data Shape:  {:d} x {:d} x {:d}'.format(nx, ny, nz_new))
         print('Result Voxel Size (Angstroms): {:2f} x {:2f} x {:2f}'.format(voxel_size_angstr.x, voxel_size_angstr.y, voxel_size_angstr.z))
     
@@ -3526,7 +3526,7 @@ def smooth_mrc_stack_with_kernel(mrc_filename, smooth_kernel, data_min, data_max
     dt = type(mrc_obj.data[0,0,0])
     mrc_obj.close()
     
-    print('Source mrc_mode: {:d}, source data type:'.format(mrc_mode), dt)
+    print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Source mrc_mode: {:d}, source data type:'.format(mrc_mode), dt)
     print('Source Data Shape:  {:d} x {:d} x {:d}'.format(nx, ny, nz))
     print('Source Voxel Size (Angstroms): {:2f} x {:2f} x {:2f}'.format(voxel_size_angstr.x, voxel_size_angstr.y, voxel_size_angstr.z))
     mrc_mode = 1
@@ -3644,7 +3644,7 @@ def destreak_smooth_mrc_stack_with_kernels(mrc_filename, destreak_kernel, smooth
     fra = kwargs.get('fra', nz)
 
     dt = type(mrc_obj.data[0,0,0])
-    print('Source mrc_mode: {:d}, source data type:'.format(mrc_mode), dt)
+    print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Source mrc_mode: {:d}, source data type:'.format(mrc_mode), dt)
     print('Source Voxel Size (Angstroms): {:2f} x {:2f} x {:2f}'.format(voxel_size_angstr.x, voxel_size_angstr.y, voxel_size_angstr.z))
     mrc_mode = 1
     dt = np.int16
@@ -3853,8 +3853,8 @@ def mrc_stack_estimate_resolution_blobs_2D(mrc_filename, **kwargs):
         frame_inds = frame_inds+1
     sample_frame_inds = [frame_inds[nf//10], frame_inds[nf//2], frame_inds[nf//10*9]]
     if verbose:
-        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Will analyze 2D Blobs in {:d} frames'.format(len(frame_inds)))
-        print('Will save the data into ' + results_file_xlsx)
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Will analyze 2D Blobs in {:d} frames'.format(len(frame_inds)))
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Will save the data into ' + results_file_xlsx)
     if sliding_evaluation_box:
         dx_eval = stop_evaluation_box[2]-start_evaluation_box[2]
         dy_eval = stop_evaluation_box[0]-start_evaluation_box[0]
@@ -3867,7 +3867,7 @@ def mrc_stack_estimate_resolution_blobs_2D(mrc_filename, **kwargs):
     vmin, vmax = get_min_max_thresholds((mrc_obj.data[frame_inds[nf//2], yi_eval:ya_eval, xi_eval:xa_eval].astype(dt_mrc)).astype(float), thr_min=0.2, disp_res=False, save_res=False)
     threshold = kwargs.get('threshold', vmin/10.0)
     if verbose:
-        print('Will use threshold : {:.4f}'.format(threshold))
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Will use threshold : {:.4f}'.format(threshold))
 
     eval_bounds = set_eval_bounds(shape, evaluation_box,
         start_evaluation_box = start_evaluation_box,
@@ -4058,7 +4058,7 @@ def select_blobs_LoG_analyze_transitions_2D_mrc_stack(params):
     if zbin_factor > 1:
         frame_eval /= zbin_factor
     if verbose:
-        print('Subset shape: ', np.shape(frame_eval))
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Subset shape: ', np.shape(frame_eval))
 
     fname_root = os.path.splitext(os.path.split(mrc_filename)[1])[0]
     fname_base = os.path.split(mrc_filename)[0]
@@ -4876,7 +4876,7 @@ def generate_report_mill_rate_xlsx(Mill_Rate_Data_xlsx, **kwargs):
     '''
     verbose = kwargs.get('verbose', False)
     if verbose:
-        print('Loading kwarg Data')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Loading kwarg Data')
     saved_kwargs = read_kwargs_xlsx(Mill_Rate_Data_xlsx, 'kwargs Info', **kwargs)
     data_dir = saved_kwargs.get("data_dir", '')
     Sample_ID = saved_kwargs.get("Sample_ID", '')
@@ -4885,7 +4885,7 @@ def generate_report_mill_rate_xlsx(Mill_Rate_Data_xlsx, **kwargs):
     xlim = kwargs.get('xlim', (0,0))
     
     if verbose:
-        print('Loading Working Distance and Milling Y Voltage Data')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Loading Working Distance and Milling Y Voltage Data')
     try:
         int_results = pd.read_excel(Mill_Rate_Data_xlsx, sheet_name='FIBSEM Data')
     except:
@@ -4895,7 +4895,7 @@ def generate_report_mill_rate_xlsx(Mill_Rate_Data_xlsx, **kwargs):
     MillingYVoltage = int_results['Milling Y Voltage (V)']
 
     if verbose:
-        print('Generating Plot')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Generating Plot')
     fs = 12
     Mill_Volt_Rate_um_per_V = 31.235258870176065
 
@@ -4949,14 +4949,14 @@ def generate_report_ScanRate_EHT_xlsx(ScanRate_EHT_Data_xlsx, **kwargs):
     '''
     verbose = kwargs.get('verbose', False)
     if verbose:
-        print('Loading kwarg Data')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Loading kwarg Data')
     saved_kwargs = read_kwargs_xlsx(ScanRate_EHT_Data_xlsx, 'kwargs Info', **kwargs)
     data_dir = saved_kwargs.get("data_dir", '')
     Sample_ID = saved_kwargs.get("Sample_ID", '')
     xlim = kwargs.get('xlim', (0,0))
     
     if verbose:
-        print('Loading Scan Rate and EHT Data')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Loading Scan Rate and EHT Data')
     try:
         int_results = pd.read_excel(ScanRate_EHT_Data_xlsx, sheet_name='FIBSEM Data')
     except:
@@ -4970,7 +4970,7 @@ def generate_report_ScanRate_EHT_xlsx(ScanRate_EHT_Data_xlsx, **kwargs):
         SEMSpecimenI = EHT*0.0
 
     if verbose:
-        print('Generating Plot')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Generating Plot')
     fs = 12
 
     fig, axs = plt.subplots(2,1, figsize = (6,7), sharex=True)
@@ -5013,14 +5013,14 @@ def generate_report_FOV_center_shift_xlsx(FOV_center_shift_xlsx, **kwargs):
     '''
     verbose = kwargs.get('verbose', False)
     if verbose:
-        print('Loading kwarg Data')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Loading kwarg Data')
     saved_kwargs = read_kwargs_xlsx(FOV_center_shift_xlsx, 'kwargs Info', **kwargs)
     data_dir = saved_kwargs.get("data_dir", '')
     Sample_ID = saved_kwargs.get("Sample_ID", '')
     xlim = kwargs.get('xlim', (0,0))
     
     if verbose:
-        print('Loading FOV Center Location Data')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Loading FOV Center Location Data')
     try:
         int_results = pd.read_excel(FOV_center_shift_xlsx, sheet_name='FIBSEM Data')
     except:
@@ -5033,7 +5033,7 @@ def generate_report_FOV_center_shift_xlsx(FOV_center_shift_xlsx, **kwargs):
     trend_y = savgol_filter(center_y*1.0, sv_apert, 1) - center_y[0]
 
     if verbose:
-        print('Generating Plot')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Generating Plot')
     fs = 12
 
     fig, axs = plt.subplots(2,1, figsize = (6,7), sharex=True)
@@ -5080,7 +5080,7 @@ def generate_report_data_minmax_xlsx(minmax_xlsx_file, **kwargs):
     '''
     verbose = kwargs.get('verbose', False)
     if verbose:
-        print('Loading kwarg Data')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Loading kwarg Data')
     saved_kwargs = read_kwargs_xlsx(minmax_xlsx_file, 'kwargs Info', **kwargs)
     data_dir = saved_kwargs.get("data_dir", '')
     fnm_reg = saved_kwargs.get("fnm_reg", 'Registration_file.mrc')
@@ -5093,7 +5093,7 @@ def generate_report_data_minmax_xlsx(minmax_xlsx_file, **kwargs):
     xlim = kwargs.get('xlim', (0,0))
     
     if verbose:
-        print('Loading MinMax Data')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Loading MinMax Data')
     try:
         int_results = pd.read_excel(minmax_xlsx_file, sheet_name='FIBSEM Data')
     except:
@@ -5109,16 +5109,16 @@ def generate_report_data_minmax_xlsx(minmax_xlsx_file, **kwargs):
     '''
     if fit_params[0] != 'None':
         sv_apert = min([fit_params[1], len(frames)//8*2+1])
-        print('Using fit_params: ', 'SG', sv_apert, fit_params[2])
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Using fit_params: ', 'SG', sv_apert, fit_params[2])
         sliding_min = savgol_filter(frame_min.astype(np.double), sv_apert, fit_params[2])
         sliding_max = savgol_filter(frame_max.astype(np.double), sv_apert, fit_params[2])
     else:
-        print('Not smoothing the Min/Max data')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Not smoothing the Min/Max data')
         sliding_min = frame_min.astype(np.double)
         sliding_max = frame_min.astype(np.double)
 
     if verbose:
-        print('Generating Plot')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Generating Plot')
     fs = 12
     fig0, ax0 = plt.subplots(1,1,figsize=(6,4))
     fig0.subplots_adjust(left=0.14, bottom=0.11, right=0.99, top=0.94)
@@ -5168,7 +5168,7 @@ def generate_report_transf_matrix_from_xlsx(transf_matrix_xlsx_file, **kwargs):
     '''
     verbose = kwargs.get('verbose', False)
     if verbose:
-        print('Loading kwarg Data')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Loading kwarg Data')
     saved_kwargs = read_kwargs_xlsx(transf_matrix_xlsx_file, 'kwargs Info', **kwargs)
     data_dir = saved_kwargs.get("data_dir", '')
     fnm_reg = saved_kwargs.get("fnm_reg", 'Registration_file.mrc')
@@ -5200,7 +5200,7 @@ def generate_report_transf_matrix_from_xlsx(transf_matrix_xlsx_file, **kwargs):
     pad_edges =  saved_kwargs.get("pad_edges", True)
     
     if verbose:
-        print('Loading Original Transformation Data')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Loading Original Transformation Data')
     orig_transf_matrix = pd.read_excel(transf_matrix_xlsx_file, sheet_name='Orig. Transformation Matrix')
     transformation_matrix = np.vstack((orig_transf_matrix['T00 (Sxx)'],
                          orig_transf_matrix['T01 (Sxy)'],
@@ -5213,7 +5213,7 @@ def generate_report_transf_matrix_from_xlsx(transf_matrix_xlsx_file, **kwargs):
                          orig_transf_matrix['T22 (1.0)'])).T.reshape((len(orig_transf_matrix['T00 (Sxx)']), 3, 3))
    
     if verbose:
-        print('Loading Cumulative Transformation Data')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Loading Cumulative Transformation Data')
     cum_transf_matrix = pd.read_excel(transf_matrix_xlsx_file, sheet_name='Cum. Transformation Matrix')
     tr_matr_cum = np.vstack((cum_transf_matrix['T00 (Sxx)'],
                          cum_transf_matrix['T01 (Sxy)'],
@@ -5226,7 +5226,7 @@ def generate_report_transf_matrix_from_xlsx(transf_matrix_xlsx_file, **kwargs):
                          cum_transf_matrix['T22 (1.0)'])).T.reshape((len(cum_transf_matrix['T00 (Sxx)']), 3, 3))
     
     if verbose:
-        print('Loading Intermediate Data')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Loading Intermediate Data')
 
     int_results = pd.read_excel(transf_matrix_xlsx_file, sheet_name='Intermediate Results')
     s00_cum_orig = int_results['s00_cum_orig']
@@ -5237,7 +5237,7 @@ def generate_report_transf_matrix_from_xlsx(transf_matrix_xlsx_file, **kwargs):
     Yshift_cum_orig = int_results['Yshift_cum_orig']
     
     if verbose:
-        print('Loading Statistics')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Loading Statistics')
     stat_results = pd.read_excel(transf_matrix_xlsx_file, sheet_name='Reg. Stat. Info')
     npts = stat_results['Npts']
     error_abs_mean = stat_results['Mean Abs Error']
@@ -5299,14 +5299,14 @@ def generate_report_transf_matrix_from_xlsx(transf_matrix_xlsx_file, **kwargs):
         axs5[0, 2].text(0.03, 0.2, 'Mean X FWHM= {:.3f}   Median X FWHM= {:.3f}'.format(np.mean(error_FWHMx), np.median(error_FWHMx)), transform=axs5[0, 2].transAxes, fontsize = fs-1)
     except:
         if verbose:
-            print('No Xerror_FWHM data')
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   No Xerror_FWHM data')
     try:
         error_FWHMy = stat_results['Yerror_FWHM']
         axs5[0, 2].plot(error_FWHMy, 'blue', linewidth = lwl, label = 'Y-error FWHM')
         axs5[0, 2].text(0.03, 0.1, 'Mean Y FWHM= {:.3f}   Median Y FWHM= {:.3f}'.format(np.mean(error_FWHMy), np.median(error_FWHMy)), transform=axs5[0, 2].transAxes, fontsize = fs-1)
     except:
         if verbose:
-            print('No Yerror_FWHM data')
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   No Yerror_FWHM data')
 
     # plot scales terms
     axs5[1, 0].plot(transformation_matrix[:, 0, 0], 'r', linewidth = lwl, label = 'Sxx frame-to-frame')
@@ -5665,7 +5665,7 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
         nccs = [np.mean(image_ncc), np.median(image_ncc), np.std(image_ncc)]
         nmis = [np.mean(image_nmi), np.median(image_nmi), np.std(image_nmi)]
     except:
-        print('Could not load metrics')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Could not load metrics')
     eval_metrics = Regisration_data.columns[5:]
     num_metrics = len(eval_metrics)
     num_frames = len(frames)
@@ -5732,7 +5732,7 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
         sample_frame_images_available = False
         sample_data_available = True
         if stack_exists:
-            print('Will use sample images from the registered stack')
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Will use sample images from the registered stack')
             use_raw_data = False
             if Path(stack_filename).suffix == '.mrc':
                 mrc_obj = mrcfile.mmap(stack_filename, mode='r')
@@ -5756,7 +5756,7 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
                 if mrc_mode==6:
                     dt_mrc=np.uint16
         else:
-            print('Will use sample images from the raw data')
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Will use sample images from the raw data')
             if os.path.exists(dump_filename):
                 print('Trying to recall the data from ', dump_filename)
             try:
@@ -5802,9 +5802,9 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
                 sample_data_available = False
                 use_raw_data = False
         if sample_data_available:
-            print('Sample data is available')
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Sample data is available')
         else:
-            print('Sample data is NOT available')
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Sample data is NOT available')
      
         if num_frames//10*9 > 0:
             ev_ind2 = num_frames//10*9
@@ -8016,7 +8016,7 @@ class FIBSEM_frame:
         FirstPixelY_new = FirstPixelY - top_pad//2
         
         if verbose:
-            print('Input Frame Size: {:d} x {:d} pixels'.format(XResolution, YResolution))
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Input Frame Size: {:d} x {:d} pixels'.format(XResolution, YResolution))
             print('Using Frame Paddigs: top={:d}, bottom={:d}, left={:d}, right={:d} pixels'.format(top_pad, bottom_pad, left_pad, right_pad))
             print('Output Frame Size: {:d} x {:d} pixels'.format(XResolution_new, YResolution_new))
             print('Data will be saved into the file: ', save_filename)
@@ -8364,7 +8364,7 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
         if fit_params[0] != 'None':
             sv_apert = min([fit_params[1], len(frame_inds)//8*2+1])
             if verbose:
-                print('Using fit_params: ', 'SG', sv_apert, fit_params[2])
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Using fit_params: ', 'SG', sv_apert, fit_params[2])
             data_min_sliding = savgol_filter(data_minmax_glob[:, 0].astype(np.double), sv_apert, fit_params[2])
             data_max_sliding = savgol_filter(data_minmax_glob[:, 1].astype(np.double), sv_apert, fit_params[2])
         else:
@@ -8590,7 +8590,7 @@ def extract_keypoints_descr_files(params, deformation_field):
 
     if perform_deformation:
         if verbose:
-                print('Deformation Field is present. Will perform image deformation first.')
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Deformation Field is present. Will perform image deformation first.')
     save_deformed_image = kwargs.get('save_deformed_image', False)
 
     if use_existing_data and os.path.exists(fnm):
@@ -8635,7 +8635,7 @@ def extract_keypoints_descr_files(params, deformation_field):
                 kp.pt = kp.pt + np.array((xi_eval, yi_eval))
         #key_points = [KeyPoint(kp) for kp in kps]
         if verbose:
-            print('File: ', fl, ', extracted {:d} keypoints'.format(len(kps)))
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   File: ', fl, ', extracted {:d} keypoints'.format(len(kps)))
         key_points = [kp_to_list(kp) for kp in kps]
         kpd = [key_points, dess, kpt_ints]
         
@@ -8882,9 +8882,9 @@ def determine_transformations_files(params_dsf):
         kpp2s, des2s, kpt_ints2s = pickle.load(open(fnm_2, 'rb'))
         if verbose:
             print('')
-            print('File 1: ', fnm_1)
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   File 1: ', fnm_1)
             print('File 1 loaded: # of kpts={:d}, # of desc={:d}, # of kpt_ints={:d}'.format(len(kpp1s), len(des1s), len(kpt_ints1s)))
-            print('File 2: ', fnm_2)
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   File 2: ', fnm_2)
             print('File 2 loaded: # of kpts={:d}, # of desc={:d}, # of kpt_ints={:d}'.format(len(kpp2s), len(des2s), len(kpt_ints2s)))
         if 'image_margins' in kwargs:
             ymargin, xmargin =  kwargs['image_margins']
@@ -8921,8 +8921,8 @@ def determine_transformations_files(params_dsf):
             kpt_ints2 = kpt_ints2s
 
         if verbose:
-            print('File 1 with margin limits applied: # of kpts={:d}, # of desc={:d}, # of kpt_ints={:d}'.format(len(kp1), len(des1), len(kpt_ints1)))
-            print('File 2 with margin limits applied: # of kpts={:d}, # of desc={:d}, # of kpt_ints={:d}'.format(len(kp2), len(des2), len(kpt_ints2)))
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   File 1 with margin limits applied: # of kpts={:d}, # of desc={:d}, # of kpt_ints={:d}'.format(len(kp1), len(des1), len(kpt_ints1)))
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   File 2 with margin limits applied: # of kpts={:d}, # of desc={:d}, # of kpt_ints={:d}'.format(len(kp2), len(des2), len(kpt_ints2)))
 
         # establish matches
         if BFMatcher:    # if BFMatcher==True - use BF (Brute Force) matcher
@@ -8972,7 +8972,7 @@ def determine_transformations_files(params_dsf):
         dst_ints = np.float32([kpt_ints2[m.trainIdx] for m in good ])
 
         if verbose:
-            print('Number of Matches after Low Ratio Test: ', len(src_pts))
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Number of Matches after Low Ratio Test: ', len(src_pts))
         
         if solver == 'LinReg':
             # Determine the transformation matrix via iterative liear regression
@@ -9028,7 +9028,7 @@ def determine_transformations_files(params_dsf):
         kpt_ints = [src_selected_ints, dst_selected_ints]
 
         if verbose:
-            print('Transformation Matrix : ', transform_matrix)
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Transformation Matrix : ', transform_matrix)
             print('Number of Matches : ', len(kpts[0]))
             print('error_abs_mean={:.3f}, error_FWHMx={:.3f}, error_FWHMy={:.3f}'.format(error_abs_mean, error_FWHMx, error_FWHMy))
         if save_matches:
@@ -9360,7 +9360,7 @@ def calculate_residual_deformation_fields_dataset(tr_matr_cum, image_shape, fnms
     nfrs = len(fnms_matches)
 
     if verbose:
-        print('calculate_residual_deformation_fields_dataset: will calulate residual deformation fields in format: ', deformation_type)
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   calculate_residual_deformation_fields_dataset: will calulate residual deformation fields in format: ', deformation_type)
         print('calculate_residual_deformation_fields_dataset: deformation_sigma = ', deformation_sigma)
         print('calculate_residual_deformation_fields_dataset: zero_mean = ', zero_mean)
 
@@ -9391,7 +9391,7 @@ def calculate_residual_deformation_fields_dataset(tr_matr_cum, image_shape, fnms
                 pass
         deformation_fields = np.cumsum(deformation_fields, axis = 0)  
     if verbose:
-        print('calculate_residual_deformation_fields_dataset: output deformation_fields shape', deformation_fields.shape)
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   calculate_residual_deformation_fields_dataset: output deformation_fields shape', deformation_fields.shape)
         print('calculate_residual_deformation_fields_dataset: average output deformation_field ', np.mean(deformation_fields))
     # save the data
     default_bin_file = os.path.join(data_dir, fnm_reg.replace('.mrc', '_deformation_fields.bin'))
@@ -9695,7 +9695,7 @@ def SIFT_evaluation_dataset(fs, **kwargs):
 
     print('')
     if number_of_repeats > 1:
-        print('Repeated registration calculations {:d} times'.format(number_of_repeats))
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Repeated registration calculations {:d} times'.format(number_of_repeats))
         print('Average # of detected matches: {:.2f}'.format(np.mean(n_matches_tot)))
         print('min # of detected matches: {:d}'.format(np.min(n_matches_tot)))
         print('STD # of detected matches: {:.2f}'.format(np.std(n_matches_tot)))
@@ -9841,7 +9841,7 @@ def SIFT_evaluation_dataset(fs, **kwargs):
     ax.text(0.005, 1.00 - 0.114*frame.XResolution/frame.YResolution, 'drmax={:.3f}'.format(drmax), fontsize=fsize_text, transform=ax.transAxes)
     ax.text(0.005, 1.00 - 0.127*frame.XResolution/frame.YResolution, '# of keypoints = {:d}, # of matches ={:d}'.format(n_kpts, n_matches), fontsize=fsize_text, transform=ax.transAxes)
     if verbose:
-        print('thr_min={:.0e}, thr_max={:.0e}'.format(thr_min, thr_max))
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   thr_min={:.0e}, thr_max={:.0e}'.format(thr_min, thr_max))
         print(TransformType.__name__+ ', ' + solver + ',  ' + matcher)
         print('SIFT_nfeatures={:d}'.format(SIFT_nfeatures))
         print('SIFT_nOctaveLayers={:d},  SIFT_edgeThreshold={:.3f}'.format(SIFT_nOctaveLayers, SIFT_edgeThreshold))
@@ -10066,7 +10066,7 @@ def check_registration(img0, img1, **kwargs):
     kpts = [src_pts_ransac, dst_pts_ransac]
     transform_matrix = model.params
     if verbose:
-        print('Transform_Matrix:')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Transform_Matrix:')
         print(transform_matrix)
 
     iteration = len(src_pts)- len(src_pts_ransac)
@@ -10425,12 +10425,12 @@ def transform_and_save_chunk_of_frames(chunk_of_frame_parametrs):
                     pass
                 if deformation_type == 'post_1DY':
                     if verbose:
-                        print('Performing Transformation using CV2.remap with additional post_1DY deformation fields')
+                        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Performing Transformation using CV2.remap with additional post_1DY deformation fields')
                     orig_shape = frame.RawImageA.shape
                     additional_deformation = np.repeat(deformation_field[:, np.newaxis], orig_shape[1], 1).astype(np.float32)
                     xi_loc, yi_loc, padx_loc, pady_loc  = determine_pad_offsets(orig_shape, tr_matrix[np.newaxis, :, :])
                     if verbose:
-                        print('Global: xi={:d}, yi={:d}. Local xi_loc={:d}, yi_loc={:d}'.format(xi, yi, xi_loc, yi_loc))
+                        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Global: xi={:d}, yi={:d}. Local xi_loc={:d}, yi_loc={:d}'.format(xi, yi, xi_loc, yi_loc))
                     additional_deformation_padded = np.pad(additional_deformation, pad_width=((yi_loc, (ysz-orig_shape[0]-yi_loc)), (xi_loc, (xsz-orig_shape[1]-xi_loc))), mode='edge')
                     df[:, :, 0] = df[:, :, 0] + additional_deformation_padded
                 if deformation_type == 'post_1DX':
@@ -10847,7 +10847,7 @@ def save_data_stack(FIBSEMstack, **kwargs):
     chunk_length = kwargs.get('chunk_length', 32)
 
     if verbose:
-        print('The resulting stack shape will be  nx={:d}, ny={:d}, nz={:d},  data type:'.format(nx, ny, nz), dtp)
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   The resulting stack shape will be  nx={:d}, ny={:d}, nz={:d},  data type:'.format(nx, ny, nz), dtp)
         print('Voxel destreak_mrc_stackSize (nm): {:2f} x {:2f} x {:2f}'.format(voxel_size.x, voxel_size.y, voxel_size.z))
 
     fnms_saved = []
@@ -10891,7 +10891,7 @@ def save_data_stack(FIBSEMstack, **kwargs):
                     
                 # Make a new, empty memory-mapped MRC file
                 if verbose:
-                     print('The resulting stack will saved using mrc_mode={:d},  data type='.format(mrc_mode), dtp)
+                     print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   The resulting stack will saved using mrc_mode={:d},  data type='.format(mrc_mode), dtp)
                 mrc = mrcfile.new_mmap(fpath_reg, shape=(nz, ny, nx), mrc_mode=mrc_mode, overwrite=True)
                 voxel_size_angstr = voxel_size.copy()
                 voxel_size_angstr.x = voxel_size_angstr.x * 10.0
@@ -10909,7 +10909,7 @@ def save_data_stack(FIBSEMstack, **kwargs):
                         mrc.data[j, :, :] = FIBSEMframe.astype(dtp)
                 mrc.close()
     else:
-        print('Registered data set is NOT saved into a file')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Registered data set is NOT saved into a file')
     return fnms_saved
 
 
@@ -11097,7 +11097,7 @@ def select_blobs_LoG_analyze_transitions_2D_dataset(params):
     if zbin_factor > 1:
         frame_eval /= zbin_factor
     if verbose:
-        print('Subset shape: ', np.shape(frame_eval))
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Subset shape: ', np.shape(frame_eval))
 
     fname_root = os.path.splitext(os.path.split(fls[frame_ind])[1])[0]+'_'+ image_name +'_'
     fname_base = os.path.split(fls[frame_ind])[0]
@@ -11755,7 +11755,7 @@ class FIBSEM_dataset:
         else:
             DASK_client_retries = kwargs.get("DASK_client_retries", 3)
         if self.ftype ==0 :
-            print('Step 2a: Creating "*InLens.tif" files using DASK distributed')
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Step 2a: Creating "*InLens.tif" files using DASK distributed')
             t00 = time.time()
             if use_DASK:
                 try:
@@ -11885,7 +11885,7 @@ class FIBSEM_dataset:
                         'use_existing_data' : use_existing_data}
 
         if verbose:
-            print('Evaluating the parameters of FIBSEM data set (data Min/Max, Working Distance, Milling Y Voltage, FOV center positions, Scan Rate, EHT)')
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Evaluating the parameters of FIBSEM data set (data Min/Max, Working Distance, Milling Y Voltage, FOV center positions, Scan Rate, EHT)')
         self.FIBSEM_Data = evaluate_FIBSEM_frames_dataset(self.fls, DASK_client, **local_kwargs)
         self.data_minmax = self.FIBSEM_Data[0:5]
         WD = self.FIBSEM_Data[5]
@@ -11998,7 +11998,7 @@ class FIBSEM_dataset:
             Filenames for binary files containing Key-Points and Descriptors for each frame.
         '''
         if len(self.fls) == 0:
-            print('Data set not defined, perform initialization first')
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Data set not defined, perform initialization first')
             fnms = []
         else:  
             DASK_client = kwargs.get('DASK_client', '')
@@ -12135,7 +12135,7 @@ class FIBSEM_dataset:
                 Mean abs error of registration for all matched Key-Points.
         '''
         if len(self.fnms) == 0:
-            print('No data on individual key-point data files, peform key-point search')
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   No data on individual key-point data files, peform key-point search')
             results_s4 = []
         else:
             DASK_client = kwargs.get('DASK_client', '')
@@ -12263,7 +12263,7 @@ class FIBSEM_dataset:
             Cumulative transformation matrices
         '''
         if len(self.transformation_matrix) == 0:
-            print('No data on individual key-point matches, peform key-point search / matching first')
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   No data on individual key-point matches, peform key-point search / matching first')
             self.tr_matr_cum_residual = []
         else:
             data_dir = kwargs.get("data_dir", self.data_dir)
@@ -12364,7 +12364,7 @@ class FIBSEM_dataset:
         '''
         tr_matr_cum_residual = kwargs.get("tr_matr_cum_residual", self.tr_matr_cum_residual)
         if len(self.tr_matr_cum_residual) == 0:
-            print('No data on individual key-point matches, peform key-point search / matching first')
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   No data on individual key-point matches, peform key-point search / matching first')
         else:
             image_shape = kwargs.get('image_shape', [self.YResolution, self.XResolution])
             fnms_matches = kwargs.get('fnms_matches', self.fnms_matches)
@@ -12832,14 +12832,14 @@ class FIBSEM_dataset:
 
         # first, transform, bin and save frame chunks into individual tif files
         if verbose:
-            print('Transforming and Saving Intermediate Registered Frames')
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Transforming and Saving Intermediate Registered Frames')
         end_frame = ((frame_inds[0]+len(frame_inds)-1)//zbin_factor+1)*zbin_factor
         st_frames = np.arange(frame_inds[0], end_frame, zbin_factor)
         registered_filenames = transform_and_save_frames(DASK_client, frame_inds, self.fls, self.tr_matr_cum_residual, **save_kwargs)
         frame0 = tiff.imread(registered_filenames[0])
         ny, nx = np.shape(frame0)
         if verbose:
-            print('Analyzing Registration Quality')
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Analyzing Registration Quality')
         shape = [self.YResolution, self.XResolution]
         shapes = [self.YResolutions, self.XResolutions]
         if pad_edges and perform_transformation:
@@ -12903,13 +12903,13 @@ class FIBSEM_dataset:
             fnms_saved = save_data_stack(FIBSEMstack, **save_kwargs)
         else:
             if verbose:
-                print('Registered data set is NOT saved into a file')
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Registered data set is NOT saved into a file')
 
         if remove_intermediate_frames:
             # Remove Intermediate Registered Frame Files
             if use_DASK:
                 if verbose:
-                    print('Removing Intermediate Registered Frame Files using DASK')
+                    print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Removing Intermediate Registered Frame Files using DASK')
                 futures = DASK_client.map(dask_remove_file, registered_filenames)
                 removed_files = DASK_client.gather(futures)
             else:
@@ -12917,7 +12917,7 @@ class FIBSEM_dataset:
                 for registered_filename in tqdm(registered_filenames, desc='Removing Intermediate Registered Frame Files: ', display = verbose):
                     removed_files.append(dask_remove_file(registered_filename))
             if verbose:
-                print('Removed all {:d} inermediate files successfully:  '.format(len(registered_filenames)), np.all(removed_files==registered_filenames))
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Removed all {:d} inermediate files successfully:  '.format(len(registered_filenames)), np.all(removed_files==registered_filenames))
 
         return reg_summary, reg_summary_xlsx
 
@@ -13022,7 +13022,7 @@ class FIBSEM_dataset:
             shift_matrix = np.eye(3,3)
             inv_shift_matrix = np.eye(3,3)
         if verbose:
-            print('Results of determine_sizes_and_offsets:')
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Results of determine_sizes_and_offsets:')
             print('xi, yi, xsz, ysz: ', xi, yi, xsz, ysz)
 
         local_kwargs = {'start_evaluation_box' : start_evaluation_box,
@@ -13049,7 +13049,7 @@ class FIBSEM_dataset:
         eval_bounds = np.array(eval_bounds_all)[frame_inds]
         '''
         if verbose:
-            print('Will analyze frames with inds:', frame_inds)
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Will analyze frames with inds:', frame_inds)
             print('Frame files:', np.array(fls)[frame_inds])
             print('Will use fill_value = {:.3f} for padding'.format(fill_value))
             if perform_transformation:
@@ -13269,7 +13269,7 @@ class FIBSEM_dataset:
                 frame_imgA_eval = frame_imgA_reg[yi_eval:ya_eval, xi_eval:xa_eval] - self.Scaling[1,0]
             SNR_png = os.path.splitext(os.path.split(fls[frame_ind])[1])[0] + '.png'
             SNR_png_fname = os.path.join(data_dir, SNR_png)
-            print('Analyzing the Detector A Image')
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Analyzing the Detector A Image')
             ImageA_xSNR, ImageA_ySNR, ImageA_rSNR= Single_Image_SNR(frame_imgA_eval,
                                                                     zero_mean = zero_mean,
                                                                     extrapolate_signal=extrapolate_signal,
@@ -13283,7 +13283,7 @@ class FIBSEM_dataset:
             ySNRAs.append(ImageA_ySNR)
             rSNRAs.append(ImageA_rSNR)
             if self.DetB != 'None':
-                print('Analyzing the Detector B Image')
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Analyzing the Detector B Image')
                 if zero_mean:
                     frame_imgB_eval = frame_imgB_reg[yi_eval:ya_eval, xi_eval:xa_eval]
                 else:
@@ -13364,7 +13364,7 @@ class FIBSEM_dataset:
                 frame_imgA_eval = frame_imgA_reg[yi_eval:ya_eval, xi_eval:xa_eval]
                 frame_imgB_eval = frame_imgB_reg[yi_eval:ya_eval, xi_eval:xa_eval]
                 frame_imgF_eval = frame_imgA_eval * (1.0 - ImgB_fraction) + frame_imgB_eval * ImgB_fraction
-                print('Analyzing the Fused Image, Det B fraction = {:.4f}'.format(ImgB_fraction))
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Analyzing the Fused Image, Det B fraction = {:.4f}'.format(ImgB_fraction))
                 ImageF_xSNR, ImageF_ySNR, ImageF_rSNR = Single_Image_SNR(frame_imgF_eval,
                                                                         zero_mean = zero_mean,
                                                                         extrapolate_signal=extrapolate_signal,
@@ -13835,7 +13835,7 @@ class FIBSEM_dataset:
         default_indices = np.arange(nfrs)
         frame_inds = kwargs.get("frame_inds", default_indices)
         if verbose:
-            print('Will analyze frames with inds:', frame_inds)
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Will analyze frames with inds:', frame_inds)
             print('Frame files:', np.array(fls)[frame_inds])
         fls_df = pd.DataFrame(fls[frame_inds], columns = ['Frame Filename'], index = None)
         fls_df.insert(0, 'Frame', frame_inds)

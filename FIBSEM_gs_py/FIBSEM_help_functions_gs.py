@@ -424,7 +424,7 @@ def determine_residual_deformation_field(src_pts, dst_pts, transformation_matrix
     xshifts, yshifts = (dst_pts_transformed - src_pts_transformed).T
     x, y = dst_pts.T
     if verbose:
-        print('determine_residual_deformation_field : will calculate residual deformation field in format: ', deformation_type, ',  df_sigma(s)=', deformation_sigma)
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   determine_residual_deformation_field : will calculate residual deformation field in format: ', deformation_type, ',  df_sigma(s)=', deformation_sigma)
 
     if deformation_type == '2D':
         # placeholder for now
@@ -468,8 +468,8 @@ def determine_residual_deformation_field(src_pts, dst_pts, transformation_matrix
         #deformation_field = np.repeat(y_profile_smoothed[:, np.newaxis], image_width, 1)
         deformation_field = y_profile_smoothed
     if verbose:
-        print('determine_residual_deformation_field : Output  deformation_field shape: ', deformation_field.shape)
-        print('determine_residual_deformation_field : finished calculation. Average residual deformation = {:.2f} pixels'.format(np.mean(deformation_field)))
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   determine_residual_deformation_field : Output  deformation_field shape: ', deformation_field.shape)
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   determine_residual_deformation_field : finished calculation. Average residual deformation = {:.2f} pixels'.format(np.mean(deformation_field)))
     #if zero_mean:
     #    if verbose:
     #        print('Zero_mean = ', zero_mean, ' the mean value will be subtracted')
@@ -523,7 +523,7 @@ def find_BW(fr, FSC, **kwargs):
     
     if fit_data:
         if verbose:
-            print('Using a/(x**{:d}+a) Fit of the Raw Data to determine BW'.format(fit_power))
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Using a/(x**{:d}+a) Fit of the Raw Data to determine BW'.format(fit_power))
         pguess = [1.0]
         # Fit the data
         popt, pcov = curve_fit(inverse_power, fr_limited, FSC_limited, p0 = pguess)
