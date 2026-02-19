@@ -5628,6 +5628,8 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
         Default is True. If False, only the filename, no path is printed in the title
     dump_filename : str
         Filename of a binary dump of the FIBSEM_dataset object.
+    verbose : boolean
+        if True, intermediate printouts are ON. Deafult is False.
     dpi : int
         dpi. Default is 300.
 
@@ -5648,6 +5650,7 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
     dump_filename = kwargs.get("dump_filename", '')
     sample_frames_layout = kwargs.get('sample_frames_layout', 'vertical')
     full_filename_path = kwargs.get('full_filename_path', True)
+    verbose = kwargs.get('verbose', False)
     dpi = kwargs.get('dpi', 300)
     
     Regisration_data = pd.read_excel(file_xlsx, sheet_name='Registration Quality Statistics')
@@ -5664,8 +5667,11 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
         nsads = [np.mean(image_nsad), np.median(image_nsad), np.std(image_nsad)] 
         nccs = [np.mean(image_ncc), np.median(image_ncc), np.std(image_ncc)]
         nmis = [np.mean(image_nmi), np.median(image_nmi), np.std(image_nmi)]
+        if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Loaded metrics from xlsx file')
     except:
-        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Could not load metrics')
+        if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Could not load metrics from xlsx file')
     eval_metrics = Regisration_data.columns[5:]
     num_metrics = len(eval_metrics)
     num_frames = len(frames)
@@ -5689,9 +5695,11 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
 
     default_stack_name = file_xlsx.replace('_RegistrationQuality.xlsx','.mrc')
     stack_filename = os.path.normpath(stack_info_dict.get('Stack Filename', default_stack_name))
-    #print('stack_filename:  ', stack_filename)
+    if verbose:
+        print('stack_filename:  ', stack_filename)
     stack_exists = os.path.exists(stack_filename)
-    #print('stack_exists:  ', stack_exists)
+    if verbose:
+        print('stack_exists:  ', stack_exists)
     data_dir = stack_info_dict.get('data_dir', '')
     ftype = stack_info_dict.get("ftype", 0)
     
@@ -5700,7 +5708,7 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
         fig_ysize = fig_xsize/3.0*(num_metrics+1)
         heights = [1.0]*(num_metrics+1)
         fig = plt.figure(figsize=(fig_xsize, fig_ysize))
-        fig.subplots_adjust(left=0.14, bottom=0.04, right=0.99, top=0.98, wspace=0.01, hspace=0.04)
+        fig.subplots_adjust(left=0.14, bottom=0.055, right=0.99, top=0.97, wspace=0.01, hspace=0.04)
         gs = GridSpec(num_metrics+1, 3, figure=fig)#, height_ratios=heights)
         ax00 = fig.add_subplot(gs[0, 0])
         ax01 = fig.add_subplot(gs[0, 1])
@@ -5712,7 +5720,7 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
         fig_ysize = fig_xsize/3.0*(num_metrics+2)
         heights = [0.8]*3 + [1.5]*num_metrics
         fig = plt.figure(figsize=(fig_xsize, fig_ysize))
-        fig.subplots_adjust(left=0.14, bottom=0.04, right=0.99, top=0.98, wspace=0.18, hspace=0.04)
+        fig.subplots_adjust(left=0.14, bottom=0.045, right=0.99, top=0.98, wspace=0.18, hspace=0.04)
         gs = GridSpec(num_metrics+3, 1, figure=fig, height_ratios=heights)
         axs = [fig.add_subplot(gss) for gss in gs]
     for ax in axs[0:3]:
@@ -5722,6 +5730,9 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
     lwl=1
     
     if len(sample_frame_files)>0:
+        if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Sample frame files are available:')
+            print(sample_frame_files)
         sample_frame_images_available = True
         for jf, ax in enumerate(axs[0:3]):
             try:
@@ -5731,8 +5742,11 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
     else:
         sample_frame_images_available = False
         sample_data_available = True
+        if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Sample frame files are not available')
         if stack_exists:
-            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Will use sample images from the registered stack')
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Will use sample images from the registered stack')
             use_raw_data = False
             if Path(stack_filename).suffix == '.mrc':
                 mrc_obj = mrcfile.mmap(stack_filename, mode='r')
@@ -5758,9 +5772,11 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
         else:
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Will use sample images from the raw data')
             if os.path.exists(dump_filename):
-                print('Trying to recall the data from ', dump_filename)
+                if verbose:
+                    print('Trying to recall the data from ', dump_filename)
             try:
-                print('Looking for the raw data in the directory', data_dir)
+                if verbose:
+                    print('Looking for the raw data in the directory', data_dir)
                 if ftype == 0:
                     fls = sorted(glob.glob(os.path.join(data_dir,'*.dat')))
                     if len(fls) < 1:
@@ -5802,16 +5818,19 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
                 sample_data_available = False
                 use_raw_data = False
         if sample_data_available:
-            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Sample data is available')
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Sample data is available')
         else:
-            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Sample data is NOT available')
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Sample data is NOT available')
      
         if num_frames//10*9 > 0:
             ev_ind2 = num_frames//10*9
         else:
             ev_ind2 = num_frames-1
         eval_inds = [num_frames//10,  num_frames//2, ev_ind2]
-        #print(eval_inds)
+        if verbose:
+            print('Using eval_inds: ', eval_inds)
 
         for j, eval_ind in enumerate(eval_inds):
             ax = axs[j]
@@ -5841,9 +5860,7 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
                 if invert_data:
                     ax.imshow(frame_img, cmap='Greys_r', vmin=dmin, vmax=dmax)
                 else:
-                    ax.imshow(frame_img, cmap='Greys', vmin=dmin, vmax=dmax)
-
-                #ax.text(0.03, 1.01, 'Frame={:d},  NSAD={:.3f},  NCC={:.3f},  NMI={:.3f}'.format(frames[eval_ind], image_nsad[eval_ind], image_ncc[eval_ind], image_nmi[eval_ind]), color='red', transform=ax.transAxes)
+                    ax.imshow(frame_img, cmap='Greys', vmin=dmin, vmax=dmax)                
                 ax.text(0.02, 0.95, 'Frame={:d}'.format(frames[eval_ind]), color='red', transform=ax.transAxes, fontsize=10)
                 ax.text(0.50, 0.95, 'NSAD={:.3f}'.format(image_nsad[eval_ind]), color='red', transform=ax.transAxes, fontsize=10)
                 ax.text(0.50, 0.85, 'NCC={:.3f}'.format(image_ncc[eval_ind]), color='red', transform=ax.transAxes, fontsize=10)
@@ -5851,7 +5868,6 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
                 rect_patch = patches.Rectangle((xi_evals[eval_ind], yi_evals[eval_ind]), np.abs(xa_evals[eval_ind]-xi_evals[eval_ind])-2, np.abs(ya_evals[eval_ind]-yi_evals[eval_ind])-2, linewidth=1.0, edgecolor='yellow',facecolor='none')
                 ax.add_patch(rect_patch)
             ax.axis('off')
-
         if stack_exists:
             if Path(stack_filename).suffix == '.mrc':
                 mrc_obj.close()
@@ -5874,7 +5890,6 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
         
     for ax in axs[3:]:
         ax.grid(True)
-        #ax.set_xlabel('')
 
     xlim = (np.min(frames), np.max(frames))
     xlim = kwargs.get('xlim', xlim)
@@ -5888,9 +5903,9 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
     else:
         ttl = os.path.split(stack_filename)[-1]
     if sample_frames_layout == 'horizontal':
-        axs[0].text(-0.15, 1.05, ttl, transform=axs[0].transAxes)
+        axs[0].text(-0.15, 1.05, ttl, transform=axs[0].transAxes, fontsize = 6)
     else:
-        axs[0].set_title(ttl)
+        axs[0].set_title(ttl, fontsize = 6)
     fig.savefig(png_file, dpi=dpi)
 
 

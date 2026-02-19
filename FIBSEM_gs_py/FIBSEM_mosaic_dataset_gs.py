@@ -909,8 +909,10 @@ class FIBSEM_mosaic_dataset:
         filenames for the individual data frames in the set
     data_dir : str
         data directory (path)
-    index_pairs : np.array(col_ind).reshape((row, 2)) array of pairs of absolute (in 1D sense of fls.ravel()) tile indecis. Auto-determined during initialization.
-
+    grid : str
+        grid for default tiles positions. Default is 'rect' - rectilinear grid, typical for FIB-SEM. Another options is 'hex' - hexagonal, typical for MSEM
+    index_pairs : array of pairs of absolute (in 1D sense of fls.ravel()) tile indecis. Auto-determined during initialization, depends of grid setting.
+        if grid == 'rect':  index_pairs = np.array(col_ind).reshape((row, 2))
     Sample_ID : str
             Sample ID
     ftype : int
@@ -1067,7 +1069,7 @@ class FIBSEM_mosaic_dataset:
 
         Parameters:
         ----------
-        fls : 3D array of str
+        fls : 2D or 3D array of str
             Filenames for the individual data frames in the stack of montages.
 
         kwargs:
@@ -1076,6 +1078,8 @@ class FIBSEM_mosaic_dataset:
             File type (0 - Shan Xu's .dat, 1 - tif).
         data_dir : str
             Data directory (path).
+        grid : str
+            grid for default tiles positions. Default is 'rect' - rectilinear grid, typical for FIB-SEM. Another options is 'hex' - hexagonal, typical for MSEM
         fnm_mosaic_stack : str
             Filename for registered mosaic stack. Default is os.path.splitext(os.path.split(self.fls.ravel()[0])[1])[0][0:-5] + 'mosaic_stack.mrc'
         recall_parameters : boolean
@@ -1206,6 +1210,7 @@ class FIBSEM_mosaic_dataset:
 
         self.fls = np.array(fls)
         self.data_dir = kwargs.get('data_dir', os.path.split(self.fls.ravel()[0])[0])
+        self.grid = kwargs.get('grid', 'rect')
         self.ftype = kwargs.get('ftype', 0) # ftype=0 - Shan Xu's binary format  ftype=1 - tif files
         self.intralayer_weight = kwargs.get('intralayer_weight', 1.0)
         self.interlayer_weight = kwargs.get('interlayer_weight', 100.0)
@@ -1271,7 +1276,6 @@ class FIBSEM_mosaic_dataset:
         self.save_res_png  = kwargs.get("save_res_png", True)
         self.fnm_types = kwargs.get("fnm_types", ['mrc'])
         self.flipY = kwargs.get("flipY", False)                     # If True, the registered data will be flipped along Y axis
-
         self.interpolation = kwargs.get("interpolation", cv2.INTER_LINEAR)             #     The order of interpolation. The options are:
                                                                     #    cv2.INTER_AREA    Uses pixel area relation for resampling, which effectively minimizes distortion and avoids aliasing artifacts, yielding high-quality results for reduced image sizes.
                                                                     #    cv2.INTER_CUBIC    Uses bicubic interpolation (based on 4x4 neighboring pixels) to produce smooth, high-quality results. It is slower than INTER_LINEAR.
@@ -1298,88 +1302,91 @@ class FIBSEM_mosaic_dataset:
         # self.ny_tiles  - # of rows per layer (# of tiles along Y-axis)
         # self.nx_tiles  - # of columns per layer(# of tiles along X-axis)
         self.nz_tiles = self.fls.shape[0]
-        try:
-            tile_string = os.path.splitext(os.path.split(self.fls.ravel()[-1])[1])[0][-5:].split('-')    
-            auto_ny_tiles = int(tile_string[1])+1
-            auto_nx_tiles = int(tile_string[2])+1
-            auto_shape = (auto_ny_tiles, auto_nx_tiles)
-        except:
+        if self.grid == 'rect':
+            try:
+                tile_string = os.path.splitext(os.path.split(self.fls.ravel()[-1])[1])[0][-5:].split('-')    
+                auto_ny_tiles = int(tile_string[1])+1
+                auto_nx_tiles = int(tile_string[2])+1
+                auto_shape = (auto_ny_tiles, auto_nx_tiles)
+            except:
+                if verbose:
+                    print('Could not auto-determine the shape, and therefore the montage size and the adjacent tile pairs')
+                    print('Define the montage size (self.Xsize, self.Ysize) manually')
+                    print('Define the adjacent tile pairs (self.adjacent_pairs - list of indices of files of the adjacent tiles) manually')
+                auto_shape = (1, 1)
+            self.shape = kwargs.get('shape', auto_shape)
+            self.ny_tiles, self.nx_tiles = self.shape
+            self.Xoverlap = self.XResolution - (self.FirstPixels[1, 0] - self.FirstPixels[0, 0])
+            self.Yoverlap = self.YResolution - (self.FirstPixels[self.shape[1], 1] - self.FirstPixels[(self.shape[1]-1), 1])
+
+            # create the structure for pairwice tile transformation
+            L = self.nz_tiles
+            M = self.ny_tiles
+            N = self.nx_tiles
+            V = L * M * N                     # Total number of tiles
+            nh = L * M * (N - 1)              # Total number of left-right intra-layer pairs
+            nv = L * (M - 1) * N              # Total number of up-down intra-layer pairs
+            nl = (L - 1) * M * N              # Total number of inter-layer pairs
+            C = nh + nv + nl                  # Total number of of pairs (pair-wise translations)
             if verbose:
-                print('Could not auto-determine the shape, and therefore the montage size and the adjacent tile pairs')
-                print('Define the montage size (self.Xsize, self.Ysize) manually')
-                print('Define the adjacent tile pairs (self.adjacent_pairs - list of indices of files of the adjacent tiles) manually')
-            auto_shape = (1, 1)
-        self.shape = kwargs.get('shape', auto_shape)
-        self.ny_tiles, self.nx_tiles = self.shape
-        self.Xoverlap = self.XResolution - (self.FirstPixels[1, 0] - self.FirstPixels[0, 0])
-        self.Yoverlap = self.YResolution - (self.FirstPixels[self.shape[1], 1] - self.FirstPixels[(self.shape[1]-1), 1])
+                print('Total number of tiles: ', V)
+                print('Total number of left-right intra-layer pairs: ', nh)
+                print('Total number of up-down intra-layer pairs: ', nv)
+                print('Total number of inter-layer pairs: ', nl)
+                print('Total number of of pairs (pair-wise translations): ', C)
 
-        # create the structure for pairwice tile transformation
-        L = self.nz_tiles
-        M = self.ny_tiles
-        N = self.nx_tiles
-        V = L * M * N                     # Total number of tiles
-        nh = L * M * (N - 1)              # Total number of left-right intra-layer pairs
-        nv = L * (M - 1) * N              # Total number of up-down intra-layer pairs
-        nl = (L - 1) * M * N              # Total number of inter-layer pairs
-        C = nh + nv + nl                  # Total number of of pairs (pair-wise translations)
-        if verbose:
-            print('Total number of tiles: ', V)
-            print('Total number of left-right intra-layer pairs: ', nh)
-            print('Total number of up-down intra-layer pairs: ', nv)
-            print('Total number of inter-layer pairs: ', nl)
-            print('Total number of of pairs (pair-wise translations): ', C)
+            w_sqrt_intra = np.sqrt(self.intralayer_weight)  # because LSQR minimizes ||W^{1/2} (Ax - b)||
+            w_sqrt_inter = np.sqrt(self.interlayer_weight)
 
-        w_sqrt_intra = np.sqrt(self.intralayer_weight)  # because LSQR minimizes ||W^{1/2} (Ax - b)||
-        w_sqrt_inter = np.sqrt(self.interlayer_weight)
+            # Prepare data for sparse matrix A
+            data = []
+            row_ind = []
+            col_ind = []
+            row = 0   # row (entry) in the sparse matrix A (not a tile row)
 
-        # Prepare data for sparse matrix A
-        data = []
-        row_ind = []
-        col_ind = []
-        row = 0   # row (entry) in the sparse matrix A (not a tile row)
+            # Build a sparse matrix A for Ax=b lsqr equation
+            # idx1 and idx2 are absolute (in 1D sense) tile indecis
+            # each entry is a single sparse matrix element, there are two elements per pairwise translation condtion, they enter with opposite signs
 
-        # Build a sparse matrix A for Ax=b lsqr equation
-        # idx1 and idx2 are absolute (in 1D sense) tile indecis
-        # each entry is a single sparse matrix element, there are two elements per pairwise translation condtion, they enter with opposite signs
+            # Horizontal adjacent pairs (intra-layer)
+            for l in range(L):
+                for i in range(M):
+                    for j in range(N - 1):
+                        idx1 = l * M * N + i * N + j
+                        idx2 = l * M * N + i * N + j + 1
+                        row_ind.extend([row, row])
+                        col_ind.extend([idx1, idx2])
+                        data.extend([-w_sqrt_intra, w_sqrt_intra])
+                        row += 1
 
-        # Horizontal adjacent pairs (intra-layer)
-        for l in range(L):
-            for i in range(M):
-                for j in range(N - 1):
-                    idx1 = l * M * N + i * N + j
-                    idx2 = l * M * N + i * N + j + 1
-                    row_ind.extend([row, row])
-                    col_ind.extend([idx1, idx2])
-                    data.extend([-w_sqrt_intra, w_sqrt_intra])
-                    row += 1
+            # Vertical adjacent pairs (intra-layer)
+            for l in range(L):
+                for i in range(M - 1):
+                    for j in range(N):
+                        idx1 = l * M * N + i * N + j
+                        idx2 = l * M * N + (i + 1) * N + j
+                        row_ind.extend([row, row])
+                        col_ind.extend([idx1, idx2])
+                        data.extend([-w_sqrt_intra, w_sqrt_intra])
+                        row += 1
 
-        # Vertical adjacent pairs (intra-layer)
-        for l in range(L):
-            for i in range(M - 1):
-                for j in range(N):
-                    idx1 = l * M * N + i * N + j
-                    idx2 = l * M * N + (i + 1) * N + j
-                    row_ind.extend([row, row])
-                    col_ind.extend([idx1, idx2])
-                    data.extend([-w_sqrt_intra, w_sqrt_intra])
-                    row += 1
+            # Layer-to-layer correspondences (inter-layer)
+            for l in range(L - 1):
+                for i in range(M):
+                    for j in range(N):
+                        idx1 = l * M * N + i * N + j
+                        idx2 = (l + 1) * M * N + i * N + j
+                        row_ind.extend([row, row])
+                        col_ind.extend([idx1, idx2])
+                        data.extend([-w_sqrt_inter, w_sqrt_inter])
+                        row += 1
 
-        # Layer-to-layer correspondences (inter-layer)
-        for l in range(L - 1):
-            for i in range(M):
-                for j in range(N):
-                    idx1 = l * M * N + i * N + j
-                    idx2 = (l + 1) * M * N + i * N + j
-                    row_ind.extend([row, row])
-                    col_ind.extend([idx1, idx2])
-                    data.extend([-w_sqrt_inter, w_sqrt_inter])
-                    row += 1
+            self.index_pairs = np.array(col_ind).reshape((row, 2))   # absolute (in 1D sense) tile indecis for each pair
+            self.pair_margins = [[self.YResolution, 2*self.Xoverlap] for x in np.arange(nh)] + [[2*self.Yoverlap, self.XResolution] for x in np.arange(nv)] + [[self.YResolution, self.XResolution] for x in np.arange(nl)]
+            
 
         self.A_csr = csr_matrix((data, (row_ind, col_ind)), shape=(C, V)) # sparse matrix
 
-        self.index_pairs = np.array(col_ind).reshape((row, 2))   # absolute (in 1D sense) tile indecis for each pair
-        self.pair_margins = [[self.YResolution, 2*self.Xoverlap] for x in np.arange(nh)] + [[2*self.Yoverlap, self.XResolution] for x in np.arange(nv)] + [[self.YResolution, self.XResolution] for x in np.arange(nl)]
         eye3x3 = np.eye(3,3)
         self.ECC_transformation_matrices = np.repeat(eye3x3[np.newaxis, :, :], C, axis=0)
         self.ECC_transformation_valid = np.full(C, False)
@@ -1396,9 +1403,10 @@ class FIBSEM_mosaic_dataset:
             print('Total number of pairwise transformations : {:d}'.format(C))
             print('Index of the top-left pair in the last Z-layer: ', (L -1)* M * (N - 1))
     
-        # initialize the montage size (assuming rectangular shape)
-        self.Xsize = self.shape[1] * (self.XResolution - self.Xoverlap) + self.Xoverlap
-        self.Ysize = self.shape[0] * (self.YResolution - self.Yoverlap) + self.Yoverlap
+        if self.grid == 'rect':
+            # initialize the montage size (assuming rectangular shape)
+            self.Xsize = self.shape[1] * (self.XResolution - self.Xoverlap) + self.Xoverlap
+            self.Ysize = self.shape[0] * (self.YResolution - self.Yoverlap) + self.Yoverlap
         
         # initialize the translation matrix for each tile
         shifts_x = self.FirstPixels[:, 0] - self.FirstPixels[0, 0]
