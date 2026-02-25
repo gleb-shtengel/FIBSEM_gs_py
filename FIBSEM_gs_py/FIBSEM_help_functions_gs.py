@@ -232,8 +232,11 @@ def get_min_max_thresholds(image, **kwargs):
         hist, bins = np.histogram(image.ravel(), bins=nbins)
     pdf = hist / np.prod(image.shape)
     cdf = np.cumsum(pdf)
-    data_max = bins[np.argmin(np.abs(cdf-(1.0-thr_max)))]
-    data_min = bins[np.argmin(np.abs(cdf-thr_min))]
+    #data_max = bins[np.argmin(np.abs(cdf-(1.0-thr_max)))]
+    #data_min = bins[np.argmin(np.abs(cdf-thr_min))]
+    db = (bins[1]-bins[0])/2.0
+    data_max = bins[np.argmin(np.abs(cdf-(1.0-thr_max)))] + db
+    data_min = bins[np.argmin(np.abs(cdf-thr_min))] + db
     
     if disp_res:
         xCDF = bins[0:-1]+(bins[1]-bins[0])/2.0
