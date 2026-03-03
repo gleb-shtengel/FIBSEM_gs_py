@@ -504,18 +504,6 @@ def levinson_durbin(s, nlags=10, isacov=False):
     return sigma_v, arcoefs, pacf_, sig, phi  # return everything
 
 
-def gauss_with_offset(x, a0, x0, b0, sigma0):
-    return (a0*np.exp(-(x-x0)**2/(2*sigma0**2)) + b0)
-
-
-def gauss_without_offset(x, a0, x0, sigma0):
-    return a0*np.exp(-(x-x0)**2/(2*sigma0**2))
-
-
-def double_gauss_without_offset(x, a0, x0, sigma0, a1, x1, sigma1):
-    return a0*np.exp(-(x-x0)**2/(2*sigma0**2)) + a1*np.exp(-(x-x1)**2/(2*sigma1**2))
-
-
 ################################################
 #      Single Frame Image Processing Functions
 ################################################

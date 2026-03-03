@@ -37,10 +37,17 @@ try:
 except:
     raise RuntimeError("Unable to load FIBSEM_custom_transforms_gs")
 
-try:
-    from FIBSEM_gs_py.FIBSEM_gs import gauss_without_offset, double_gauss_without_offset
-except:
-    raise RuntimeError("Unable to load FIBSEM_gs")
+
+def gauss_with_offset(x, a0, x0, b0, sigma0):
+    return (a0*np.exp(-(x-x0)**2/(2*sigma0**2)) + b0)
+
+
+def gauss_without_offset(x, a0, x0, sigma0):
+    return a0*np.exp(-(x-x0)**2/(2*sigma0**2))
+
+
+def double_gauss_without_offset(x, a0, x0, sigma0, a1, x1, sigma1):
+    return a0*np.exp(-(x-x0)**2/(2*sigma0**2)) + a1*np.exp(-(x-x1)**2/(2*sigma1**2))
 
 
 ######################################################
