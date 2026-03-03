@@ -438,8 +438,8 @@ def calculate_image_contrast(image_array, **kwargs):
 
     fig, ax = plt.subplots(1,1, figsize=(7,5))
     fig.subplots_adjust(left=0.11, bottom=0.13, right=0.97, top=0.94, wspace=0.15, hspace=0.10)
-    ax.plot(x, pdf, 'r', linewidth = 3,  color = 'red', label='PDF data')
-    ax.plot(x, gauss_fit2, linewidth = 3, color='lime', label='Double Gauss Fit')
+    ax.plot(x, pdf, 'r', linewidth = 3,  'red', label='PDF data')
+    ax.plot(x, gauss_fit2, linewidth = 3, 'lime', label='Double Gauss Fit')
     ax.plot(x, gauss_fit_low, 'cyan', linewidth = 1, label='Low Gauss Fit')
     ax.plot([I_low, I_low], [0, Pmax], 'cyan', linestyle='dashed', label='$I_{low}$' +' = {:.1f}'.format(I_low))
     ax.plot(x, gauss_fit_high, 'magenta', linewidth = 1, label='High Gauss Fit')
