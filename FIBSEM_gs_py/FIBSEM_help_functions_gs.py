@@ -24,6 +24,8 @@ import cv2
 from astropy.convolution import Gaussian1DKernel
 from astropy.convolution import convolve as astro_convolve
 
+from scipy.optimize import curve_fit
+
 import psutil
 import inspect
 
