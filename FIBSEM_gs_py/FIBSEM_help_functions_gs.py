@@ -202,7 +202,7 @@ def get_min_max_thresholds(image, **kwargs):
     log  : bolean
         If True, the histogram will have log scale. Default is false
     xlim : tuple of two floats.
-        Default is auto-generated
+        Default is auto-generated.
     disp_res : bolean
         If True display the results. Default is True.
     save_res : boolean
@@ -328,6 +328,130 @@ def calculate_gradient_map(img, ** kwargs):
             ax.axis(False)
             ax.grid(True)
     return abs_grad
+
+def calculate_image_contrast(image_array, **kwargs):
+    '''
+    Calculates image contrast.  ©G.Shtengel 03/2026 gleb.shtengel@gmail.com.
+    Performs following:
+    1. Calculated PDF of the input array.
+    2. Approximates the major PDF peak with Gaussian (Gaussian Fit 1).
+    3. Calculates the PDF residue (difference between PDF and Gaussian Fit 1).
+    4. Approximates the PDF residue with Gaussian  (Gaussian Fit 2).
+    5. Performes Double Gaussian Fit with initial guess based on Gaussian Fit 1 and Gaussian Fit 2.
+    6. The peak positions of Double Gaussian Fit are Ihigh and Ilow.
+    7. Calculate the contrast as (I_high - I_low) / ((I_high + I_low)/2 - DarkCount).
+    
+    Parameters:
+    ----------
+    image_array : image or array of any dimensionality
+    
+    kwargs:
+    ----------
+    DarkCount : float
+        DarkCount, The value of the Intensity Data at zero variance.
+    nbins : int
+        Number of histogram bins for building the PDF. Default is 256.
+    verbose : boolean
+        If True - display the internmediate outputs. Default is False.
+    save_res_png : boolean
+        Save the analysis output into a PNG file. Default is True.
+    res_fname : str
+        Filename - used for plotting the data. Default is'Noise_Analysis.png'
+    title : str
+        Figure title. Default is 'Contrast Analysis'.
+    fontsize : int
+        Font size. Default is 12.
+    xlim : tuple of two floats.
+        Default is auto-generated.
+    dpi : int
+        Resolution (DPI) of the PNG image.r scanning electron microscope using autocorrelation Levinson–Durbin recursion model. J. Microsc. 263, 64–77 (2016).
+
+    Returns: contrast, I_high, I_low, I0
+    '''
+    I0 = kwargs.get('DarkCount', 0.0)
+    nbins = kwargs.get('nbins', 256)
+    verbose = kwargs.get('verbose', False)
+    save_res_png = kwargs.get("save_res_png", True)
+    res_fname = kwargs.get("res_fname", 'Contrast_Analysis.png')
+    title = kwargs.get('title', 'Contrast Analysis')
+    fontsize = kwargs.get('fontsize', 12)
+    dpi = kwargs.get("dpi", 300)
+
+    hist, bins = np.histogram(image_array.ravel(), bins=nbins)
+    pdf = hist / len(image_array.ravel())
+    x = bins[0:-1]+(bins[1]-bins[0])/2.0
+
+    # Step1. Approximate major peak with Gaussian
+    xc0 = np.argmax(pdf)
+    amp_guess0 = np.max(pdf)-np.min(pdf)
+    center_guess0 = x[xc0]
+    sigma_guess0 = find_FWHM(x, pdf)[0] / 2.4
+    dx0 = int(sigma_guess0 / (x[1]-x[0]))
+    xi0 = xc0-dx0
+    xa0 = xc0+dx0
+    popt0, pcov0 = curve_fit(gauss_without_offset, x[xi0:xa0], pdf[xi0:xa0], p0=[amp_guess0, center_guess0, sigma_guess0])
+    gauss_fit0 = gauss_without_offset(x,*popt0)
+    pdf_res0 = pdf - gauss_fit0
+    
+    # Step2. Approximate the residue with Gaussian
+    xc1 = np.argmax(pdf_res0)
+    amp_guess1 = np.max(pdf_res0)-np.min(pdf_res0)
+    center_guess1 = x[xc1]
+    sigma_guess1 = find_FWHM(x, pdf_res0)[0] / 2.4
+    dx1 = int(sigma_guess1 / (x[1]-x[0]))
+    xi1 = xc1-dx1
+    xa1 = xc1+dx1
+    popt1, pcov1 = curve_fit(gauss_without_offset, x[xi1:xa1], pdf_res0[xi1:xa1], p0=[amp_guess1, center_guess1, sigma_guess1])
+    gauss_fit1 = gauss_without_offset(x,*popt1)
+    
+    # Step3. Perform new fit of double gaussian with initial guesses from the previous steps
+    popt2, pcov2 = curve_fit(double_gauss_without_offset, x, pdf, p0=[*popt0, *popt1])
+    gauss_fit2 = double_gauss_without_offset(x,*popt2)
+
+    if popt2[1] > popt2[4]:
+        popt_high = popt2[0:3]
+        popt_low = popt2[3:]
+    else:
+        popt_high = popt2[3:]
+        popt_low = popt2[0:3]
+    gauss_fit_high = gauss_without_offset(x,*popt_high)
+    gauss_fit_low = gauss_without_offset(x,*popt_low)
+    I_high = popt_high[1]
+    I_low = popt_low[1]
+    Pmax = np.max((popt2[0], popt2[3]))
+    I_mean = (I_high + I_low) / 2.0
+    contrast = (I_high-I_low)/(I_mean-I0)
+
+    fig, ax = plt.subplots(1,1, figsize=(7,5))
+    fig.subplots_adjust(left=0.11, bottom=0.13, right=0.97, top=0.94, wspace=0.15, hspace=0.10)
+    ax.plot(x, pdf, 'r', linewidth = 3,  color = 'red', label='PDF data')
+    ax.plot(x, gauss_fit2, linewidth = 3, color='lime', label='Double Gauss Fit')
+    ax.plot(x, gauss_fit_low, 'cyan', linewidth = 1, label='Low Gauss Fit')
+    ax.plot([I_low, I_low], [0, Pmax], 'cyan', linestyle='dashed', label='$I_{low}$' +' = {:.1f}'.format(I_low))
+    ax.plot(x, gauss_fit_high, 'magenta', linewidth = 1, label='High Gauss Fit')
+    ax.plot([I_high, I_high], [0, Pmax], 'magenta', linestyle='dashed', label='$I_{high}$' +' = {:.1f}'.format(I_high))
+    ax.plot(x[0], pdf[0], 'black', linestyle='none',  label='$I_{0}$' +' = {:.1f}'.format(I0))
+    ax.plot(x[0], pdf[0], 'black', linestyle='none',  label='Image Contrast =  {:.3f}'.format(contrast))
+    ax.set_title(title, fontsize=fontsize)
+    ax.set_xlabel('Image Intensity', fontsize=fontsize)
+    ax.set_ylabel('Normalized PDF', fontsize=fontsize)
+    xlim = kwargs.get('xlim', (0,0))
+    if xlim != (0,0):
+        ax.set_xlim(xlim)
+    ax.grid(True)
+    ax.legend(fontsize = fontsize)
+
+    if verbose:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Data range: I_contrast_low = {:.2f}, I_contrast_high = {:.2f}'.format(I_low, I_high))
+        print('Dark Count = {:.2f}'.format(I0))
+        print('Contrast = {:.3f}'.format(contrast))
+
+    if save_res_png:
+        ax.text(-0.05, -0.15, res_fname, fontsize=fontsize-5, transform=ax.transAxes)
+        fig.savefig(res_fname, dpi=dpi)
+        if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   results saved into the file: '+res_fname)
+    return contrast, I_high, I_low, I0
 
 
 def convert_tr_matr_into_deformation_field(transformation_matrix, image_shape, **kwargs):
