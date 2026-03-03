@@ -37,6 +37,11 @@ try:
 except:
     raise RuntimeError("Unable to load FIBSEM_custom_transforms_gs")
 
+try:
+    from FIBSEM_gs_py.FIBSEM_gs import gauss_without_offset, double_gauss_without_offset
+except:
+    raise RuntimeError("Unable to load FIBSEM_gs")
+
 
 ######################################################
 #  DASK client help functions
