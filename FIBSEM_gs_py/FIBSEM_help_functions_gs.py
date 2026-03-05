@@ -401,8 +401,10 @@ def calculate_image_contrast(image_array, **kwargs):
     center_guess0 = x[xc0]
     sigma_guess0 = find_FWHM(x, pdf)[0] / 2.4
     dx0 = int(sigma_guess0 / (x[1]-x[0]))
-    xi0 = xc0-dx0
-    xa0 = xc0+dx0
+    #xi0 = xc0-dx0
+    #xa0 = xc0+dx0
+    xi0 = np.max((xc0-dx0, 0))
+    xa0 = np.min((xc0+dx0, len(pdf)-1))
     popt0, pcov0 = curve_fit(gauss_without_offset, x[xi0:xa0], pdf[xi0:xa0], p0=[amp_guess0, center_guess0, sigma_guess0])
     gauss_fit0 = gauss_without_offset(x,*popt0)
     pdf_res0 = pdf - gauss_fit0
@@ -413,8 +415,10 @@ def calculate_image_contrast(image_array, **kwargs):
     center_guess1 = x[xc1]
     sigma_guess1 = find_FWHM(x, pdf_res0)[0] / 2.4
     dx1 = int(sigma_guess1 / (x[1]-x[0]))
-    xi1 = xc1-dx1
-    xa1 = xc1+dx1
+    #xi1 = xc1-dx1
+    #xa1 = xc1+dx1
+    xi1 = np.max((xc1-dx1, 0))
+    xa1 = np.min((xc1+dx1, len(pdf)-1))
     popt1, pcov1 = curve_fit(gauss_without_offset, x[xi1:xa1], pdf_res0[xi1:xa1], p0=[amp_guess1, center_guess1, sigma_guess1])
     gauss_fit1 = gauss_without_offset(x,*popt1)
     

@@ -7857,7 +7857,7 @@ class FIBSEM_frame:
         res_fname = kwargs.get("res_fname", os.path.splitext(self.fname)[0]+'_Image_Flattening.png')
         save_correction_binary = kwargs.get("save_correction_binary", False)
         dpi = kwargs.get("dpi", 300)
-        degrees = kwargs.get('degree', 2)
+        degrees = kwargs.get('degrees', 2)
 
         img_correction_arrays = []
         img_correction_coeffs = []
@@ -7895,7 +7895,7 @@ class FIBSEM_frame:
             try:
                 Fit_kwargs['degree'] = degrees[j]
             except:
-                Fit_kwargs['degree'] = 2
+                Fit_kwargs['degree'] = degrees
                 pass
             intercept, coefs, mse, img_correction_array = Perform_2D_fit(img, estimator, **Fit_kwargs)
             img_correction_arrays.append(img_correction_array)
