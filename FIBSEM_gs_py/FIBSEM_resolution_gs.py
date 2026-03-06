@@ -857,88 +857,90 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
         print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step1: Searching for Blobs using Laplasian of Gaussians with following kwargs:')
         print(kwargs)
         print('Using DASK delayed')
-    
-    volume_dask0 = da.from_array(volume.astype(float), chunks=chunk_size)
-    volume_dask = da.overlap.overlap(volume_dask0, depth=depth,
-                      boundary={0: 'nearest', 1: 'nearest', 2: 'nearest'})
-    @delayed
-    def process_chunk(chunk, chunk_id, depth, min_sigma, max_sigma, threshold):
-        z_offset = (chunk_id[0]) * (chunk.shape[0] - 2*depth[0]) - depth[0]
-        y_offset = (chunk_id[1]) * (chunk.shape[1] - 2*depth[1]) - depth[1]
-        x_offset = (chunk_id[2]) * (chunk.shape[2] - 2*depth[2]) - depth[2]
-        chunk_np = np.array(chunk)
-        blobs = blob_log(chunk_np, min_sigma=min_sigma, max_sigma=max_sigma, threshold=threshold, overlap=overlap, exclude_border=(depth[0], depth[1], depth[2]))
-        # Adjust coordinates based on chunk position
-        if blobs.size > 0:
-            blobs[:, 0] += z_offset
-            blobs[:, 1] += y_offset
-            blobs[:, 2] += x_offset
-        return blobs
 
-    if verbose:
-        print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Setting up DASK computations: blob detection')
-    blob_futures = []
-    for z, chunk_z in enumerate(volume_dask.to_delayed()):
-        for y, chunk_y in enumerate(chunk_z):
-            for x, chunk in enumerate(chunk_y):
-                blob_futures.append(process_chunk(chunk, (z, y, x), depth, min_sigma, max_sigma, threshold))
-    if verbose:
-        print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Starting DASK computations: blob detection')
-    with ProgressBar():
-        results = compute(*blob_futures)
-    # Concatenate results
-    blobs_LoG_list = [r for r in results if r.size > 0]
-    if len(blobs_LoG_list)>0:
-        blobs_LoG = np.vstack(blobs_LoG_list)
-        if verbose:
-            print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step1: Search Blobs using Laplasian of Gaussians, found {:d} blobs'.format(len(blobs_LoG)))
-        error_flags = []
-        tr_results = []
-        subset_mags = []
-        hst_datas = []
+    with Client() as client:
+        volume_dask0 = da.from_array(volume.astype(float), chunks=chunk_size)
+        volume_dask = da.overlap.overlap(volume_dask0, depth=depth,
+                          boundary={0: 'nearest', 1: 'nearest', 2: 'nearest'})
 
-        for j, blob in enumerate(tqdm(blobs_LoG, desc='Step2: Sortings blobs by magnitude', display=verbose)):
-            z, y, x, r = blob
-            xc = int(x)
-            yc = int(y)
-            zc = int(z)
-            subset_mags.append(np.mean(volume[zc-1:zc+1, yc-1:yc+1, xc-1:xc+1]))
-        
-        subset_mags = np.array(subset_mags)
-        ind_sorted = np.flip(np.argsort(subset_mags))
-        blobs_LoG = np.array(blobs_LoG)[ind_sorted]
-        lazy_results = []
+        @delayed
+        def process_chunk(chunk, chunk_id, depth, min_sigma, max_sigma, threshold):
+            z_offset = (chunk_id[0]) * (chunk.shape[0] - 2*depth[0]) - depth[0]
+            y_offset = (chunk_id[1]) * (chunk.shape[1] - 2*depth[1]) - depth[1]
+            x_offset = (chunk_id[2]) * (chunk.shape[2] - 2*depth[2]) - depth[2]
+            chunk_np = np.array(chunk)
+            blobs = blob_log(chunk_np, min_sigma=min_sigma, max_sigma=max_sigma, threshold=threshold, overlap=overlap, exclude_border=(depth[0], depth[1], depth[2]))
+            # Adjust coordinates based on chunk position
+            if blobs.size > 0:
+                blobs[:, 0] += z_offset
+                blobs[:, 1] += y_offset
+                blobs[:, 2] += x_offset
+            return blobs
 
         if verbose:
-            print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Setting up DASK computations: blob analysis')
-        for j, blob in enumerate(tqdm(blobs_LoG, desc='Step3: Setting up DASK computations: blob analysis', display=verbose)):
-            z, y, x, r = blob
-            xc = int(x)
-            yc = int(y)
-            zc = int(z)
-            subset = volume[zc-dx2:zc+dx2, yc-dx2:yc+dx2, xc-dx2:xc+dx2]
-            '''
-            tr_result, error_flag = analyze_blob(subset,
-                                                 pixel_size = pixel_size,
-                                                 bounds = bounds,
-                                                 bands = bands,
-                                                 min_thr = min_thr,
-                                                 transition_low_limit = transition_low_limit,
-                                                 transition_high_limit = transition_high_limit)
-            tr_results.append(tr_result)
-            error_flags.append(error_flag)
-            '''
-            lazy_results.append(delayed(analyze_blob)(subset,
-                                                 pixel_size = pixel_size,
-                                                 bounds = bounds,
-                                                 bands = bands,
-                                                 min_thr = min_thr,
-                                                 transition_low_limit = transition_low_limit,
-                                                 transition_high_limit = transition_high_limit))
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Setting up DASK computations: blob detection')
+        blob_futures = []
+        for z, chunk_z in enumerate(volume_dask.to_delayed()):
+            for y, chunk_y in enumerate(chunk_z):
+                for x, chunk in enumerate(chunk_y):
+                    blob_futures.append(process_chunk(chunk, (z, y, x), depth, min_sigma, max_sigma, threshold))
         if verbose:
-            print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Starting DASK computations: blob analysis')
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Starting DASK computations: blob detection')
         with ProgressBar():
-            results = compute(*lazy_results)
+            results = compute(*blob_futures)
+        # Concatenate results
+        blobs_LoG_list = [r for r in results if r.size > 0]
+        if len(blobs_LoG_list)>0:
+            blobs_LoG = np.vstack(blobs_LoG_list)
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step1: Search Blobs using Laplasian of Gaussians, found {:d} blobs'.format(len(blobs_LoG)))
+            error_flags = []
+            tr_results = []
+            subset_mags = []
+            hst_datas = []
+
+            for j, blob in enumerate(tqdm(blobs_LoG, desc='Step2: Sortings blobs by magnitude', display=verbose)):
+                z, y, x, r = blob
+                xc = int(x)
+                yc = int(y)
+                zc = int(z)
+                subset_mags.append(np.mean(volume[zc-1:zc+1, yc-1:yc+1, xc-1:xc+1]))
+            
+            subset_mags = np.array(subset_mags)
+            ind_sorted = np.flip(np.argsort(subset_mags))
+            blobs_LoG = np.array(blobs_LoG)[ind_sorted]
+            lazy_results = []
+
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Setting up DASK computations: blob analysis')
+            for j, blob in enumerate(tqdm(blobs_LoG, desc='Step3: Setting up DASK computations: blob analysis', display=verbose)):
+                z, y, x, r = blob
+                xc = int(x)
+                yc = int(y)
+                zc = int(z)
+                subset = volume[zc-dx2:zc+dx2, yc-dx2:yc+dx2, xc-dx2:xc+dx2]
+                '''
+                tr_result, error_flag = analyze_blob(subset,
+                                                     pixel_size = pixel_size,
+                                                     bounds = bounds,
+                                                     bands = bands,
+                                                     min_thr = min_thr,
+                                                     transition_low_limit = transition_low_limit,
+                                                     transition_high_limit = transition_high_limit)
+                tr_results.append(tr_result)
+                error_flags.append(error_flag)
+                '''
+                lazy_results.append(delayed(analyze_blob)(subset,
+                                                     pixel_size = pixel_size,
+                                                     bounds = bounds,
+                                                     bands = bands,
+                                                     min_thr = min_thr,
+                                                     transition_low_limit = transition_low_limit,
+                                                     transition_high_limit = transition_high_limit))
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Starting DASK computations: blob analysis')
+            with ProgressBar():
+                results = compute(*lazy_results)
         tr_results = np.array([result[0] for result in results])
         error_flags = np.array([result[1] for result in results])
         if verbose:
