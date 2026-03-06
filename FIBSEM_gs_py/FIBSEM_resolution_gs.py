@@ -853,12 +853,39 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
     kwargs['verbose'] = verbose
     kwargs['nbins'] = nbins
     kwargs['results_file_xlsx'] = results_file_xlsx
+
+    # default initialization
+    Xpt1 = []
+    Xpt2 = []
+    Ypt1 = []
+    Ypt2 = []
+    Zpt1 = []
+    Zpt2 = []
+    Xslp1 = []
+    Xslp2 = []
+    Yslp1 = []
+    Yslp2 = []
+    Zslp1 = []
+    Zslp2 = []
+    XYpt_selected = []
+    Xpt_selected = []
+    Ypt_selected = []
+    Zpt_selected = []
+    Xslp_selected = []
+    Yslp_selected = []
+    Zslp_selected = []
+    tr_mean = 0.0
+    tr_std = 0.0
+    tr_sets = [[Xpt_selected, Ypt_selected, Zpt_selected],
+        [Xslp_selected, Yslp_selected, Zslp_selected]]
+
     if verbose:
         print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step1: Searching for Blobs using Laplasian of Gaussians with following kwargs:')
         print(kwargs)
         print('Using DASK delayed')
 
     with Client() as client:
+        use_DASK, status_update_address = check_DASK(client)
         volume_dask0 = da.from_array(volume.astype(float), chunks=chunk_size)
         volume_dask = da.overlap.overlap(volume_dask0, depth=depth,
                           boundary={0: 'nearest', 1: 'nearest', 2: 'nearest'})
@@ -913,24 +940,14 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
 
             if verbose:
                 print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Setting up DASK computations: blob analysis')
+            futures = []
             for j, blob in enumerate(tqdm(blobs_LoG, desc='Step3: Setting up DASK computations: blob analysis', display=verbose)):
                 z, y, x, r = blob
                 xc = int(x)
                 yc = int(y)
                 zc = int(z)
                 subset = volume[zc-dx2:zc+dx2, yc-dx2:yc+dx2, xc-dx2:xc+dx2]
-                '''
-                tr_result, error_flag = analyze_blob(subset,
-                                                     pixel_size = pixel_size,
-                                                     bounds = bounds,
-                                                     bands = bands,
-                                                     min_thr = min_thr,
-                                                     transition_low_limit = transition_low_limit,
-                                                     transition_high_limit = transition_high_limit)
-                tr_results.append(tr_result)
-                error_flags.append(error_flag)
-                '''
-                lazy_results.append(delayed(analyze_blob)(subset,
+                futures.append(client.submit(analyze_blob, subset,
                                                      pixel_size = pixel_size,
                                                      bounds = bounds,
                                                      bands = bands,
@@ -939,25 +956,13 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
                                                      transition_high_limit = transition_high_limit))
             if verbose:
                 print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Starting DASK computations: blob analysis')
-            with ProgressBar():
-                results = compute(*lazy_results)
+            results = client.gather(futures)
             tr_results = np.array([result[0] for result in results])
             error_flags = np.array([result[1] for result in results])
             if verbose:
                 print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step2: Analyzed selected {:d} Blobs, found {:d} good ones'.format(len(error_flags), len(error_flags[error_flags==0])))
             if len(error_flags[error_flags==0]) > 0:
-                Xpt1 = tr_results[error_flags==0, 1]
-                Xpt2 = tr_results[error_flags==0, 2]
-                Ypt1 = tr_results[error_flags==0, 3]
-                Ypt2 = tr_results[error_flags==0, 4]
-                Zpt1 = tr_results[error_flags==0, 5]
-                Zpt2 = tr_results[error_flags==0, 6]
-                Xslp1 = tr_results[error_flags==0, 7]
-                Xslp2 = tr_results[error_flags==0, 8]
-                Yslp1 = tr_results[error_flags==0, 9]
-                Yslp2 = tr_results[error_flags==0, 10]
-                Zslp1 = tr_results[error_flags==0, 11]
-                Zslp2 = tr_results[error_flags==0, 12]
+                Xpt1, Xpt2, Ypt1, Ypt2, Zpt1, Zpt2, Xslp1, Xslp2, Yslp1, Yslp2, Zslp1, Zslp2  = tr_results[error_flags==0, 1:13].T
                 XYpt_selected = [Xpt1, Xpt2, Ypt1, Ypt2]
                 Xpt_selected = [Xpt1, Xpt2]
                 Ypt_selected = [Ypt1, Ypt2]
@@ -1034,69 +1039,22 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
                     if verbose:
                         print(time.strftime('%Y/%m/%d  %H:%M:%S') + ' Data is NOT saved')
             else:
-                Xpt1 = []
-                Xpt2 = []
-                Ypt1 = []
-                Ypt2 = []
-                Zpt1 = []
-                Zpt2 = []
-                Xslp1 = []
-                Xslp2 = []
-                Yslp1 = []
-                Yslp2 = []
-                Zslp1 = []
-                Zslp2 = []
-                XYpt_selected = []
-                Xpt_selected = []
-                Ypt_selected = []
-                Zpt_selected = []
-                Xslp_selected = []
-                Yslp_selected = []
-                Zslp_selected = []
-                tr_mean = 0.0
-                tr_std = 0.0
-                tr_sets = [[Xpt_selected, Ypt_selected, Zpt_selected],
-                    [Xslp_selected, Yslp_selected, Zslp_selected]]
                 save_data_xlsx = False
                 results_file_xlsx = 'Data not saved'
                 if verbose:
                     print(time.strftime('%Y/%m/%d  %H:%M:%S') + ' Data is NOT saved')
-
             if save_good_blobs_only:
                 return results_file_xlsx, blobs_LoG[error_flags==0], error_flags[error_flags==0], tr_results[error_flags==0], hst_datas
             else:
                 return results_file_xlsx, blobs_LoG, error_flags, tr_results, hst_datas
         else:
-            if verbose:
-                print(time.strftime('%Y/%m/%d  %H:%M:%S') + ' Step1: No blobs found using Laplasian of Gaussians')
-            Xpt1 = []
-            Xpt2 = []
-            Ypt1 = []
-            Ypt2 = []
-            Zpt1 = []
-            Zpt2 = []
-            Xslp1 = []
-            Xslp2 = []
-            Yslp1 = []
-            Yslp2 = []
-            Zslp1 = []
-            Zslp2 = []
-            XYpt_selected = []
-            Xpt_selected = []
-            Ypt_selected = []
-            Zpt_selected = []
-            Xslp_selected = []
-            Yslp_selected = []
-            Zslp_selected = []
-            tr_mean = 0.0
-            tr_std = 0.0
-            tr_sets = [[Xpt_selected, Ypt_selected, Zpt_selected],
-                [Xslp_selected, Yslp_selected, Zslp_selected]]
             save_data_xlsx = False
             results_file_xlsx = 'Data not saved'
             if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + ' Step1: No blobs found using Laplasian of Gaussians')
                 print(time.strftime('%Y/%m/%d  %H:%M:%S') + ' Data is NOT saved')
         return results_file_xlsx, blobs_LoG, error_flags, tr_results, hst_datas
+        
 
 ############################################
 #
