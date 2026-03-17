@@ -11,7 +11,14 @@ import time
 import glob
 import re
 import sys
+from tqdm.notebook import tqdm
 
+import mrcfile
+import dask
+import dask.array as da
+from dask.distributed import Client, progress, get_task_stream
+from dask.diagnostics import ProgressBar
+from dask.distributed import as_completed
 import matplotlib
 import matplotlib.image as mpimg
 from matplotlib import pylab, mlab
@@ -129,7 +136,7 @@ def swap_elements(a, i, j):
 
 def scale_image_gs(image, im_min, im_max, amplitude, **kwargs):
     '''
-    Clips the image between the values im_min and im_max and then rescales it to fit the new range: 0 to amplituide.
+    Clips the image between the values im_min and im_max and then rescales it to fit the new range: 0 to amplitude.
     ©G.Shtengel 10/2021 gleb.shtengel@gmail.com
 
     Parameters:
@@ -145,11 +152,11 @@ def scale_image_gs(image, im_min, im_max, amplitude, **kwargs):
     invert : boolean
         If True, the data is inverted. Default is False
     Returns:
-        data_spread : float
+        scaled_image : array
 
     '''
     invert = kwargs.get('invert', False)
-    out = np.clip((image-im_min)*np.float(amplitude)/(im_max - im_min), 0, amplitude)
+    out = np.clip((image-im_min)*float(amplitude)/(im_max - im_min), 0, amplitude)
     if invert:
         out = amplitude-out
     out = out.astype(int)
@@ -168,9 +175,9 @@ def get_spread(data, **kwargs):
     kwargs:
     ----------
         window : int
-            aperture (number of points) for Sav-Gol filter). default is a smaller of 501 or the half size of the array
+            Aperture (number of points) for Sav-Gol filter. Default is a smaller of 501 or the half size of the array
         porder : int
-            polynomial order for Sav-Gol filter
+            Polynomial order for Sav-Gol filter
 
     Returns:
         data_spread : float
@@ -213,18 +220,18 @@ def get_min_max_thresholds(image, **kwargs):
         upper CDF threshold for determining the maximum data value. Default is 1.0e-3
     nbins : int
         number of histogram bins for building the PDF and CDF
-    log  : bolean
-        If True, the histogram will have log scale. Default is false
+    log  : boolean
+        If True, the histogram will have log scale. Default is False.
     xlim : tuple of two floats.
         Default is auto-generated.
-    disp_res : bolean
+    disp_res : boolean
         If True display the results. Default is True.
     save_res : boolean
         If True the image will be saved. Default is False.
     dpi : int
         Default is 300
     save_filename : string
-        the name of the image to perform this operations (defaulut is 'min_max_thresholds.png').
+        the name of the image to perform this operations (default is 'min_max_thresholds.png').
 
     Returns
     (dmin, dmax) : float array
@@ -289,9 +296,9 @@ def calculate_gradient_map(img, ** kwargs):
     kwargs:
     ---------
     perform_smoothing : boolean
-        If True, the images is smoothed first before gradient application
+        If True, the image is smoothed first before gradient application
     kernel : 2D float array
-        a kernel to perfrom 2D smoothing convolution.
+        a kernel to perform 2D smoothing convolution.
     normalize : boolean
         if True, the gradient is normalized by the image. Default is False.
     disp_res : boolean
@@ -347,13 +354,13 @@ def calculate_image_contrast(image_array, **kwargs):
     '''
     Calculates image contrast.  ©G.Shtengel 03/2026 gleb.shtengel@gmail.com.
     Performs following:
-    1. Calculated PDF of the input array.
+    1. Calculates PDF of the input array.
     2. Approximates the major PDF peak with Gaussian (Gaussian Fit 1).
     3. Calculates the PDF residue (difference between PDF and Gaussian Fit 1).
     4. Approximates the PDF residue with Gaussian  (Gaussian Fit 2).
-    5. Performes Double Gaussian Fit with initial guess based on Gaussian Fit 1 and Gaussian Fit 2.
+    5. Performs Double Gaussian Fit with initial guess based on Gaussian Fit 1 and Gaussian Fit 2.
     6. The peak positions of Double Gaussian Fit are Ihigh and Ilow.
-    7. Calculate the contrast as (I_high - I_low) / ((I_high + I_low)/2 - DarkCount).
+    7. Calculates the contrast as (I_high - I_low) / ((I_high + I_low)/2 - DarkCount).
     
     Parameters:
     ----------
@@ -366,11 +373,11 @@ def calculate_image_contrast(image_array, **kwargs):
     nbins : int
         Number of histogram bins for building the PDF. Default is 256.
     verbose : boolean
-        If True - display the internmediate outputs. Default is False.
+        If True - display the intermediate outputs. Default is False.
     save_res_png : boolean
         Save the analysis output into a PNG file. Default is True.
     res_fname : str
-        Filename - used for plotting the data. Default is'Noise_Analysis.png'
+        Filename - used for plotting the data. Default is 'Contrast_Analysis.png'
     title : str
         Figure title. Default is 'Contrast Analysis'.
     fontsize : int
@@ -378,7 +385,7 @@ def calculate_image_contrast(image_array, **kwargs):
     xlim : tuple of two floats.
         Default is auto-generated.
     dpi : int
-        Resolution (DPI) of the PNG image.r scanning electron microscope using autocorrelation Levinson–Durbin recursion model. J. Microsc. 263, 64–77 (2016).
+        Resolution (DPI) of the PNG image.
 
     Returns: contrast, I_high, I_low, I0
     '''
@@ -717,7 +724,7 @@ def find_FWHM(x, y, **kwargs):
     max_aver_aperture : int
         Aperture for averaging the Max signal
     verbose : boolean
-        display output. Defaults is False.
+        display output. Default is False.
     Returns:
     FWHM, indi, inda, mx, mx_ind
     '''
@@ -912,19 +919,19 @@ def add_scale_bar(ax, **kwargs):
         Pixel size in um. Default is 0.004 um.
     loc : (float, float)
         bar location in fractional axis coordinates (0, 0) is left bottom corner. (1, 1) is top right corner.
-        Default is (0.07, 0.93)
+        Default is (0.07, 0.93).
     bar_width : float
-        width of the scale bar. Defalt is 3.0
+        width of the scale bar. Default is 3.0.
     bar_color : color
-        color of the scale bar. Defalt is 'white'
+        color of the scale bar. Default is 'white'
     bar_label : string
         scale bar label. Default is length in um.
     label_color : color
-        color of the scale bar label. Defalt is the same as bar_color.
+        color of the scale bar label. Default is the same as bar_color.
     label_font_size : int
-        Font Size of the scale bar label. Defalt is 12
+        Font Size of the scale bar label. Default is 12
     label_offset : int
-        Additional vertical offset for the label position. Defalt is 0.
+        Additional vertical offset for the label position. Default is 0.
     '''
     
     bar_length_um = kwargs.get('bar_length_um', 1.0)
@@ -988,17 +995,17 @@ def determine_pad_offsets(shape, tr_matr):
 
 def determine_sizes_and_offsets(shapes, tr_matr):
     '''
-    Estimates what outputs sizes and offsets will be needed given the input shapes and transformation matricis. ©G.Shtengel 08/2025 gleb.shtengel@gmail.com
+    Estimates what outputs sizes and offsets will be needed given the input shapes and transformation matrices. ©G.Shtengel 08/2025 gleb.shtengel@gmail.com
     This replaces determine_pad_offsets.
     '''
     yszs, xszs = shapes
     npts = len(xszs)
     zeros = np.zeros(npts)
     ones = np.ones(npts)
-    initial_coorners = np.moveaxis(np.moveaxis(np.array([[zeros, zeros, ones], [zeros, yszs, ones], [xszs, zeros, ones], [xszs, yszs, ones]]), 2, 0), 2, 1)
+    initial_corners = np.moveaxis(np.moveaxis(np.array([[zeros, zeros, ones], [zeros, yszs, ones], [xszs, zeros, ones], [xszs, yszs, ones]]), 2, 0), 2, 1)
     #print(np.array(tr_matr).shape, all_coorners.shape)
     tr_matr_inv = np.linalg.inv(np.array(tr_matr))
-    transformed_corners = np.matmul(tr_matr_inv[:, 0:2, :], initial_coorners)
+    transformed_corners = np.matmul(tr_matr_inv[:, 0:2, :], initial_corners)
     xc = transformed_corners[:, 0, :].ravel()
     yc = transformed_corners[:, 1, :].ravel()
     #xmin = np.round(np.min(xc)).astype(int)
@@ -1120,9 +1127,9 @@ def clip_pad_image(orig_img, data_min, data_max, **kwargs):
     orig_img : 2D array
         original image
     data_min : float
-        Low bound for determinung the real data edges
+        Low bound for determining the real data edges
     data_max : float
-        High bound for determinung the real data edges
+        High bound for determining the real data edges
     
     kwargs:
         clip_mask : 2D array
@@ -1187,13 +1194,13 @@ def merge_images_with_transition(img1, img2, **kwargs):
     flip_transitionX : boolean
         Default is False. flip transition in X direction
     xi : int
-        Start index of transion if transition_direction is 'X'. Default is 1/2 of the image.
+        Start index of transition if transition_direction is 'X'. Default is 1/2 of the image.
     xa : int
-        Stop index of transion if transition_direction is 'X'. Default is 3/4 of the image.
+        Stop index of transition if transition_direction is 'X'. Default is 3/4 of the image.
     yi : int
-        Start index of transion if transition_direction is 'Y'. Default is 1/2 of the image.
+        Start index of transition if transition_direction is 'Y'. Default is 1/2 of the image.
     ya : int
-        Stop index of transion if transition_direction is 'Y'. Default is 3/4 of the image.
+        Stop index of transition if transition_direction is 'Y'. Default is 3/4 of the image.
 
     Returns
         composite image : 2D array
@@ -1699,12 +1706,12 @@ def convert_frames_I8(parameters):
             stop frame to read
         target_frame_ID : int
             frame to save
-        xbin_factor, ybin_factor, zbin_factor,
-        mode, flipY
+        vmin, vmax,
+        invert_data, flipY
         xi, xa, yi, ya
     Returns : target_frame_ID, transformed_frame
     '''
-    mrc_filename, dtp, start_frame_ID, stop_frame_ID, target_frame_ID, vmin, vmax, invert_data, flipY = parameters
+    mrc_filename, dtp, start_frame_ID, stop_frame_ID, target_frame_ID, vmin, vmax, invert_data, flipY, xi, xa, yi, ya = parameters
     mrc_filename  = os.path.normpath(mrc_filename)
     mrc_obj = mrcfile.mmap(mrc_filename, mode='r', permissive=True)
     converted_fr = np.clip((mrc_obj.data[start_frame_ID:stop_frame_ID, yi:ya, xi:xa].astype(np.float32) - vmin) * 255.0 / (vmax-vmin), 0, 255).astype(np.uint8)
@@ -1725,6 +1732,10 @@ def save_i8_mrc_stack(mrc_filename, **kwargs):
             name (full path) of the mrc file to be binned.
     kwargs:
     ---------
+        vmin : float
+            Default is min of the first frame in MRC stack
+        vmax : float
+            Default is max of the first frame in MRC stack
         DASK_client : DASK client. If set to empty string '' (default), local computations are performed.
         DASK_client_retries : int
             Number of allowed automatic retries if a task fails. Default is 3.
@@ -1733,19 +1744,26 @@ def save_i8_mrc_stack(mrc_filename, **kwargs):
         save_filename : str
             name (full path) of the mrc file to save the results into. If not present, the new file name is constructed from the original by adding "_I8" at the end.
         flipY : boolean
-            If Trye, the data will be flipped along Y axis (0 index) AFTER cropping.
+            If True, the data will be flipped along Y axis (0 index) AFTER cropping.
         invert_data : boolean
             If True, invert the data.
         voxel_size_new : rec array.
             new voxel size in nm. Will be converted into Angstroms for MRC header.
     Returns:
         fnms_saved : list of str
-            Names of the new (binned and cropped) data files.
+            Names of the new data files.
     '''    
     mrc_filename  = os.path.normpath(mrc_filename)
     mode = kwargs.get('mode', 'mean')                   # binning mode. Default is 'mean', other option is 'sum'
     flipY = kwargs.get('flipY', False)
     invert_data = kwargs.get('invert_data', False)
+    DASK_client = kwargs.get('DASK_client', '')
+    use_DASK, _ = check_DASK(DASK_client)
+    DASK_client_retries = kwargs.get('DASK_client_retries', 3)
+    max_futures = kwargs.get('max_futures', 5000)
+    save_filename_default = os.path.splitext(mrc_filename)[0] + '_I8.mrc'
+    save_filename = kwargs.get('save_filename', save_filename_default)
+
     mrc_obj = mrcfile.mmap(mrc_filename, mode='r', permissive=True)
     header = mrc_obj.header
     '''
@@ -1766,11 +1784,15 @@ def save_i8_mrc_stack(mrc_filename, **kwargs):
     if mrc_mode == 6:
         dtp = np.uint16
 
+    frame0 = mrc_obj.data[0]
+    vmin = kwargs.get('vmin', np.min(frame0))
+    vmax = kwargs.get('vmax', np.max(frame0))
+
     voxel_size_angstr = mrc_obj.voxel_size
     voxel_size_angstr_new = voxel_size_angstr.copy()
-    voxel_size_angstr_new.x = voxel_size_angstr.x * xbin_factor
-    voxel_size_angstr_new.y = voxel_size_angstr.y * ybin_factor
-    voxel_size_angstr_new.z = voxel_size_angstr.z * zbin_factor
+    voxel_size_angstr_new.x = voxel_size_angstr.x
+    voxel_size_angstr_new.y = voxel_size_angstr.y
+    voxel_size_angstr_new.z = voxel_size_angstr.z
     voxel_size_new = voxel_size_angstr.copy()
     voxel_size_new.x = voxel_size_angstr_new.x / 10.0
     voxel_size_new.y = voxel_size_angstr_new.y / 10.0
@@ -1790,87 +1812,51 @@ def save_i8_mrc_stack(mrc_filename, **kwargs):
     ya = kwargs.get('ya', ny)
     fri = kwargs.get('fri', 0)
     fra = kwargs.get('fra', nz)
-    nx_binned = (xa-xi)//xbin_factor
-    ny_binned = (ya-yi)//ybin_factor
-    xa = xi + nx_binned * xbin_factor
-    ya = yi + ny_binned * ybin_factor
-    save_filename_default = os.path.splitext(mrc_filename)[0] + '_I8.mrc'
-    save_filename = kwargs.get('save_filename', save_filename_default)
+    nx_binned = (xa-xi)
+    ny_binned = (ya-yi)
+    xa = xi + nx_binned
+    ya = yi + ny_binned
+    
     dt = type(mrc_obj.data[0,0,0])
     print('Source mrc_mode: {:d}, source data type:'.format(mrc_mode), dt)
-    print('Source Voxel Size (Angstroms): {:2f} x {:2f} x {:2f}'.format(voxel_size_angstr.x, voxel_size_angstr.y, voxel_size_angstr.z))
+    print('Source Voxel Size (Angstroms): {:.2f} x {:.2f} x {:.2f}'.format(voxel_size_angstr.x, voxel_size_angstr.y, voxel_size_angstr.z))
     mrc_mode = 0
     dtp = np.uint8
     print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Result mrc_mode: {:d}, source data type:'.format(mrc_mode), dtp)
-    st_frames = np.arange(fri, fra, zbin_factor)
+    st_frames = np.arange(fri, fra, 1)
     mrc_obj.close()
     
     desc = 'Building Parameters Sets'
+    # mrc_filename, dtp, start_frame_ID, stop_frame_ID, target_frame_ID, vmin, vmax, invert_data, flipY, xi, xa, yi, ya = parameters
     params_mult = []
     for j, st_frame in enumerate(tqdm(st_frames, desc=desc)):
-        params = [mrc_filename, dt, st_frame, (min(st_frame+zbin_factor, nz-1)), j, invert_data, flipY]
+        params = [mrc_filename, dt, st_frame, min((st_frame+1, nz-1)), j, vmin, vmax, invert_data, flipY, xi, xa, yi, ya]
         params_mult.append(params)
     
     print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   New Data Set Shape:  {:d} x {:d} x {:d}'.format(nx_binned, ny_binned, len(st_frames)))
     
     fnms_saved = []
     if 'mrc' in fnm_types:
-        fnms_saved.append(binned_mrc_filename)
-        mrc_new = mrcfile.new_mmap(binned_mrc_filename, shape=(len(st_frames), ny_binned, nx_binned), mrc_mode=mrc_mode, overwrite=True)
+        fnms_saved.append(save_filename)
+        mrc_new = mrcfile.new_mmap(save_filename, shape=(len(st_frames), ny_binned, nx_binned), mrc_mode=mrc_mode, overwrite=True)
         mrc_new.voxel_size = voxel_size_angstr_new
         #mrc_new.header.cella = voxel_size_angstr_new
-        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Result Voxel Size (Angstroms): {:2f} x {:2f} x {:2f}'.format(voxel_size_angstr_new.x, voxel_size_angstr_new.y, voxel_size_angstr_new.z))
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Result Voxel Size (Angstroms): {:.2f} x {:.2f} x {:.2f}'.format(voxel_size_angstr_new.x, voxel_size_angstr_new.y, voxel_size_angstr_new.z))
         desc = 'Saving the data stack into MRC file'
     
     if use_DASK:
         print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Using DASK distributed')
-        #futures = DASK_client.map(bin_crop_frames, params_mult, retries = DASK_client_retries)
-        # In case of a large source file, need to stadge the DASK jobs - cannot start all at once.
+        #futures = DASK_client.map(convert_frames_I8, params_mult, retries = DASK_client_retries)
+        # In case of a large source file, need to stage the DASK jobs - cannot start all at once.
         DASK_batch = 0
         while len(params_mult) > max_futures:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Starting DASK batch {:d} with {:d} jobs, {:d} jobs remaining'.format(DASK_batch, max_futures, (len(params_mult)-max_futures)))
-            futures = [DASK_client.submit(bin_crop_frames, params) for params in params_mult[0:max_futures]]
+            futures = [DASK_client.submit(convert_frames_I8, params) for params in params_mult[0:max_futures]]
             params_mult = params_mult[max_futures:]
             DASK_batch += 1
         
             for future in as_completed(futures):
                 j, binned_cropped_fr = future.result()
-                if 'mrc' in fnm_types:
-                    if invert_data:
-                        if mrc_mode == 0:  # uint8
-                            binned_cropped_fr = 255 - binned_cropped_fr
-                        if mrc_mode == 6:  # uint16
-                            binned_cropped_fr = 65535 - binned_cropped_fr
-                        if mrc_mode != 0 and mrc_mode != 6:
-                            binned_cropped_fr = np.invert(binned_cropped_fr)
-                    mrc_new.data[j,:,:] = binned_cropped_fr.astype(dtp)
-                if 'h5' in fnm_types:
-                    bdv_writer.append_plane(plane=binned_cropped_fr.astype(dtp), z=j, time=0, channel=0)
-                future.cancel()
-
-        if len(params_mult) > 0:
-            print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Starting DASK batch {:d} with {:d} jobs'.format(DASK_batch, len(params_mult)))
-            futures = [DASK_client.submit(bin_crop_frames, params) for params in params_mult]
-            for future in as_completed(futures):
-                j, binned_cropped_fr = future.result()
-                if 'mrc' in fnm_types:
-                    if invert_data:
-                        if mrc_mode == 0:  # uint8
-                            binned_cropped_fr = 255 - binned_cropped_fr
-                        if mrc_mode == 6:  # uint16
-                            binned_cropped_fr = 65535 - binned_cropped_fr
-                        if mrc_mode != 0 and mrc_mode != 6:
-                            binned_cropped_fr = np.invert(binned_cropped_fr)
-                    mrc_new.data[j,:,:] = binned_cropped_fr.astype(dtp)
-                if 'h5' in fnm_types:
-                    bdv_writer.append_plane(plane=binned_cropped_fr.astype(dtp), z=j, time=0, channel=0)
-                future.cancel()
-
-    else:
-        desc = 'Performing local computations'
-        for params in tqdm(params_mult, desc = desc):
-            j, binned_cropped_fr = bin_crop_frames(params)
-            if 'mrc' in fnm_types:
                 if invert_data:
                     if mrc_mode == 0:  # uint8
                         binned_cropped_fr = 255 - binned_cropped_fr
@@ -1879,14 +1865,37 @@ def save_i8_mrc_stack(mrc_filename, **kwargs):
                     if mrc_mode != 0 and mrc_mode != 6:
                         binned_cropped_fr = np.invert(binned_cropped_fr)
                 mrc_new.data[j,:,:] = binned_cropped_fr.astype(dtp)
-            if 'h5' in fnm_types:
-                bdv_writer.append_plane(plane=binned_cropped_fr.astype(dtp), z=j, time=0, channel=0)
+                future.cancel()
+
+        if len(params_mult) > 0:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Starting DASK batch {:d} with {:d} jobs'.format(DASK_batch, len(params_mult)))
+            futures = [DASK_client.submit(convert_frames_I8, params) for params in params_mult]
+            for future in as_completed(futures):
+                j, binned_cropped_fr = future.result()
+                if invert_data:
+                    if mrc_mode == 0:  # uint8
+                        binned_cropped_fr = 255 - binned_cropped_fr
+                    if mrc_mode == 6:  # uint16
+                        binned_cropped_fr = 65535 - binned_cropped_fr
+                    if mrc_mode != 0 and mrc_mode != 6:
+                        binned_cropped_fr = np.invert(binned_cropped_fr)
+                mrc_new.data[j,:,:] = binned_cropped_fr.astype(dtp)
+                future.cancel()
+
+    else:
+        desc = 'Performing local computations'
+        for params in tqdm(params_mult, desc = desc):
+            j, binned_cropped_fr = convert_frames_I8(params)
+            if invert_data:
+                if mrc_mode == 0:  # uint8
+                    binned_cropped_fr = 255 - binned_cropped_fr
+                if mrc_mode == 6:  # uint16
+                    binned_cropped_fr = 65535 - binned_cropped_fr
+                if mrc_mode != 0 and mrc_mode != 6:
+                    binned_cropped_fr = np.invert(binned_cropped_fr)
+            mrc_new.data[j,:,:] = binned_cropped_fr.astype(dtp)
+
 
     if 'mrc' in fnm_types:
         mrc_new.close()
-
-    if 'h5' in fnm_types:
-        bdv_writer.write_xml()
-        bdv_writer.close()
-
     return fnms_saved
