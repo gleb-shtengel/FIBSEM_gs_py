@@ -5621,7 +5621,7 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
     dump_filename : str
         Filename of a binary dump of the FIBSEM_dataset object.
     verbose : boolean
-        if True, intermediate printouts are ON. Deafult is False.
+        if True, intermediate printouts are ON. Default is False.
     dpi : int
         dpi. Default is 300.
 
@@ -12924,7 +12924,7 @@ class FIBSEM_dataset:
                 for registered_filename in tqdm(registered_filenames, desc='Removing Intermediate Registered Frame Files: ', display = verbose):
                     removed_files.append(dask_remove_file(registered_filename))
             if verbose:
-                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Removed all {:d} inermediate files successfully:  '.format(len(registered_filenames)), np.all(removed_files==registered_filenames))
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Removed all {:d} Intermediate files successfully:  '.format(len(registered_filenames)), np.all(removed_files==registered_filenames))
 
         return reg_summary, reg_summary_xlsx
 
