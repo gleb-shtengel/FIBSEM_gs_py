@@ -861,7 +861,7 @@ def generate_report_data_minmax_montage_xlsx(minmax_xlsx_file, **kwargs):
     thr_max = saved_kwargs.get("thr_max", 0.0)
     fit_params_saved = saved_kwargs.get("fit_params", ['SG', 101, 3])
     fit_params = kwargs.get("fit_params", fit_params_saved)
-    preserve_scales =  saved_kwargs.get("preserve_scales", True)  # If True, the transformation matrix will be adjusted using teh settings defined by fit_params below
+    preserve_scales =  saved_kwargs.get("preserve_scales", True)  # If True, the transformation matrix will be adjusted using the settings defined by fit_params below
     
     if verbose:
         print('Loading MinMax Data')

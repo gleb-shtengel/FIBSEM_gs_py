@@ -24,7 +24,7 @@ except:
 
 from scipy.signal import savgol_filter
 
-from FIBSEM_gs_py.FIBSEM_gs import get_min_max_thresholds
+from FIBSEM_gs_py.FIBSEM_gs import FIBSEM_frame, get_min_max_thresholds, find_FWHM, gauss_without_offset
 
 
 def extract_FFT(fl):
