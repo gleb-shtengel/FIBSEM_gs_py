@@ -112,29 +112,29 @@ def analyze_blob_transitions(amp, ** kwargs):
     
     kwargs:
     bounds : list
-        List of lists of transition leves for analysis. Deafault is .[0.37, 0.63].
+        List of lists of transition levels for analysis. Default is [0.37, 0.63].
     pixel_size : float
         pixel size. default is 4.0 nm
     bands : list of 3 ints
         list of three ints for the averaging bands for determining the left min, peak, and right min of the cross-section profile.
-        Deafault is [5, 3, 5].
+        Default is [5, 3, 5].
     disp_res : boolean
         display the results. Default is False
     ax : artist
         axis artist to plot the histogram to. Default is 0 (no artist).
         In the case ax==0 no plotting is done.
     col : str
-        color of cross-setcion lines. Default is 'magenta'.
+        color of cross-section lines. Default is 'magenta'.
     label : str
         label of histogram plot. Default is empty string.
     set_yscale : boolean
         Default is False. If True, y_scale setting (below) is enforced.
     y_scale : (float, float)
-        a pair of loats for y-axis scaling. Defaiult is (0, 100)
+        a pair of floats for y-axis scaling. Default is (0, 100)
     xpos : float
         offset for horisontal label poition. Default is 1.0.
     cols : list of 4 strings
-        colors for . Default is ['brown', 'green', 'red', 'black'].
+        colors for transition curves. Default is ['brown', 'green', 'red', 'black'].
     pref : str
         prefix string. Default is 'X-'.
     markersize : int
@@ -151,7 +151,7 @@ def analyze_blob_transitions(amp, ** kwargs):
 
     bounds = kwargs.get('bounds', [0.37, 0.63])
     pixel_size = kwargs.get('pixel_size', 4.0)
-    bands = kwargs.get('bands', [5 ,3, 5])
+    bands = kwargs.get('bands', [5, 3, 5])
     
     disp_res = kwargs.get('disp_res', False)
     ax = kwargs.get('ax', False)
@@ -310,7 +310,7 @@ def analyze_blob(blob_volume, **kwargs):
     Parameters:
     -------------
     blob_volume : 3D array
-        blob voluime
+        blob volume
     
     kwargs:
     -------------
@@ -403,7 +403,7 @@ def analyze_blob(blob_volume, **kwargs):
 
 def select_blobs_LoG_analyze_transitions(image, **kwargs):
     '''
-    Finds blobs in the given grayscale image using Laplasian of Gaussians (LoG). gleb.shtengel@gmail.com 06/2023
+    Finds blobs in the given grayscale image using Laplacian of Gaussians (LoG). gleb.shtengel@gmail.com 06/2023
     
     Parameters:
     ---------
@@ -430,7 +430,7 @@ def select_blobs_LoG_analyze_transitions(image, **kwargs):
         Example of multiple lists: [[0.33, 0.67], [0.20, 0.80]].
     bands : list of 3 ints
         List of three ints for the averaging bands for determining the left min, peak, and right min of the cross-section profile.
-        Default is [5 ,3, 5].
+        Default is [5, 3, 5].
     min_thr : float
         Threshold for identifying a 'good' transition (bottom < min_thr* top).
     transition_low_limit : float
@@ -442,7 +442,7 @@ def select_blobs_LoG_analyze_transitions(image, **kwargs):
     disp_res : boolean
         Display results. Default is False.
     disp_all_blobs : boolean
-        Display only good blobs. If True (Default) - all blobs are displayed. Usufull when there are too many bad blobs.
+        Display only good blobs. If True (Default) - all blobs are displayed. Useful when there are too many bad blobs.
     title : str
         Title string.
     nbins : int
@@ -474,7 +474,7 @@ def select_blobs_LoG_analyze_transitions(image, **kwargs):
             For example, X-Y hist median is hst_data[0,1]
     '''
     min_sigma = kwargs.get('min_sigma', 1.0)
-    max_sigma = kwargs.get('max_sigma', 1.0)
+    max_sigma = kwargs.get('max_sigma', 1.5)
     threshold = kwargs.get('threshold', 0.005)
     overlap = kwargs.get('overlap', 0.1)
     subset_size = kwargs.get('subset_size', 16)     # blob analysis window size in pixels
@@ -511,12 +511,12 @@ def select_blobs_LoG_analyze_transitions(image, **kwargs):
     kwargs['nbins'] = nbins
     kwargs['results_file_xlsx'] = results_file_xlsx
     if verbose:
-        print(time.strftime('%Y/%m/%d  %H:%M:%S') + ' Step1: Searching for Blobs using Laplasian of Gaussians using kwargs:')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + ' Step1: Searching for Blobs using Laplacian of Gaussians using kwargs:')
         print(kwargs)
     blobs_LoG = blob_log(image.astype(float), min_sigma = min_sigma, max_sigma=max_sigma, threshold=threshold, overlap=overlap)
     if len(blobs_LoG)>0:    
         if verbose:
-            print(time.strftime('%Y/%m/%d  %H:%M:%S') + ' Step1: Search Blobs using Laplasian of Gaussians, found {:d} blobs'.format(len(blobs_LoG)))
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + ' Step1: Search Blobs using Laplacian of Gaussians, found {:d} blobs'.format(len(blobs_LoG)))
         error_flags = []
         tr_results = []
         subset_mags = []
@@ -717,7 +717,7 @@ def select_blobs_LoG_analyze_transitions(image, **kwargs):
             ax.text(0.02,0.95, 'o  Good Blobs', color = 'lime', fontsize = 12, transform=ax.transAxes)
     else:
         if verbose:
-            print(time.strftime('%Y/%m/%d  %H:%M:%S') + ' Step1: No Blobs found using Laplasian of Gaussians')
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + ' Step1: No Blobs found using Laplacian of Gaussians')
         Xpt1 = []
         Xpt2 = []
         Ypt1 = []
@@ -745,7 +745,7 @@ def select_blobs_LoG_analyze_transitions(image, **kwargs):
 
 def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
     '''
-    Finds blobs in the given grayscale image using Laplasian of Gaussians (LoG). gleb.shtengel@gmail.com 10/2025
+    Finds blobs in the given grayscale image using Laplacian of Gaussians (LoG). gleb.shtengel@gmail.com 10/2025
     Uses DASK delayed, not DASK Client, so no need to provide the DASK client info.
     
     Parameters:
@@ -880,7 +880,7 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
         [Xslp_selected, Yslp_selected, Zslp_selected]]
 
     if verbose:
-        print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step1: Searching for Blobs using Laplasian of Gaussians with following kwargs:')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step1: Searching for Blobs using Laplacian of Gaussians with following kwargs:')
         print(kwargs)
         print('Using DASK delayed')
 
@@ -920,7 +920,7 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
         if len(blobs_LoG_list)>0:
             blobs_LoG = np.vstack(blobs_LoG_list)
             if verbose:
-                print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step1: Search Blobs using Laplasian of Gaussians, found {:d} blobs'.format(len(blobs_LoG)))
+                print(time.strftime('%Y/%m/%d  %H:%M:%S')+' Step1: Search Blobs using Laplacian of Gaussians, found {:d} blobs'.format(len(blobs_LoG)))
             error_flags = []
             tr_results = []
             subset_mags = []
@@ -1051,7 +1051,7 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
             save_data_xlsx = False
             results_file_xlsx = 'Data not saved'
             if verbose:
-                print(time.strftime('%Y/%m/%d  %H:%M:%S') + ' Step1: No blobs found using Laplasian of Gaussians')
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + ' Step1: No blobs found using Laplacian of Gaussians')
                 print(time.strftime('%Y/%m/%d  %H:%M:%S') + ' Data is NOT saved')
         return results_file_xlsx, blobs_LoG, error_flags, tr_results, hst_datas
         
@@ -1154,7 +1154,7 @@ def estimate_edge_transition(image, center, gradient, **kwargs):
     verbose : boolean
         print the outputs
     axs : ax artists
-        if present, will plot to external artist. if not present, will execute fig, axs = sublots()
+        if present, will plot to external artist. if not present, will execute fig, axs = subplots()
         
     Returns:
     error_flag : int
@@ -1244,12 +1244,12 @@ def estimate_edge_transition(image, center, gradient, **kwargs):
    
     if min_val_mean > min_criterion:# + (max_criterion-min_criterion)/10.0:
         if verbose:
-            print('Section_min = {:.2f}'.format(section_min))
+            #print('Section_min = {:.2f}'.format(section_min))
             print('Min criterion = {:.2f}'.format(min_criterion))
         error_flag += 1
     if max_val_mean < max_criterion:# - (max_criterion-min_criterion)/10.0:
         if verbose:
-            print('Section_max = {:.2f}'.format(section_max))
+            #print('Section_max = {:.2f}'.format(section_max))
             print('Max criterion = {:.2f}'.format(max_criterion))
         error_flag += 2
     
@@ -1370,7 +1370,7 @@ def analyze_edge_transitions_image(image, **kwargs):
         in order for this profile to be considered for transition evaluation. Defaults is 0.2 of image_subset CDF level
     grad_thr : float
         threshold for selecting the transition points if Gradient Edge Detector is used.
-        Default value id 0.005. Only the points with absolute value of gradient within the top fraction of CDG will be considered.
+        Default value is 0.005. Only the points with absolute value of gradient within the top fraction of CDG will be considered.
         For default value of 0.005 that means that only the points with absolute value of gradient within 0.005 of
         the max absolute of gradient will be considered.
     min_max_aperture : int
@@ -1379,7 +1379,7 @@ def analyze_edge_transitions_image(image, **kwargs):
         min value allowed for the transition (pixels). Default is 0.0.
         error flag is incremented by 4 if the determined transition distance is below this value.
     transition_high_limit : float
-        min value allowed for the transition (pixels). Default is 10.0.
+        max value allowed for the transition (pixels). Default is 10.0.
         error flag is incremented by 8 if the determined transition distance is above this value.
     verbose : boolean
         print the outputs
@@ -1574,7 +1574,7 @@ def analyze_edge_transitions_image(image, **kwargs):
     if verbose:
         print('Saving the results into the file: ', results_file_xlsx)
     xlsx_writer = pd.ExcelWriter(results_file_xlsx, engine='xlsxwriter')
-    trans_str = '{:.2f} to {:.2f} trasntition (pix)'.format(bounds[0], bounds[1])
+    trans_str = '{:.2f} to {:.2f} transition (pix)'.format(bounds[0], bounds[1])
     columns=['X', 'Y', 'X grad', 'Y grad', 'error_flag', trans_str]
     res_summary = pd.DataFrame(np.vstack((X, Y, X_grads, Y_grads, error_flags, transition_distances)).T, columns = columns, index = None)
     res_summary.to_excel(xlsx_writer, index=None, sheet_name='Transition analysis results')
@@ -1688,7 +1688,7 @@ def plot_blob_map_and_results_single_image(image, results_xlsx, **kwargs):
     ax.scatter(X_selected[0:3], Y_selected[0:3], color='red', facecolors='none', marker = 'o', s=20, linewidth=0.75)
     ax.scatter(X_selected[-3:], Y_selected[-3:], color='cyan', facecolors='none', marker = 'o', s=20, linewidth=0.75)
     ax.axis(False)
-    ax.text(0.15, 0.97, 'Blobs determined by Laplasian of Gaussians', transform=ax.transAxes, fontsize=text_fs)
+    ax.text(0.15, 0.97, 'Blobs determined by Laplacian of Gaussians', transform=ax.transAxes, fontsize=text_fs)
     ax.text(0.07, 0.90, '# of blobs: {:d}'.format(len(X_selected)), transform=ax.transAxes, color=text_col, fontsize=text_fs)
     ax.text(0.07, 0.85, '{:.0f}% - {:.0f}% Transitions'.format(bounds[0]*100, bounds[1]*100), transform=ax.transAxes, color=text_col, fontsize=text_fs)
     ax.text(0.07, 0.80, 'Pixel Size (nm): {:.3f}'.format(pixel_size), transform=ax.transAxes, color=text_col, fontsize=text_fs)
@@ -1929,7 +1929,7 @@ def plot_edge_transition_analysis_details(image, results_xlsx, **kwargs):
     cosXs_selected = X_grads_selected/np.sqrt(X_grads_selected*X_grads_selected+Y_grads_selected*Y_grads_selected)
     cosYs_selected = Y_grads_selected/np.sqrt(X_grads_selected*X_grads_selected+Y_grads_selected*Y_grads_selected)
     
-    trans_str = '{:.2f} to {:.2f} trasntition (pix)'.format(bounds[0], bounds[1])
+    trans_str = '{:.2f} to {:.2f} transition (pix)'.format(bounds[0], bounds[1])
     transition_distances = int_results[trans_str] 
     transition_distances_selected = np.array(transition_distances[error_flags==0]).astype(float)
     tr_mean = np.mean(transition_distances_selected)
@@ -2043,7 +2043,7 @@ def plot_edge_transition_points_map(image, results_xlsx, **kwargs):
     Y_selected = Y[error_flags==0]
     X_grads_selected = X_grads[error_flags==0]
     Y_grads_selected = Y_grads[error_flags==0]
-    trans_str = '{:.2f} to {:.2f} trasntition (pix)'.format(bounds[0], bounds[1])
+    trans_str = '{:.2f} to {:.2f} transition (pix)'.format(bounds[0], bounds[1])
     transition_distances = int_results[trans_str] 
     transition_distances_selected = transition_distances[error_flags==0]
     tr_mean = np.mean(transition_distances_selected)
