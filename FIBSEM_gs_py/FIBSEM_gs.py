@@ -324,7 +324,7 @@ def ransac(
 
     rng = np.random.default_rng(rng)
 
-    # in case data is not pair of input and output, male it like it
+    # in case data is not pair of input and output, make it like it
     if not isinstance(data, (tuple, list)):
         data = (data,)
     num_samples = len(data[0])
@@ -440,7 +440,7 @@ def levinson_durbin(s, nlags=10, isacov=False):
     Parameters
     ----------
     s : array_like
-        If isacov is False, then this is the time series. If iasacov is true
+        If isacov is False, then this is the time series. If isacov is true
         then this is interpreted as autocovariance starting with lag 0.
     nlags : int, optional
         The largest lag to include in recursion or order of the autoregressive
@@ -517,7 +517,7 @@ def find_autocorrelation_peak(ind_acr, mag_acr, **kwargs):
     ind_acr : 1D - array
         indices (coordinates in pixels)
     mag_acr : 1D - array
-        values of Auto-Correlation function (suppozed to be zero-centered)
+        values of Auto-Correlation function (supposed to be zero-centered)
 
     kwargs:
     extrapolate_signal : str
@@ -831,7 +831,7 @@ def Single_Image_Noise_ROIs(img, Noise_ROIs, Hist_ROI, **kwargs):
     nbins_disp : int
         Number of histogram bins for building the PDF and CDF to determine the data range for data display. Default is 256.
     thresholds_disp : list [thr_min_disp, thr_max_disp]
-        CDF threshold for determining the min and max data values for display. Default id [1e-3, 1e-3].
+        CDF threshold for determining the min and max data values for display. Default is [1e-3, 1e-3].
     nbins_analysis : int
         Number of histogram bins for building the PDF and CDF to determine the data range for building the data histogram in Step 5. Default is 256.
     thresholds_analysis: list [thr_min_analysis, thr_max_analysis]
@@ -1043,7 +1043,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     nbins_disp : int
         Number of histogram bins for building the PDF and CDF to determine the data range for data display. Default is 256.
     thresholds_disp : list [thr_min_disp, thr_max_disp]
-        CDF thresholds for determining the min and max data values for display. Default id [1e-3, 1e-3].
+        CDF thresholds for determining the min and max data values for display. Default is [1e-3, 1e-3].
     nbins_analysis : int
         Number of histogram bins for building the PDF and CDF to determine the data range for building the data histogram in Step 5. Default is 256.
     thresholds_SNR_analysis: list [thr_min_SNR_analysis, thr_max_SNR_analysis]
@@ -1359,7 +1359,7 @@ def Perform_2D_fit(img, estimator, **kwargs):
     ignore_Y  : boolean
         If True - the polynomial fit to only X is performed. Default is False.
     linear_Y  : boolean
-        If True - the polynomial fit to only X is perfromed, only linear variation along Y is allowed.
+        If True - the polynomial fit to only X is performed, only linear variation along Y is allowed.
     Xsect : int
         X - coordinate for Y-cross-section.
     Ysect : int
@@ -1702,7 +1702,7 @@ def Two_Image_NCC_SNR(img1, img2, **kwargs):
 def Two_Image_FSC(img1, img2, **kwargs):
     '''
     Performs Fourier Shell Correlation to determine the image resolution, after [1]. ©G.Shtengel, 10/2019. gleb.shtengel@gmail.com
-    FSC is determined from radially averaged foirier cross-correlation (with optional selection of range of angles for radial averaging).
+    FSC is determined from radially averaged Fourier cross-correlation (with optional selection of range of angles for radial averaging).
     
     Parameters:
     ----------
@@ -1910,7 +1910,7 @@ def Two_Image_Analysis(params):
     '''
     Analyzes the registration  quality between two frames (for DASK registration analysis)
 
-    Parameterss:
+    Parameters:
     params : list of params
         params = [frame1_filename, frame2_filename, eval_bounds, eval_metrics]
         eval_bounds = [xi,  xa, yi, ya]
@@ -2077,7 +2077,7 @@ def analyze_mrc_stack_registration(mrc_filename, **kwargs):
     DASK_client_retries : int
         Number of allowed automatic retries if a task fails. Default is 3.
     frame_inds : array
-        Array of frames to be used for evaluation. If not provided, evaluzation will be performed on all frames.
+        Array of frames to be used for evaluation. If not provided, evaluation will be performed on all frames.
     invert_data : boolean
         If True, the data will be inverted.
     evaluation_box : list of 4 int
@@ -2178,7 +2178,7 @@ def analyze_mrc_stack_registration(mrc_filename, **kwargs):
     if frame_inds[0]==0:
         frame_inds = frame_inds+1
     sample_frame_inds = [frame_inds[nf//10], frame_inds[nf//2], frame_inds[nf//10*9]]
-    print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Will analyze regstrations in {:d} frames'.format(len(frame_inds)))
+    print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Will analyze registrations in {:d} frames'.format(len(frame_inds)))
     print('Will save the data into ' + registration_summary_xlsx)
     if sliding_evaluation_box:
         dx_eval = stop_evaluation_box[2]-start_evaluation_box[2]
@@ -2452,9 +2452,9 @@ def plot_cross_sections_mrc_stack(mrc_filename, **kwargs):
     kwargs:
     ----------
     XZ_section : boolean
-        If True (default), XZ cros-section is present.
+        If True (default), XZ cross-section is present.
     ZY_section : boolean
-        If True (default), ZY cros-section is present.
+        If True (default), ZY cross-section is present.
     voxel_size : array or list of 3 floats
         Voxel size (x, y, z) in um. Default is the data obtrained from cellA data in the MRC file.
     center_coordinates : array or list of 3 floats
@@ -2481,9 +2481,9 @@ def plot_cross_sections_mrc_stack(mrc_filename, **kwargs):
     bar_length_um : float
         Length of the scale bar (um). Default is 1um.
     bar_width : float
-        Width of the scale bar. Defalt is 5.0.
+        Width of the scale bar. Default is 5.0.
     bar_color : string
-        Color of the scale bar. Defalt is 'white'.
+        Color of the scale bar. Default is 'white'.
     display_scale_bar_labels : boolean
         If True (default), the scale bar labels are displayed.
     label : string
@@ -2499,7 +2499,7 @@ def plot_cross_sections_mrc_stack(mrc_filename, **kwargs):
     save_filename : string
         Filename to save the image. Defaults is mrc_filename.replace('.mrc', '_crosssections.png')
     dpi : int
-        DPI for the PNG file. Dafult is 300.
+        DPI for the PNG file. Default is 300.
     
     Returns:
     ----------
@@ -2742,7 +2742,7 @@ def bin_crop_mrc_stack(mrc_filename, **kwargs):
         mrc_mode : int
             mrc mode.
         flipY : boolean
-            If Trye, the data will be flipped along Y axis (0 index) AFTER cropping.
+            If True, the data will be flipped along Y axis (0 index) AFTER cropping.
         invert_data : boolean
             If True, invert the data.
         binned_copped_filename : str
@@ -2880,7 +2880,7 @@ def bin_crop_mrc_stack(mrc_filename, **kwargs):
     if use_DASK:
         print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Using DASK distributed')
         #futures = DASK_client.map(bin_crop_frames, params_mult, retries = DASK_client_retries)
-        # In case of a large source file, need to stadge the DASK jobs - cannot start all at once.
+        # In case of a large source file, need to stage the DASK jobs - cannot start all at once.
         DASK_batch = 0
         while len(params_mult) > max_futures:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Starting DASK batch {:d} with {:d} jobs, {:d} jobs remaining'.format(DASK_batch, max_futures, (len(params_mult)-max_futures)))
@@ -2998,7 +2998,7 @@ def merge_tiff_files_mrc_stack(fls_tiff, **kwargs):
         mrc_mode : int
             mrc mode
         flipY : boolean
-            If Trye, the data will be flipped along Y axis (0 index) AFTER cropping.
+            If True, the data will be flipped along Y axis (0 index) AFTER cropping.
         invert_data : boolean
             If True, invert the data
         mrc_filename : str
@@ -3109,7 +3109,7 @@ def merge_tiff_files_mrc_stack(fls_tiff, **kwargs):
     if use_DASK:
         print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Using DASK distributed')
         #futures = DASK_client.map(bin_crop_frames, params_mult, retries = DASK_client_retries)
-        # In case of a large source file, need to stadge the DASK jobs - cannot start all at once.
+        # In case of a large source file, need to stage the DASK jobs - cannot start all at once.
         DASK_batch = 0
         while len(params_mult) > max_futures:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Starting DASK batch {:d} with {:d} jobs, {:d} jobs remaining'.format(DASK_batch, max_futures, (len(params_mult)-max_futures)))
@@ -3240,7 +3240,7 @@ def destreak_mrc_stack_with_kernel(mrc_filename, destreak_kernel, data_min, data
     max_futures : int
         max number of running futures. Default is 5000.
     frame_inds : array
-        Array of frames to be used for evaluation. If not provided, evaluzation will be performed on all frames.
+        Array of frames to be used for evaluation. If not provided, evaluation will be performed on all frames.
     invert_data : boolean
         If True, the data will be inverted.
     fri : int
@@ -3368,7 +3368,7 @@ def destreak_mrc_stack_with_kernel(mrc_filename, destreak_kernel, data_min, data
         print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Using DASK distributed')
         [destreak_kernel_future] = DASK_client.scatter([destreak_kernel], broadcast=True)
         #futures = DASK_client.map(bin_crop_frames, params_mult, retries = DASK_client_retries)
-        # In case of a large source file, need to stadge the DASK jobs - cannot start all at once.
+        # In case of a large source file, need to stage the DASK jobs - cannot start all at once.
         DASK_batch = 0
         while len(params_mult) > max_futures:
             DASK_batch += 1
@@ -3477,7 +3477,7 @@ def smooth_mrc_stack_with_kernel(mrc_filename, smooth_kernel, data_min, data_max
     max_futures : int
         max number of running futures. Default is 5000.
     frame_inds : array
-        Array of frames to be used for evaluation. If not provided, evaluzation will be performed on all frames.
+        Array of frames to be used for evaluation. If not provided, evaluation will be performed on all frames.
     invert_data : boolean
         If True, the data will be inverted.
     fri : int
@@ -3543,7 +3543,7 @@ def smooth_mrc_stack_with_kernel(mrc_filename, smooth_kernel, data_min, data_max
         print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Using DASK distributed')
         [smooth_kernel_future] = DASK_client.scatter([smooth_kernel], broadcast=True)
         #futures = DASK_client.map(bin_crop_frames, params_mult, retries = DASK_client_retries)
-        # In case of a large source file, need to stadge the DASK jobs - cannot start all at once.
+        # In case of a large source file, need to stage the DASK jobs - cannot start all at once.
         DASK_batch = 0
         while len(params_mult) > max_futures:
             DASK_batch += 1
@@ -3602,7 +3602,7 @@ def destreak_smooth_mrc_stack_with_kernels(mrc_filename, destreak_kernel, smooth
     kwargs:
     ----------
     frame_inds : array
-        Array of frames to be used for evaluation. If not provided, evaluzation will be performed on all frames
+        Array of frames to be used for evaluation. If not provided, evaluation will be performed on all frames
     invert_data : boolean
         If True, the data will be inverted
     save_destreak_filename : str
@@ -4500,7 +4500,7 @@ def analyze_tif_stack_registration(tif_filename, **kwargs):
     DASK_client_retries : int
         Number of allowed automatic retries if a task fails. Default is 3.
     frame_inds : array
-        Array of frames to be used for evaluation. If not provided, evaluzation will be performed on all frames
+        Array of frames to be used for evaluation. If not provided, evaluation will be performed on all frames
     invert_data : boolean
         If True, the data will be inverted
     evaluation_box : list of 4 int
@@ -4595,7 +4595,7 @@ def analyze_tif_stack_registration(tif_filename, **kwargs):
     if frame_inds[0]==0:
         frame_inds = frame_inds+1
     sample_frame_inds = [frame_inds[nf//10], frame_inds[nf//2], frame_inds[nf//10*9]]
-    print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Will analyze regstrations in {:d} frames'.format(len(frame_inds)))
+    print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Will analyze registrations in {:d} frames'.format(len(frame_inds)))
     print('Will save the data into ' + registration_summary_xlsx)
     if sliding_evaluation_box:
         dx_eval = stop_evaluation_box[2]-start_evaluation_box[2]
@@ -4724,7 +4724,7 @@ def analyze_transformation_matrix(transformation_matrix, xf_filename):
     tr_matr_cum = transformation_matrix.copy()
 
     prev_mt = np.eye(3,3)
-    for j, cur_mt in enumerate(tqdm(transformation_matrix, desc='Calculating Cummilative Transformation Matrix')):
+    for j, cur_mt in enumerate(tqdm(transformation_matrix, desc='Calculating Cumulative Transformation Matrix')):
         if np.any(np.isnan(cur_mt)):
             print('Frame: {:d} has ill-defined transformation matrix, will use identity transformation instead:'.format(j))
             print(cur_mt)
@@ -5081,7 +5081,7 @@ def generate_report_data_minmax_xlsx(minmax_xlsx_file, **kwargs):
     thr_max = saved_kwargs.get("thr_min", 0.0)
     fit_params_saved = saved_kwargs.get("fit_params", ['SG', 101, 3])
     fit_params = kwargs.get("fit_params", fit_params_saved)
-    preserve_scales =  saved_kwargs.get("preserve_scales", True)  # If True, the transformation matrix will be adjusted using teh settings defined by fit_params below
+    preserve_scales =  saved_kwargs.get("preserve_scales", True)  # If True, the transformation matrix will be adjusted using the settings defined by fit_params below
     xlim = kwargs.get('xlim', (0,0))
     
     if verbose:
@@ -5184,7 +5184,7 @@ def generate_report_transf_matrix_from_xlsx(transf_matrix_xlsx_file, **kwargs):
     save_matches = saved_kwargs.get("save_matches", True)      # If True, matches will be saved into individual files
     save_res_png  = saved_kwargs.get("save_res_png", True)
 
-    preserve_scales = saved_kwargs.get("preserve_scales", True)  # If True, the transformation matrix will be adjusted using teh settings defined by fit_params below
+    preserve_scales = saved_kwargs.get("preserve_scales", True)  # If True, the transformation matrix will be adjusted using the settings defined by fit_params below
     fit_params = saved_kwargs.get("fit_params", False)           # perform the above adjustment using  Savitzky-Golay (SG) fith with parameters
                                                             # window size 701, polynomial order 3
     subtract_linear_fit = saved_kwargs.get("subtract_linear_fit", [True, True])   # The linear slopes along X- and Y- directions (respectively) will be subtracted from the cumulative shifts.
@@ -5454,7 +5454,7 @@ def generate_report_transf_matrix_details(transf_matrix_bin_file, *kwarrgs):
     save_matches = saved_kwargs.get("save_matches", True)      # If True, matches will be saved into individual files
     save_res_png  = saved_kwargs.get("save_res_png", True)
 
-    preserve_scales =  saved_kwargs.get("preserve_scales", True)  # If True, the transformation matrix will be adjusted using teh settings defined by fit_params below
+    preserve_scales =  saved_kwargs.get("preserve_scales", True)  # If True, the transformation matrix will be adjusted using the settings defined by fit_params below
     fit_params =  saved_kwargs.get("fit_params", False)           # perform the above adjustment using  Savitzky-Golay (SG) fith with parameters
                                                             # window size 701, polynomial order 3
     subtract_linear_fit =  saved_kwargs.get("subtract_linear_fit", [True, True])   # The linear slopes along X- and Y- directions (respectively) will be subtracted from the cumulative shifts.
@@ -6234,12 +6234,12 @@ class FIBSEM_frame:
         ftype : int
             0 - Shan Xu's binary format (default).  1 - tif files
         read_header_only : boolean
-            If True, rteads only 1024 bit header. Default is False.
+            If True, reads only 1024 bit header. Default is False.
         calculate_scaled_images : boolean
-            Calculate Scaled Images from raw images using scalinfg data. Defauult is False
+            Calculate Scaled Images from raw images using scaling data. Default is False
         use_dask_arrays : boolean
         memory_profiling : boolean
-            If True will perfrom memory profiling. Default is False
+            If True will perform memory profiling. Default is False
 
     Attributes (only some more important are listed here):
     ----------
@@ -6309,7 +6309,7 @@ class FIBSEM_frame:
         Show the box used for evaluating the noise.
 
     determine_field_fattening_parameters(**kwargs):
-        Perfrom 2D polynomial fit (calls Perform_2D_fit(Img, estimator, **kwargs)) and determine the field-flattening parameters.
+        Perform 2D polynomial fit (calls Perform_2D_fit(Img, estimator, **kwargs)) and determine the field-flattening parameters.
 
     flatten_image(**kwargs):
         Flatten the image(s). Image flattening parameters must be pre-determined (determine_field_fattening_parameters).
@@ -6331,7 +6331,7 @@ class FIBSEM_frame:
         ftype : int
             0 - Shan Xu's binary format (default).  1 - tif files
         read_header_only : boolean
-            If True, rteads only 1024 bit header. Default is False.
+            If True, reads only 1024 bit header. Default is False.
         memory_profiling : boolean
             Perform memory profiling during the data load and output it. Default is False.
         calculate_scaled_images : boolean
@@ -7123,7 +7123,7 @@ class FIBSEM_frame:
         Parameters:
         ----------
         image_name : string
-            the name of the image to perform this operations (defaulut is 'RawImageA')
+            the name of the image to perform this operations (default  is 'RawImageA')
         thr_min : float
             CDF threshold for determining the minimum data value
         thr_max : float
@@ -7369,7 +7369,7 @@ class FIBSEM_frame:
         ©G.Shtengel 04/2022 gleb.shtengel@gmail.com
 
         Performs following:
-        1. For each of the selected Noise_ROIs, this method will perfrom the following:
+        1. For each of the selected Noise_ROIs, this method will perform the following:
             1a. Smooth the data by 2D convolution with a given kernel.
             1b. Determine "Noise" as difference between the original raw and smoothed data.        
             1c. Calculate the mean intensity value of the data and variance of the above "Noise"
@@ -7410,7 +7410,7 @@ class FIBSEM_frame:
         nbins_disp : int
             Number of histogram bins for building the PDF and CDF to determine the data range for data display. Default is 256.
         thresholds_disp : list [thr_min_disp, thr_max_disp]
-            CDF threshold for determining the min and max data values for display. Default id [1e-3, 1e-3].
+            CDF threshold for determining the min and max data values for display. Default is [1e-3, 1e-3].
         nbins_analysis : int
             Number of histogram bins for building the PDF and CDF to determine the data range for building the data histogram in Step 5. Default is 256.
         thresholds_analysis: list [thr_min_analysis, thr_max_analysis]
@@ -7509,7 +7509,7 @@ class FIBSEM_frame:
         nbins_disp : int
             Number of histogram bins for building the PDF and CDF to determine the data range for data display. Default is 256.
         thresholds_disp : list [thr_min_disp, thr_max_disp]
-            CDF threshold for determining the min and max data values for display. Default id [1e-3, 1e-3].
+            CDF threshold for determining the min and max data values for display. Default is [1e-3, 1e-3].
         nbins_analysis : int
             Number of histogram bins for building the PDF and CDF to determine the data range for building the data histogram in Step 5. Default is 256.
         thresholds_analysis: list [thr_min_analysis, thr_max_analysis]
@@ -7795,7 +7795,7 @@ class FIBSEM_frame:
 
     def determine_field_fattening_parameters(self, **kwargs):
         '''
-        Perfrom 2D polynomial fit (calls Perform_2D_fit(Img, estimator, **kwargs)) and determine the field-flattening parameters.
+        Perform 2D polynomial fit (calls Perform_2D_fit(Img, estimator, **kwargs)) and determine the field-flattening parameters.
         ©G.Shtengel, 04/2023. gleb.shtengel@gmail.com
         
         kwargs:
@@ -7820,7 +7820,7 @@ class FIBSEM_frame:
         ignore_Y  : boolean
             If True - the polynomial fit to only X is performed. Default is False.
         linear_Y  : boolean
-            If True - the polynomial fit to only X is perfromed, only linear variation along Y is allowed.
+            If True - the polynomial fit to only X is performed, only linear variation along Y is allowed.
         Xsect : int
             X - coordinate for Y-cross-section.
         Ysect : int
@@ -8126,11 +8126,11 @@ def evaluate_FIBSEM_frame(params):
     params =  fl, kwargs
         fl : str
             The string containing a full path to the EM data file.
-        kwargs: dictioanry of kwargs:
+        kwargs: dictionary of kwargs:
         ftype : int
             file type (0 - Shan Xu's .dat, 1 - tif)
         image_name: string
-            the name of the image to perform this operations (defaulut is 'RawImageA')
+            the name of the image to perform this operations (default  is 'RawImageA')
         thr_min : float
             CDF threshold for determining the minimum data value
         thr_max : float
@@ -8207,11 +8207,11 @@ def evaluate_FIBSEM_frame(params):
             try:
                 XResolution = frame.XResolution
             except:
-                XResolution = FIBSEM_frame.RawImageA.shape[1]
+                XResolution = frame.RawImageA.shape[1]
             try:
                 YResolution = frame.YResolution
             except:
-                YResolution = FIBSEM_frame.RawImageA.shape[1]
+                YResolution = frame.RawImageA.shape[0]
         else:
             WD = 0
             MillingYVoltage = 0
@@ -8264,11 +8264,11 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
     ftype : int
         file type (0 - Shan Xu's .dat, 1 - tif)
     frame_inds : array
-        Array of frames to be used for evaluation. If not provided, evaluzation will be performed on all frames
+        Array of frames to be used for evaluation. If not provided, evaluation will be performed on all frames
     data_dir : str
         data directory (path) for saving the data
     image_name: string
-            the name of the image to perform this operations (defaulut is 'RawImageA')
+            the name of the image to perform this operations (default  is 'RawImageA')
     thr_min : float
         CDF threshold for determining the minimum data value
     thr_max : float
@@ -8559,7 +8559,7 @@ def extract_keypoints_descr_files(params, deformation_field):
             SIFT library default is 1.6.  The sigma of the Gaussian applied to the input image at the octave #0.
             If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
         left_crop : int 
-            Cropping value for cropping the image from the left side (used along with deformation_filed or on its own). Default is 0 - no cropping.
+            Cropping value for cropping the image from the left side (used along with deformation_field or on its own). Default is 0 - no cropping.
         interpolation : int
             Interpolation type as defined in CV2 (if deformation_field is not np.nan) . Default is cv2.INTER_LINEAR.
         fill_value = 0.0
@@ -8825,7 +8825,7 @@ def determine_transformations_files(params_dsf):
     estimation : string
         'interval' (default) or 'count'. Returns a width of interval determined using search direction from above or total number of bins above half max (registration error histogram evaluation).
     left_crop : int 
-        Cropping value for cropping the image from the left side (used along with deformation_filed or on its own). Default is 0 - no cropping.
+        Cropping value for cropping the image from the left side (used along with deformation_field or on its own). Default is 0 - no cropping.
     image_margins : tuple of 2 ints
         Parts of images to be used. It is assumed that img1 is to the left and above of the img2.
         Subsets img1[-ymargin:, -xmargin:] and  img2[0:ymargin, 0:xmargin] will be used for correlation.
@@ -8935,7 +8935,7 @@ def determine_transformations_files(params_dsf):
         if BFMatcher:    # if BFMatcher==True - use BF (Brute Force) matcher
             # This procedure uses BF (Brute-Force) Matcher.
             # BF matcher takes the descriptor of one feature in the first image and matches it with all other features
-            # in second image using some distance calculation. The closest match in teh second image is returned.
+            # in second image using some distance calculation. The closest match in the second image is returned.
             # For BF matcher, first we have to create the cv.DescriptorMatcher object with BFMatcher as type.
             # It takes two optional params:
             #
@@ -9062,7 +9062,7 @@ def build_filename(fname, **kwargs):
     max_iter = kwargs.get("max_iter", 1000)
     save_res_png  = kwargs.get("save_res_png", True)
     zbin_factor =  kwargs.get("zbin_factor", 1)             # binning factor in z-direction (milling direction). Default is 1
-    preserve_scales =  kwargs.get("preserve_scales", True)  # If True, the transformation matrix will be adjusted using teh settings defined by fit_params below
+    preserve_scales =  kwargs.get("preserve_scales", True)  # If True, the transformation matrix will be adjusted using the settings defined by fit_params below
     fit_params =  kwargs.get("fit_params", False)           # perform the above adjustment using  Savitzky-Golay (SG) fith with parameters
                                                             # window size 701, polynomial order 3
     subtract_linear_fit =  kwargs.get("subtract_linear_fit", [True, True])   # If True, the linear slope will be subtracted from the cumulative shifts.
@@ -9169,7 +9169,7 @@ def process_transformation_matrix_dataset(transformation_matrix, FOVtrend_x, FOV
     save_res_png  = kwargs.get("save_res_png", True)
     verbose = kwargs.get('verbose', False)
 
-    preserve_scales =  kwargs.get("preserve_scales", True)  # If True, the transformation matrix will be adjusted using teh settings defined by fit_params below
+    preserve_scales =  kwargs.get("preserve_scales", True)  # If True, the transformation matrix will be adjusted using the settings defined by fit_params below
     fit_params =  kwargs.get("fit_params", False)           # perform the above adjustment using  Savitzky-Golay (SG) fith with parameters
                                                             # window size 701, polynomial order 3
     subtract_linear_fit =  kwargs.get("subtract_linear_fit", [True, True])   # The linear slopes along X- and Y- directions (respectively) will be subtracted from the cumulative shifts.
@@ -9183,7 +9183,7 @@ def process_transformation_matrix_dataset(transformation_matrix, FOVtrend_x, FOV
 
     tr_matr_cum = transformation_matrix.copy()   
     prev_mt = np.eye(3,3)
-    for j, cur_mt in enumerate(tqdm(transformation_matrix, desc='Calculating Cummilative Transformation Matrix')):
+    for j, cur_mt in enumerate(tqdm(transformation_matrix, desc='Calculating Cumulative Transformation Matrix')):
         if np.any(np.isnan(cur_mt)):
             print('Frame: {:d} has ill-defined transformation matrix, will use identity transformation instead:'.format(j))
             print(cur_mt)
@@ -9414,7 +9414,7 @@ def calculate_residual_deformation_fields_dataset(tr_matr_cum, image_shape, fnms
 # This is a function used for selecting proper SIFT and other parameters for processing
 def SIFT_evaluation_dataset(fs, **kwargs):
     '''
-    Evaluate SIFT settings and perfromance of few test frames (fs). ©G.Shtengel 10/2021 gleb.shtengel@gmail.com
+    Evaluate SIFT settings and performance of few test frames (fs). ©G.Shtengel 10/2021 gleb.shtengel@gmail.com
     
     Parameters:
     ---------
@@ -9504,7 +9504,7 @@ def SIFT_evaluation_dataset(fs, **kwargs):
     estimation : string
         'interval' (default) or 'count'. Returns a width of interval determined using search direction from above or total number of bins above half max
     memory_profiling : boolean
-        If True will perfrom memory profiling. Default is False.
+        If True will perform memory profiling. Default is False.
     use_existing_data : boolean
         Default is False. If True and this had already been performed, use existing results
 
@@ -10310,7 +10310,7 @@ def transform_and_save_chunk_of_frames(chunk_of_frame_parametrs):
         image_offsets : list (array) of floats
             image offsets for image rescaling: I = (I-image_offset)*image_scale + image_offset
 
-        tr_args : list of lowwowing parameters:
+        tr_args : list of following parameters:
             tr_args = [ImgB_fraction, xsz, ysz, xi, xa, yi, ya, int_order, invert_data, flipY, flatten_image, image_correction_file, perform_transformation, shift_matrix, inv_shift_matrix, perform_deformation, deformation_type, ftype, dtp, fill_value]
                 ImgB_fraction : float
                     Fractional weight of Image B for fused images, default is 0
@@ -11281,7 +11281,7 @@ class FIBSEM_dataset:
     Methods:
     ----------
     SIFT_evaluation(eval_fls = [], **kwargs):
-        Evaluate SIFT settings and perfromance of few test frames (eval_fls).
+        Evaluate SIFT settings and performance of few test frames (eval_fls).
 
     convert_raw_data_to_tif_files(**kwargs):
         Convert binary ".dat" files into ".tif" files
@@ -11514,7 +11514,7 @@ class FIBSEM_dataset:
         self.eval_metrics = kwargs.get('eval_metrics', ['NSAD', 'NCC', 'NMI'])
         self.fnm_types = kwargs.get("fnm_types", ['mrc'])
         self.flipY = kwargs.get("flipY", False)                     # If True, the registered data will be flipped along Y axis
-        self.preserve_scales =  kwargs.get("preserve_scales", True) # If True, the transformation matrix will be adjusted using teh settings defined by fit_params below
+        self.preserve_scales =  kwargs.get("preserve_scales", True) # If True, the transformation matrix will be adjusted using the settings defined by fit_params below
         self.fit_params =  kwargs.get("fit_params", ['SG', len(fls)//100+1, 3])          # perform the above adjustment using  Savitzky-Golay (SG) fith with parameters
                                                                     # window size 701, polynomial order 3
         self.int_order = kwargs.get("int_order", False)             #     The order of interpolation. The order has to be in the range 0-5:
@@ -11547,7 +11547,7 @@ class FIBSEM_dataset:
                 dump_loaded = False
                 if disp_res:
                     print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Failed to open Parameter dump filename: ', dump_filename)
-                    print(ex1.message)
+                    print(ex1)
             if dump_loaded:
                 try:
                     for key in tqdm(dump_data, desc='Recalling the data set parameters'):
@@ -11556,7 +11556,7 @@ class FIBSEM_dataset:
                     if disp_res:
                         print('Parameter dump filename: ', dump_filename)
                         print('Failed to restore the object parameters')
-                        print(ex2.message)
+                        print(ex2)
         else:
             if disp_res:
                 print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Registered data will be saved into: ', self.fnm_reg)
@@ -11566,7 +11566,7 @@ class FIBSEM_dataset:
 
     def SIFT_evaluation(self, eval_fls = [], **kwargs):
         '''
-        Evaluate SIFT settings and perfromance of few test frames (eval_fls). ©G.Shtengel 10/2021 gleb.shtengel@gmail.com
+        Evaluate SIFT settings and performance of few test frames (eval_fls). ©G.Shtengel 10/2021 gleb.shtengel@gmail.com
         
         Parameters:
         ----------
@@ -11796,7 +11796,7 @@ class FIBSEM_dataset:
         ftype : int
             File type (0 - Shan Xu's .dat, 1 - tif). Default is object attribute.
         frame_inds : array
-            Array of frames to be used for evaluation. If not provided, evaluzation will be performed on all frames.
+            Array of frames to be used for evaluation. If not provided, evaluation will be performed on all frames.
         data_dir : str
             Data directory (path). Default is object attribute.
         thr_min : float
