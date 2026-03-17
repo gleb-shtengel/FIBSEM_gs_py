@@ -80,7 +80,7 @@ def determine_regularized_affine_transform(src_pts, dst_pts, l2_matrix = None, t
             X = (a0*x + a1*y + a2) 
             Y = (b0*x + b1*y + b2)
         This is regularized Affine estimation - it is regularized so that the penalty is for deviation from a target (default target is rigid shift) transformation
-        a0 =1, a1=0, b0=1, b1=1 are parameters for target (shift) transform. Deviation from these is penalized.
+        a0 =1, a1=0, b0=0, b1=1 are parameters for target (shift) transform. Deviation from these is penalized.
 
         The coefficients appear linearly so we can write
         A x = B, where:
@@ -209,7 +209,7 @@ def _umeyama(src, dst, estimate_scale):
 
 class ShiftTransform(ProjectiveTransform):
     """
-    ScaleShift transformation. ©G.Shtengel 11/2021 gleb.shtengel@gmail.com
+    Shift transformation. ©G.Shtengel 11/2021 gleb.shtengel@gmail.com
 
     Has the following form:
         X = x +  a2
@@ -381,7 +381,7 @@ class XScaleShiftTransform(ProjectiveTransform):
             if np.isscalar(scale):
                 sx = scale
             else:
-                sx = scale
+                sx = scale[0]
 
             self.params = np.array([[sx, 0,  0],
                                     [0,  1, 0],
@@ -426,7 +426,7 @@ class XScaleShiftTransform(ProjectiveTransform):
         return True
     
     def print_res(self):
-        print('Printing from iside the class XScaleShiftTransform')
+        print('Printing from inside the class XScaleShiftTransform')
 
     @property
     def scale(self):
@@ -659,8 +659,8 @@ class RegularizedAffineTransform(ProjectiveTransform):
                 sx, sy = scale
 
             self.params = np.array([
-                [sx * math.cos(rotation), -sy * math.sin(rotation + shear), 0],
-                [sx * math.sin(rotation),  sy * math.cos(rotation + shear), 0],
+                [sx * np.cos(rotation), -sy * np.sin(rotation + shear), 0],
+                [sx * np.sin(rotation),  sy * np.cos(rotation + shear), 0],
                 [                      0,                                0, 1]
             ])
             self.params[0:2, 2] = translation
@@ -679,7 +679,7 @@ class RegularizedAffineTransform(ProjectiveTransform):
             raise NotImplementedError(
                 'The rotation property is only implemented for 2D transforms.'
             )
-        return math.atan2(self.params[1, 0], self.params[0, 0])
+        return np.atan2(self.params[1, 0], self.params[0, 0])
 
     @property
     def shear(self):
@@ -687,7 +687,7 @@ class RegularizedAffineTransform(ProjectiveTransform):
             raise NotImplementedError(
                 'The shear property is only implemented for 2D transforms.'
             )
-        beta = math.atan2(- self.params[0, 1], self.params[1, 1])
+        beta = np.atan2(- self.params[0, 1], self.params[1, 1])
         return beta - self.rotation
 
     @property
@@ -696,7 +696,7 @@ class RegularizedAffineTransform(ProjectiveTransform):
 
 
 
-        # Thise are functions used for different steps of image analysis and registration
+# These are functions used for different steps of image analysis and registration
 
 def ShiftTransform0(matrix=None, translation=None):
     return EuclideanTransform(matrix=matrix, rotation = 0, translation = translation)
