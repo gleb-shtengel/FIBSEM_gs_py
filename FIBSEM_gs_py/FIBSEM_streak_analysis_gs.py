@@ -34,11 +34,11 @@ def extract_FFT(fl):
 
 def streak_magnitude(FFT_array, **kwargs):
     '''
-    Analyzes FFT array and determines streak magnitude as a peak of avaraged cross-section of a selected FFT window. 06/2025. gleb.shtengel@gmail.com
+    Analyzes FFT array and determines streak magnitude as a peak of averaged cross-section of a selected FFT window. 06/2025. gleb.shtengel@gmail.com
     Assumes that the streaks have very distinct signature in the FFT domain - an increased FFT magnitude along FFT x-axis
     Steps:
     1. Divide the input FFT by transposed input FFT
-    2. Select a subset of the above array and average it along X-axis, yilding the streak magnitude array.
+    2. Select a subset of the above array and average it along X-axis, yielding the streak magnitude array.
     3. Determine the maximum of that array np.max(streak_mag_array)
     
     Parameters:
@@ -49,13 +49,13 @@ def streak_magnitude(FFT_array, **kwargs):
     kwargs:
     ----------
     FFT_xi : int
-        Left boundary of the FFT window for analysis. Default is 1/2 of the FFT_array witdh.
+        Left boundary of the FFT window for analysis. Default is 1/2 of the FFT_array width.
     FFT_xa : int
-        Right boundary of the FFT window for analysis. Default is a 3/4 of the FFT_array witdh.
+        Right boundary of the FFT window for analysis. Default is a 3/4 of the FFT_array width.
     FFT_yi : int
-        Top boundary of the FFT window for analysis. Default is 49/100 of the FFT_array witdh.
+        Top boundary of the FFT window for analysis. Default is 49/100 of the FFT_array width.
     FFT_ya : int
-        Bottom boundary of the FFT window for analysis. . Default is 51/100 of the FFT_array witdh.
+        Bottom boundary of the FFT window for analysis. Default is 51/100 of the FFT_array width.
     disp_res : boolean
         If True, the results will be displayed. Default is False.
     axs : matplotlib axis artists
@@ -63,15 +63,15 @@ def streak_magnitude(FFT_array, **kwargs):
     titles : titles
         Plot titles. Default is ['Log of Input FFT', 'Analysis window: FFT / FFT $^{T}$'].
     labels : labels
-        Plot lbels. Default is ['analysis window', 'Averaged FFT / FFT$^{T}$' + ' profile, min={:.2f}, max={:.2f}'.format(np.min(streak_mag_array), np.max(streak_mag_array))].
-    locs = locs
-        Ploit legend locations. Default is ['upper right', 'upper right'].
+        Plot labels. Default is ['analysis window', 'Averaged FFT / FFT$^{T}$' + ' profile, min={:.2f}, max={:.2f}'.format(np.min(streak_mag_array), np.max(streak_mag_array))].
+    locs : strings
+        Plot legend locations. Default is ['upper right', 'upper right'].
     v_min_max1 : [float, float]
         List of Min and Max values for FFT / FFT.T image. Default is auto-generated.
     profile_color : str
         Color of the profile plot. Default is 'lime'.
     verbose : boolean
-        If True, the itermediate printouts are enabled. Default is False.
+        If True, the intermediate printouts are enabled. Default is False.
     method : str
         Method to find streak magnitude. Options are: 'max' (default), 'mean', and 'fit' (gaussian fit).
     return_all : boolean
@@ -109,7 +109,7 @@ def streak_magnitude(FFT_array, **kwargs):
     streak_mag_array = streak_mag.mean(axis=1)-1.0
     
     if verbose:
-        print('Use ' + method + ' to determine streal magnitude')
+        print('Use ' + method + ' to determine streak magnitude')
     streak_magnitude = np.max(streak_mag_array)
     if method == 'mean':
         streak_magnitude = np.mean(streak_mag_array)
@@ -129,7 +129,7 @@ def streak_magnitude(FFT_array, **kwargs):
                 print('Gaussian Fit Coefficients: ', popt)
         except:
             if verbose:
-                print('Gaussian Fit did not converge for the tile {:d}, using max value of {:.2f} instead'.format(jj, streak_magnitude))
+                print('Gaussian Fit did not converge, using max value of {:.2f} instead'.format(streak_magnitude))
             pass
     
     if axs != '' or disp_res:
@@ -191,23 +191,23 @@ def build_and_analyze_tiled_FFT_map(img, **kwargs):
     determine_streak_magnitudes : boolean
         If True (default), streak magnitude is determined for each tile. Uses streak_magnitude(FFT_array, **kwargs).
     FFT_xi : int
-        Left boundary of the FFT window for analysis. Default is 1/2 of the FFT_array witdh.
+        Left boundary of the FFT window for analysis. Default is 1/2 of the FFT_array width.
     FFT_xa : int
-        Right boundary of the FFT window for analysis. Default is a 3/4 of the FFT_array witdh.
+        Right boundary of the FFT window for analysis. Default is a 3/4 of the FFT_array width.
     FFT_yi : int
-        Top boundary of the FFT window for analysis. Default is 19/40 of the FFT_array witdh.
+        Top boundary of the FFT window for analysis. Default is 19/40 of the FFT_array width.
     FFT_ya : int
-        Bottom boundary of the FFT window for analysis. . Default is 21/40 of the FFT_array witdh.
+        Bottom boundary of the FFT window for analysis. Default is 21/40 of the FFT_array width.
     disp_res : boolean
         If True, the results will be displayed. Default is False.
     titles : [str, str]
         Plot titles. Default is ['Image', 'Tiled FFT Map'].
     verbose : boolean
-        If True, the itermediate printouts are enabled. Default is False.
+        If True, the intermediate printouts are enabled. Default is False.
     method : str
         Method to find streak magnitude. Options are: 'max' (default), 'mean', and 'fit' (gaussian fit)
     return_all : boolean
-        if True, streak_magnitude_map and FFT_map are returned. Otherwise only streak_magnitudes are returned. Default is False.
+        If True, streak_magnitude_map and FFT_map are returned. Otherwise only streak_magnitudes are returned. Default is False.
     
     Returns: streak_magnitude_map, FFT_map
     '''
@@ -254,7 +254,7 @@ def build_and_analyze_tiled_FFT_map(img, **kwargs):
     streak_magnitude_arrays = streak_mag.mean(axis=2)-1.0
 
     if verbose:
-        print('Use ' + method + ' to determine streal magnitude')
+        print('Use ' + method + ' to determine streak magnitude')
     streak_magnitudes = []
     jj=0
     for streak_mag_array in streak_magnitude_arrays:
@@ -332,17 +332,17 @@ def build_tiled_FFT_map(img, **kwargs):
     determine_streak_magnitudes : boolean
         If True (default), streak magnitude is determined for each tile. Uses streak_magnitude(FFT_array, **kwargs).
     FFT_xi : int
-        Left boundary of the FFT window for analysis. Default is 1/2 of the FFT_array witdh.
+        Left boundary of the FFT window for analysis. Default is 1/2 of the FFT_array width.
     FFT_xa : int
-        Right boundary of the FFT window for analysis. Default is a 3/4 of the FFT_array witdh.
+        Right boundary of the FFT window for analysis. Default is a 3/4 of the FFT_array width.
     FFT_yi : int
-        Top boundary of the FFT window for analysis. Default is 19/40 of the FFT_array witdh.
+        Top boundary of the FFT window for analysis. Default is 19/40 of the FFT_array width.
     FFT_ya : int
-        Bottom boundary of the FFT window for analysis. . Default is 21/40 of the FFT_array witdh.
+        Bottom boundary of the FFT window for analysis. Default is 21/40 of the FFT_array width.
     calc_abs : boolean
-        if True, absolute value of FFT is returned. Defaults is True.
+        if True, absolute value of FFT is returned. Default is True.
     verbose : boolean
-        If True, the itermediate printouts are enabled. Default is False.
+        If True, the intermediate printouts are enabled. Default is False.
     
     Returns: FFT_map
     '''
@@ -391,17 +391,17 @@ def analyze_tiled_FFT_map(FFT_map, **kwargs):
     ntiles_y : int
         Number of FFT tiles in Y-direction. Default is 2.
     FFT_xi : int
-        Left boundary of the FFT window for analysis. Default is 1/2 of the FFT_array witdh.
+        Left boundary of the FFT window for analysis. Default is 1/2 of the FFT_array width.
     FFT_xa : int
-        Right boundary of the FFT window for analysis. Default is a 3/4 of the FFT_array witdh.
+        Right boundary of the FFT window for analysis. Default is a 3/4 of the FFT_array width.
     FFT_yi : int
-        Top boundary of the FFT window for analysis. Default is 19/40 of the FFT_array witdh.
+        Top boundary of the FFT window for analysis. Default is 19/40 of the FFT_array width.
     FFT_ya : int
-        Bottom boundary of the FFT window for analysis. . Default is 21/40 of the FFT_array witdh.
+        Bottom boundary of the FFT window for analysis. Default is 21/40 of the FFT_array width.
     disp_res : boolean
         If True, the results will be displayed. Default is False.
     verbose : boolean
-        If True, the itermediate printouts are enabled. Default is False.
+        If True, the intermediate printouts are enabled. Default is False.
     method : str
         Method to find streak magnitude. Options are: 'max' (default), 'mean', and 'fit' (gaussian fit)   
     ax : matplotlib axis artist
@@ -446,7 +446,7 @@ def analyze_tiled_FFT_map(FFT_map, **kwargs):
     streak_magnitude_arrays = streak_mag.mean(axis=2)-1.0
 
     if verbose:
-        print('Use ' + method + ' to determine streal magnitude')
+        print('Use ' + method + ' to determine streak magnitude')
     streak_magnitudes = []
     jj=0
     for streak_mag_array in streak_magnitude_arrays:
