@@ -7993,7 +7993,7 @@ class FIBSEM_frame:
         kwargs:
         ----------
         padding_offsets : list of 4 ints
-            padding_offsets = [top_pad, bottom_pad, left_pad, right_pad]. Deafault is [0, 0, 0, 0] (no padding).
+            padding_offsets = [top_pad, bottom_pad, left_pad, right_pad]. Default is [0, 0, 0, 0] (no padding).
         save_filename : string
             Filename for saving the padded frame. Default is self.fname.replace('.dat', '_padded.dat').
         fill_value : int

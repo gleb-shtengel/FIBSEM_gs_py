@@ -1049,7 +1049,7 @@ def set_eval_bounds(shape, evaluation_box, **kwargs):
     frame_inds : int array
         array of frame indices
 
-    Returnes:
+    Returns:
     evaluation_bounds : int array of 4 elements
         evaluation_bounds = (xi_evals, xa_evals, yi_evals, ya_evals)
 
