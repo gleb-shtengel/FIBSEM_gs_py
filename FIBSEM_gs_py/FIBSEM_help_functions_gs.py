@@ -581,7 +581,7 @@ def determine_residual_deformation_field(src_pts, dst_pts, transformation_matrix
     if deformation_type == '2D':
         # placeholder for now
         deformation_field = np.zeros((image_height, image_width), dtype=float)
-    elif deformation_type == '1DX':  # only vertical shifts are considered, they are averaged over Y-coordinate. doeformation field has only X-dependent Y-component 
+    elif deformation_type == '1DX':  # only vertical shifts are considered, they are averaged over Y-coordinate. deformation field has only X-dependent Y-component 
         try:
             deformation_sigma = deformation_sigma[0]
         except:
@@ -600,7 +600,7 @@ def determine_residual_deformation_field(src_pts, dst_pts, transformation_matrix
         x_profile_smoothed = astro_convolve(x_profile, Gaussian1DKernel(stddev=deformation_sigma))
         #deformation_field = np.repeat(x_profile_smoothed[:, np.newaxis], image_height, 1).T
         deformation_field = x_profile_smoothed
-    else:      # only horizontal shifts are considered, they are averaged over X-coordinate. doeformation field has only Y-dependent X-component 
+    else:      # only horizontal shifts are considered, they are averaged over X-coordinate. deformation field has only Y-dependent X-component 
         try:
             deformation_sigma = deformation_sigma[0]
         except:
@@ -1356,17 +1356,17 @@ def build_kernel_FFT_destreaker_autodetect(data, **kwargs):
     thr_reference: float
         Threshold for referencing. Default is 2.5
     astart_limit : float
-        Start angle for radial segment for analysis. Default is -5.0. Only perfrom autodetection in this range.
+        Start angle for radial segment for analysis. Default is -5.0. Only perform autodetection in this range.
     astop_limit : float
-        Stop angle for radial segment for analysis. Default is 5.0. Only perfrom autodetection in this range.
+        Stop angle for radial segment for analysis. Default is 5.0. Only perform autodetection in this range.
     rstart_limit : float
-        Low bound for spatial frequencies in FFT space. Default is 0.01. Only perfrom autodetection in this range.
+        Low bound for spatial frequencies in FFT space. Default is 0.01. Only perform autodetection in this range.
     rstop_limit : float
-        High bound for spatial frequencies in FFT space. Default is 0.50. Only perfrom autodetection in this range.
+        High bound for spatial frequencies in FFT space. Default is 0.50. Only perform autodetection in this range.
     symm_limit : int
          Symmetry factor for autodetection limit. Default is 2.
     rescale : boolean
-        If False (default), rescaler is 0 in the "suspect areas". If True, they are scaeled down according to the FFT mag.
+        If False (default), rescaler is 0 in the "suspect areas". If True, they are scaled down according to the FFT mag.
 
     Returns:
         rescaler_kernel : float array
@@ -1426,7 +1426,7 @@ def smooth(x, window_len=11, window='hanning'):
     This method is based on the convolution of a scaled window with the signal.
     The signal is prepared by introducing reflected copies of the signal 
     (with the window size) in both ends so that transient parts are minimized
-    in the begining and end part of the output signal.
+    in the beginning and end part of the output signal.
     
     input:
         x: the input signal 
@@ -1490,7 +1490,7 @@ def add_hist(dt, **kwargs):
     
     kwargs:
     nbins : int
-        number of bins for the histogram. Deafult is 64.
+        number of bins for the histogram. Default is 64.
     hrange : (float, float)
         histogram range. Default is (0, 10).
     ax : artist
