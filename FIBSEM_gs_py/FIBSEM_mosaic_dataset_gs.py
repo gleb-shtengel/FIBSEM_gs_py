@@ -3073,11 +3073,11 @@ class FIBSEM_mosaic_dataset:
         kwargs:
         ----------
         fnm_mosaic_stack : string
-            Silename to save the data. Default is object attribute self.fnm_mosaic_stack
+            Filename to save the data. Default is object attribute self.fnm_mosaic_stack
         fnm_types : list of strings.
-            File type(s) for output data. Options are: ['h5', 'mrc'].
+            File type(s) for output data. Options are: ['mrc', 'h5'].
             Defauls is ['mrc']. 'h5' is BigDataViewer HDF5 format, uses npy2bdv package. Use empty list if do not want to save the data.
-        voxel_size : rec array of 3 elemets
+        voxel_size : rec array of 3 elements
             voxel size in nm
         dtp  : dtype
             Python data type for saving. Default is int16, the other option currently is uint8.

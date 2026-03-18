@@ -1,12 +1,12 @@
 def line_correlation(stack, center, step, nsteps, line_axis, correlation_axis):
     '''
-    Computes line-to-line normalaized zero-mean correlation within 3D stack. gleb.shtengel@gmail.com
+    Computes line-to-line normalized zero-mean correlation within 3D stack. gleb.shtengel@gmail.com
     
     Parameters:
         stack : 3D array
             vEM data stack
-        center : list or array of thre coordintes - through which the reference correlation line goes
-        step: int 
+        center : list or array of three coordintes - through which the reference correlation line goes
+        step : int 
             # of pixel in a single shift step
         nsteps : int
             # of offset steps to compute correlation
@@ -16,7 +16,7 @@ def line_correlation(stack, center, step, nsteps, line_axis, correlation_axis):
             axis of the correlation displacement. 0=z, 1=y, 2=x
     
     Returns:
-        ncc : float
+        ncc : list of floats
         normalized zero-mean cross-correlation
     '''
     cz, cy, cx = center

@@ -6351,6 +6351,8 @@ class FIBSEM_frame:
         fname_suff = Path(fname).suffix.lower()
         if fname_suff == '.tif' or fname_suff == '.tiff':
             def_ftype = 1
+        if fname_suff == '.png' or fname_suff == '.PNG':
+            def_ftype = 2
         #print('filename suffix: ',fname_suff, ', default filetype: ', def_ftype)
         self.ftype = kwargs.get("ftype", def_ftype) # ftype=0 - Shan Xu's binary format  ftype=1 - tif files
         calculate_scaled_images_kw = kwargs.get('calculate_scaled_images', False)
@@ -6364,6 +6366,26 @@ class FIBSEM_frame:
                         format_bytes(vms_after - vms_before),
                         format_bytes(shared_after - shared_before),
                         elapsed_time))
+    # for png files
+        if self.ftype == 2:
+            self.RawImageA = np.array(PILImage.open(fname))
+            self.FileVersion = -1
+            self.DetA = 'Detector A'     # Name of detector A
+            self.DetB = 'None'     # Name of detector B
+            self.EightBit = 1
+            
+            self.Sample_ID = kwargs.get("Sample_ID", '')
+            self.YResolution, self.XResolution = self.RawImageA.shape
+            self.Scaling = np.array([[1.0, 0.0, 1.0, 1.0], [1.0, 0.0, 1.0, 1.0]]).T
+            if memory_profiling:
+                elapsed_time = elapsed_since(start_time)
+                rss_after, vms_after, shared_after = get_process_memory()
+                print("Profiling: Finished TIFF Read: RSS: {:>8} | VMS: {:>8} | SHR {"
+                      ":>8} | time: {:>8}"
+                    .format(format_bytes(rss_after - rss_before),
+                            format_bytes(vms_after - vms_before),
+                            format_bytes(shared_after - shared_before),
+                            elapsed_time))
 
     # for tif files
         if self.ftype == 1:
