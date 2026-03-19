@@ -1548,7 +1548,10 @@ class FIBSEM_mosaic_dataset:
         shifts_x = shifts_x - np.max(shifts_x)
         shifts_y = self.FirstPixels[:, 1] - self.FirstPixels[0, 1]
         shifts_y = shifts_y - np.max(shifts_y)
-        self.tile_positions = np.vstack(shifts_x, shifts_y)
+        try:
+            self.tile_positions = np.vstack((shifts_x, shifts_y))
+        except:
+            print(np.shape(shifts_x))
         single_layer_tr_matr = np.repeat(eye3x3[np.newaxis, :, :], self.n_tiles_per_layer, axis=0)
         single_layer_tr_matr[:, 0, 2] = - np.array(shifts_x).flatten()
         single_layer_tr_matr[:, 1, 2] = - np.array(shifts_y).flatten()
