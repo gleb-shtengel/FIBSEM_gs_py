@@ -61,7 +61,8 @@ from FIBSEM_gs_py.FIBSEM_help_functions_gs import (check_DASK,
                                                     get_process_memory,
                                                     format_bytes,
                                                     read_kwargs_xlsx,
-                                                    parse_metadata_file)
+                                                    parse_metadata_file,
+                                                    read_image_coordinates)
 
 
 def build_weight_array(shape, **kwargs):
@@ -1285,36 +1286,6 @@ class FIBSEM_mosaic_dataset:
         
         if self.ftype == 2 and metadata_file:
             metadata = parse_metadata_file(metadata_file)
-            '''
-            Operator:           Templier
-            Experiment:         wafer_53_scan_008
-            Time:               5/9/2022 6:25:27 AM
-            FoVX:               16.000µm
-            FoVY:               13.984µm
-            Width:              2000px
-            Height:             1748px
-            Pixelsize:          8.000nm
-            Thumbnail-Scale:    0.25
-            Scanspeed:          4
-            Dwelltime:          400ns
-            Landing Energy:     1.200keV
-            Beam Current:       552pA
-            Stage pos. X:       -133.047µm
-            Stage pos. Y:       -23813.574µm
-            Stage pos. Z:       39405.312µm
-            Stigmator Shift X:  0.000
-            Stigmator Shift Y:  0.000
-            Stigmator Tilt X:   1.615
-            Stigmator Tilt Y:   0.405
-            Projective X:       -536.562
-            Projective Y:       333.766
-            Lens:               1910436.229
-            Focus Offset:       4.965µm
-            Overall time:       201.043s
-            Stage pos. X target:        -133.047µm
-            Stage pos. Y target:        -23813.574µm
-            Stage pos. Z target:        39405.312µm
-            '''
             test_frame = FIBSEM_frame(fname0, ftype = 2)
             self.metadata = metadata
             ys, xs = test_frame.RawImageA.shape
@@ -1378,12 +1349,8 @@ class FIBSEM_mosaic_dataset:
         w_sqrt_inter = np.sqrt(self.interlayer_weight)
 
         if image_coordinates_file: # user-defined grid with FirstPixels determined from the image_coordinates_file file
-            coord_dict = {}
-            with open(image_coordinates_file, 'r') as f:
-                for line in f:
-                    parts = line.strip().split()
-                    if len(parts) >= 3:
-                        coord_dict[parts[0]] = (float(parts[1]), float(parts[2]))
+            coord_dict = read_image_coordinates(image_coordinates_file)
+            FirstPixels = [coord_dict[os.path.split(fl)[1]][1:3] for fl in self.fls[0].ravel()]
             self.FirstPixels = np.array(FirstPixels)
             # Find all intra-layer neighbouring pairs by proximity.
             # Two tiles are neighbours if their bounding boxes overlap in both X and Y.

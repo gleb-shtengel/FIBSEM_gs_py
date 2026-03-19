@@ -1938,3 +1938,32 @@ def parse_metadata_file(filename):
                 result[key] = value_raw
         line_count += 1
     return result
+
+
+def read_image_coordinates(filename):
+      '''
+      Reads an ASCII image coordinates file and returns a dictionary.
+
+      Parameters:
+      ----------
+      filename : str
+          Path to the whitespace-delimited text file.
+          Expected format: filename  col2  col3  col4  (additional columns ignored)
+
+      Returns:
+      ----------
+      coords : dict
+          Dictionary with filename (str) as key and (col2, col3, col4) as value (tuple of floats).
+      '''
+      coords = {}
+      with open(filename, 'r') as f:
+          for line in f:
+              line = line.strip()
+              if not line or line.startswith('#'):
+                  continue
+              parts = line.split()
+              if len(parts) < 4:
+                  continue
+              key = parts[0]
+              coords[key] = (float(parts[1]), float(parts[2]), float(parts[3]))
+      return coords
