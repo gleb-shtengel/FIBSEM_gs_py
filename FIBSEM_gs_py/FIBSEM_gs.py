@@ -6389,7 +6389,7 @@ class FIBSEM_frame:
             self.EHT = kwargs.get('EHT', metadata.get('Landing_Energy_keV', 0))
             self.SEMCurr = kwargs.get('SEMCurr', metadata.get('Beam_Current_pA', 0.0)/1e12)
 
-            self.Sample_ID = kwargs.get("Sample_ID",  metadata.get('Experiment', ''))
+            self.Sample_ID = kwargs.get('Sample_ID',  metadata.get('Experiment', ''))
             self.YResolution, self.XResolution = self.RawImageA.shape
             self.Scaling = np.array([[1.0, 0.0, 1.0, 1.0], [1.0, 0.0, 1.0, 1.0]]).T
             if memory_profiling:
@@ -6440,7 +6440,7 @@ class FIBSEM_frame:
             try:
                 self.PixelSize = float(tif_tags['helios_metadata']['Scan']['PixelWidth']) * 1.0e9
             except:
-                self.PixelSize = kwargs.get("PixelSize", 8.0)
+                self.PixelSize = kwargs.get('PixelSize', 8.0)
             try:
                 self.ScanRate = 1.0 / float(tif_tags['helios_metadata']['Scan']['Dwelltime'])
             except:
@@ -6449,7 +6449,7 @@ class FIBSEM_frame:
                 self.MachineID = tif_tags['helios_metadata']['System']['SystemType'] + ' ' + str(tif_tags['helios_metadata']['System']['Dnumber'])
             except:
                 pass
-            self.Sample_ID = kwargs.get("Sample_ID", '')
+            self.Sample_ID = kwargs.get('Sample_ID', '')
             self.YResolution, self.XResolution = self.RawImageA.shape
             self.Scaling = np.array([[1.0, 0.0, 1.0, 1.0], [1.0, 0.0, 1.0, 1.0]]).T
             if memory_profiling:
@@ -6464,6 +6464,7 @@ class FIBSEM_frame:
 
     # for Shan Xu's data files 
         if self.ftype == 0:
+            self.Sample_ID = kwargs.get('Sample_ID', '')
             self.SaveOversamples = kwargs.get('SaveOversamples', 0)
             fid = open(self.fname, "rb")
             fid.seek(0, 0)
@@ -7355,7 +7356,7 @@ class FIBSEM_frame:
                          'FIB Probe', '{:d}'.format(self.FIBProb)]]
         else:
             if self.FileVersion > 0:
-                cell_text = [['', '', '',
+                cell_text = [['Sample ID', '{:s}'.format(self.Sample_ID.strip('\x00')), '',
                               'Frame Size', '{:d} x {:d}'.format(self.XResolution, self.YResolution), '',
                               'Scan Rate', '{:.3f} MHz'.format(self.ScanRate/1.0e6)],
                             ['Machine ID', '{:s}'.format(self.MachineID.strip('\x00')), '',
@@ -7368,7 +7369,7 @@ class FIBSEM_frame:
                              'EHT Voltage', '{:.3f} kV'.format(self.EHT), '',
                              'FIB Probe', '{:d}'.format(self.FIBProb)]]
             else:
-                cell_text = [['', '', '',
+                cell_text = [['Sample ID', '{:s}'.format(self.Sample_ID.strip('\x00')), '',
                               'Frame Size', '{:d} x {:d}'.format(self.XResolution, self.YResolution), '',
                               'Scan Rate', ScanRate_text],
                             ['Machine ID', MachineID_text, '',
