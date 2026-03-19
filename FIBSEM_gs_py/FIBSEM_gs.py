@@ -6389,7 +6389,7 @@ class FIBSEM_frame:
             self.EHT = kwargs.get('EHT', metadata.get('Landing_Energy_keV', 0))
             self.SEMCurr = kwargs.get('SEMCurr', metadata.get('Beam_Current_pA', 0.0)/1e12)
 
-            self.Sample_ID = kwargs.get("Sample_ID", '')
+            self.Sample_ID = kwargs.get("Sample_ID",  metadata.get('Experiment', ''))
             self.YResolution, self.XResolution = self.RawImageA.shape
             self.Scaling = np.array([[1.0, 0.0, 1.0, 1.0], [1.0, 0.0, 1.0, 1.0]]).T
             if memory_profiling:

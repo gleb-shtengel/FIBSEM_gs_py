@@ -1310,6 +1310,7 @@ class FIBSEM_mosaic_dataset:
             self.YResolutions = kwargs.get('YResolutions', np.full(len(fls[0]), self.YResolution))
             self.PixelSize = kwargs.get('PixelSize', metadata.get('Pixelsize_nm', 5.0))
             self.EightBit = kwargs.get('EightBit', 1)
+            self.Sample_ID = kwargs.get("Sample_ID",  metadata.get('Experiment', ''))
         self.voxel_size = np.rec.array((self.PixelSize,  self.PixelSize,  self.PixelSize), dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4')])
         self.DASK_client_retries = kwargs.get("DASK_client_retries", 3)
         self.thr_min = kwargs.get("thr_min", 1e-3)
