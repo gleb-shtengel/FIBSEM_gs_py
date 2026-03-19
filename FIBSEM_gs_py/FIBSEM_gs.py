@@ -6387,7 +6387,7 @@ class FIBSEM_frame:
             self.PixelSize = kwargs.get('PixelSize', metadata.get('Pixelsize_nm', 5.0))
             self.ScanRate =  kwargs.get('ScanRate', 1e9/metadata.get('Dwelltime_ns', 100.0))
             self.EHT = kwargs.get('EHT', metadata.get('Landing_Energy_keV', 0))
-            self.SEMCurr = kwargs.get('SEMCurr', metadata.get('Beam_Current_pA')/1e12, 0.0)
+            self.SEMCurr = kwargs.get('SEMCurr', metadata.get('Beam_Current_pA', 0.0)/1e12)
 
             self.Sample_ID = kwargs.get("Sample_ID", '')
             self.YResolution, self.XResolution = self.RawImageA.shape

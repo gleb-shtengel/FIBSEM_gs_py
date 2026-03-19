@@ -1303,7 +1303,7 @@ class FIBSEM_mosaic_dataset:
             ys, xs = test_frame.RawImageA.shape
             self.ScanRate = kwargs.get('PixelSize', 1e9/metadata.get('Dwelltime_ns', 100.0))
             self.EHT = kwargs.get('EHT', metadata.get('Landing_Energy_keV', 0))
-            self.SEMCurr = kwargs.get('SEMCurr', metadata.get('Beam_Current_pA')/1e12, 0.0)
+            self.SEMCurr = kwargs.get('SEMCurr', metadata.get('Beam_Current_pA', 0.0)/1e12)
             self.XResolution = kwargs.get('XResolution', metadata.get('Width'), xs)
             self.YResolution = kwargs.get("YResolution", metadata.get('Height'), ys)
             self.XResolutions = kwargs.get('XResolutions', np.full(len(fls[0]), self.XResolution))
