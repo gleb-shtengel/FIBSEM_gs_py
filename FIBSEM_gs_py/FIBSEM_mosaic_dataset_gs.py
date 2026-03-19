@@ -2553,6 +2553,10 @@ class FIBSEM_mosaic_dataset:
         method = kwargs.get('method', 'ECC')
         valid_methods = ['SIFT-ECC', 'SIFT', 'ECC']
 
+        w_sqrt_intra = np.sqrt(self.intralayer_weight)  # because LSQR minimizes ||W^{1/2} (Ax - b)||
+        w_sqrt_inter = np.sqrt(self.interlayer_weight)
+        weights = np.concatenate((np.full((self.nh+self.nv), w_sqrt_intra), np.full(self.nl, w_sqrt_inter)))
+
         '''
         L = self.nz_tiles
         M = self.ny_tiles
@@ -2568,10 +2572,6 @@ class FIBSEM_mosaic_dataset:
 
         # We already have self.A_csr = csr_matrix((data, (row_ind, col_ind)), shape=(C, V)) # sparse matrix
         # Now we need to contruct the matrix B and solve LSQ
-
-        w_sqrt_intra = np.sqrt(self.intralayer_weight)  # because LSQR minimizes ||W^{1/2} (Ax - b)||
-        w_sqrt_inter = np.sqrt(self.interlayer_weight)
-        weights = np.concatenate((np.full((self.nh+self.nv), w_sqrt_intra), np.full(self.nl, w_sqrt_inter)))
 
         data = []
         row_ind = []
