@@ -1220,8 +1220,22 @@ class FIBSEM_mosaic_dataset:
             start_time = time.time()
 
         self.fls = np.array(fls)
-        image_coordinates_file = kwargs.get('image_coordinates_file', '')
-        metadata_file = kwargs.get('metadata_file', '')
+
+        # Try to auto-detect image coordinates file
+        image_coordinates_file_default = os.path.join(os.path.split(fname0)[0], 'image_coordinates.txt')
+        if os.path.exists(image_coordinates_file_default):
+            image_coordinates_file = kwargs.get('image_coordinates_file', image_coordinates_file_default)
+        else:
+            image_coordinates_file = kwargs.get('image_coordinates_file', '')
+        self.image_coordinates_file = image_coordinates_file
+
+        # Try to auto-detect metadata file
+        metadata_file_default = os.path.join(os.path.split(fname0)[0], 'metadata.txt')
+        if os.path.exists(metadata_file_default):
+            metadata_file = kwargs.get('metadata_file', metadata_file_default)
+        else:
+            metadata_file = kwargs.get('metadata_file', '')
+        self.metadata_file = metadata_file
         fname0 = self.fls.ravel()[0]
         self.data_dir = kwargs.get('data_dir', os.path.split(fname0)[0])
         def_ftype = 0
@@ -1268,13 +1282,7 @@ class FIBSEM_mosaic_dataset:
             self.ContrastB = test_frame.ContrastB
             self.Sample_ID = kwargs.get("Sample_ID", test_frame.Sample_ID)
             self.EightBit = kwargs.get("EightBit", test_frame.EightBit)
-        if self.ftype ==2:
-            metadata_file_default = os.path.join(os.path.split(fname0)[0], 'metadata.txt')
-        if os.path.exists(metadata_file_default):
-            metadata_file = kwargs.get('metadata_file', metadata_file_default)
-        else:
-            metadata_file = kwargs.get('metadata_file', '')
-        self.metadata_file = metadata_file
+        
         if self.ftype == 2 and metadata_file:
             metadata = parse_metadata_file(metadata_file)
             '''
