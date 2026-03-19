@@ -1530,22 +1530,22 @@ class FIBSEM_mosaic_dataset:
         i1, i2 = self.index_pairs[nh, :]
         self.Yoverlap = int(np.round(self.YResolution - np.abs((self.FirstPixels[i1, 1] - self.FirstPixels[i2, 1]))))
         self.pair_margins = [[self.YResolution, 2*self.Xoverlap] for x in np.arange(nh)] + [[2*self.Yoverlap, self.XResolution] for x in np.arange(nv)] + [[self.YResolution, self.XResolution] for x in np.arange(nl)]
-        self.A_csr = csr_matrix((data, (row_ind, col_ind)), shape=(C, V)) # sparse matrix
+        self.A_csr = csr_matrix((data, (row_ind, col_ind)), shape=(self.C, V)) # sparse matrix
 
         eye3x3 = np.eye(3,3)
-        self.ECC_transformation_matrices = np.repeat(eye3x3[np.newaxis, :, :], C, axis=0)
-        self.ECC_transformation_valid = np.full(C, False)
-        self.SIFT_transformation_matrices = np.repeat(eye3x3[np.newaxis, :, :], C, axis=0)
-        self.SIFT_transformation_valid = np.full(C, False)
-        self.SIFT_fnms_matches = ['' for x in np.arange(C)]
-        self.SIFT_nmatches = np.full(C, 0)
+        self.ECC_transformation_matrices = np.repeat(eye3x3[np.newaxis, :, :], self.C, axis=0)
+        self.ECC_transformation_valid = np.full(self.C, False)
+        self.SIFT_transformation_matrices = np.repeat(eye3x3[np.newaxis, :, :], self.C, axis=0)
+        self.SIFT_transformation_valid = np.full(self.C, False)
+        self.SIFT_fnms_matches = ['' for x in np.arange(self.C)]
+        self.SIFT_nmatches = np.full(self.C, 0)
 
         if verbose:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Initialized FIBSEM_mosaic_dataset instance:')
             print('Number of tiles per Z-layer: {:d}'.format(self.n_tiles_per_layer))
             print('Total number of tile files: {:d}'.format(V))
             print('Number of Z-slices (nz_tiles): {:d}'.format(self.nz_tiles))
-            print('Total number of pairwise transformations : {:d}'.format(C))
+            print('Total number of pairwise transformations : {:d}'.format(self.C))
             #print('Index of the top-left pair in the last Z-layer: ', (L -1)* M * (N - 1))
     
         if image_coordinates_file:
