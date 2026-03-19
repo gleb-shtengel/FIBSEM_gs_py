@@ -1287,6 +1287,7 @@ class FIBSEM_mosaic_dataset:
         if self.ftype == 2 and metadata_file:
             metadata = parse_metadata_file(metadata_file)
             test_frame = FIBSEM_frame(fname0, ftype = 2)
+            self.FileVersion = test_frame.FileVersion
             self.metadata = metadata
             ys, xs = test_frame.RawImageA.shape
             self.ScanRate = kwargs.get('PixelSize', 1e9/metadata.get('Dwelltime_ns', 100.0))
@@ -2839,7 +2840,7 @@ class FIBSEM_mosaic_dataset:
                             print('xi={:d}, xa={:d}, yi={:d},  ya={:d}'.format(xi, xa, yi,  ya))
                         layer_mosaic[yi:ya, xi:xa] = layer_mosaic[yi:ya, xi:xa] + tile_out
                         layer_mosaic_weights[yi:ya, xi:xa] = layer_mosaic_weights[yi:ya, xi:xa] + weight_out
-                layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*np.prod(self.shape)) 
+                layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*self.n_tiles_per_layer) 
                 layer_mosaic = np.nan_to_num(layer_mosaic / layer_mosaic_weights, nan=-fill_value)
                 layer_mosaics.append(layer_mosaic)
 
@@ -2926,7 +2927,7 @@ class FIBSEM_mosaic_dataset:
                                  'FIB Probe', '{:d}'.format(self.FIBProb)]]
                 else:
                     cell_text = [['', '', '',
-                                  'Tile Size\n\nShape', '{:d} x {:d}\n\n{:d} x {:d}'.format(self.XResolution, self.YResolution, self.shape[1], self.shape[0]), '',
+                                  'Tile Size\n\n # of Tiles per layer', '{:d} x {:d}\n\n{:d}'.format(self.XResolution, self.YResolution, self.n_tiles_per_layer), '',
                                   'Scan Rate', ScanRate_text],
                                 ['Machine ID', MachineID_text, '',
                                   'Pixel Size', '{:.1f} nm'.format(self.PixelSize), '',
