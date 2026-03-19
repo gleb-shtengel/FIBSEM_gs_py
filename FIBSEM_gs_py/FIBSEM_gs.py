@@ -6379,15 +6379,15 @@ class FIBSEM_frame:
             self.DetA = 'Detector A'     # Name of detector A
             self.DetB = 'None'     # Name of detector B
             self.EightBit = 1
-            
             if metadata_file:
                 metadata = parse_metadata_file(metadata_file)
             else:
                 metadata = {}
             self.metadata = metadata
-
-            self.PixelSize = metadata.get('Pixelsize_nm', 5.0)
-            self.ScanRate = 1e9/metadata.get('Dwelltime_ns', 100.0)
+            self.PixelSize = kwargs.get('PixelSize', metadata.get('Pixelsize_nm', 5.0))
+            self.ScanRate =  kwargs.get('ScanRate', 1e9/metadata.get('Dwelltime_ns', 100.0))
+            self.EHT = kwargs.get('EHT', metadata.get('Landing_Energy_keV', 0))
+            self.SEMCurr = kwargs.get('SEMCurr', metadata.get('Beam_Current_pA')/1e12, 0.0)
 
             self.Sample_ID = kwargs.get("Sample_ID", '')
             self.YResolution, self.XResolution = self.RawImageA.shape
