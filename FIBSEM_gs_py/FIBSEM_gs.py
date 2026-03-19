@@ -6360,7 +6360,7 @@ class FIBSEM_frame:
         else:
             image_coordinates_file = kwargs.get('image_coordinates_file', '')
         self.image_coordinates_file = image_coordinates_file
-        if if os.path.exists(image_coordinates_file_default):
+        if os.path.exists(image_coordinates_file):
             coord_dict = read_image_coordinates(image_coordinates_file)
             self.FirstPixelX, self.FirstPixelY = coord_dict[os.path.split(fname)[1]][1:3]
         def_ftype = 0
