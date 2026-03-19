@@ -1388,7 +1388,6 @@ class FIBSEM_mosaic_dataset:
             n_intra = L * n_intra_single_layer
             nl = (L - 1) * self.n_tiles_per_layer
             self.nl = nl
-            C = n_intra + nl
             self.C = self.nh + self.nv + self.nl
             V = L * self.n_tiles_per_layer                     # Total number of tiles
 
@@ -1398,7 +1397,7 @@ class FIBSEM_mosaic_dataset:
                 print('Total number of up-down intra-layer pairs: ', nv)
                 print('Total number of intra-layer pairs: ', n_intra)
                 print('Total number of inter-layer pairs: ', nl)
-                print('Total number of of pairs (pair-wise translations): ', C, self.C)
+                print('Total number of of pairs (pair-wise translations): ', self.C)
 
             # Prepare data for sparse matrix A
             data = []
@@ -2548,6 +2547,7 @@ class FIBSEM_mosaic_dataset:
         method = kwargs.get('method', 'ECC')
         valid_methods = ['SIFT-ECC', 'SIFT', 'ECC']
 
+
         L = self.nz_tiles
         M = self.ny_tiles
         N = self.nx_tiles
@@ -2565,7 +2565,7 @@ class FIBSEM_mosaic_dataset:
 
         w_sqrt_intra = np.sqrt(self.intralayer_weight)  # because LSQR minimizes ||W^{1/2} (Ax - b)||
         w_sqrt_inter = np.sqrt(self.interlayer_weight)
-        weights = np.concatenate((np.full((nh+nv), w_sqrt_intra), np.full(nl, w_sqrt_inter)))
+        weights = np.concatenate((np.full((self.nh+self.nv), w_sqrt_intra), np.full(self.nl, w_sqrt_inter)))
 
         data = []
         row_ind = []
@@ -2577,6 +2577,7 @@ class FIBSEM_mosaic_dataset:
         # each entry is a single sparse matrix element, there are two elements per pairwise translation condition, they enter with opposite signs
 
         # Horizontal adjacent pairs (intra-layer)
+        '''
         for l in range(L):
             for i in range(M):
                 for j in range(N - 1):
@@ -2608,6 +2609,8 @@ class FIBSEM_mosaic_dataset:
                     row += 1
 
         self.A_csr = csr_matrix((data, (row_ind, col_ind)), shape=(C, V)) # sparse matrix
+        '''
+
 
         if method not in valid_methods:
             if verbose:
@@ -2642,8 +2645,8 @@ class FIBSEM_mosaic_dataset:
         positions = np.zeros((V, 2))
         positions[:, 0] = res_x - res_x[0]
         positions[:, 1] = res_y - res_y[0]
-        self.tr_matr[:, :, 0:2, 2] = positions.reshape((L, M*N, 2))
-        self.tile_positions = -positions.reshape((L, M*N, 2))
+        self.tr_matr[:, :, 0:2, 2] = positions.reshape((self.nz_tiles, self.n_tiles_per_layer, 2))
+        self.tile_positions = -positions.reshape((self.nz_tiles, self.n_tiles_per_layer, 2))
 
         return self.tile_positions
 
