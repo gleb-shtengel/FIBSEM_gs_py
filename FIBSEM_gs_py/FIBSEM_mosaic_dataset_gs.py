@@ -1364,18 +1364,24 @@ class FIBSEM_mosaic_dataset:
             intra_margins_y = []
             for i in range(self.n_tiles_per_layer):
                 for j in range(i + 1, self.n_tiles_per_layer):
-                    dx = abs(self.FirstPixels[j, 0] - self.FirstPixels[i, 0])
-                    dy = abs(self.FirstPixels[j, 1] - self.FirstPixels[i, 1])
-                    x_overlap = self.XResolution - dx
-                    y_overlap = self.YResolution - dy
+                    dx = self.FirstPixels[j, 0] - self.FirstPixels[i, 0]
+                    dy = self.FirstPixels[j, 1] - self.FirstPixels[i, 1]
+                    x_overlap = self.XResolution - abs(dx)
+                    y_overlap = self.YResolution - abs(dy)
                     if x_overlap > 0 and y_overlap > 0:
                         ymargin = min(self.YResolution, max(100, int(2 * y_overlap)))
                         xmargin = min(self.XResolution, max(100, int(2 * x_overlap)))
                         if xmargin < ymargin:
-                            intra_index_pairs_x.append((j, i))
+                            if dx>0:
+                                intra_index_pairs_x.append((j, i))
+                            else:
+                                intra_index_pairs_x.append((i, j))
                             intra_margins_x.append([ymargin, xmargin])
                         else:
-                            intra_index_pairs_y.append((j, i))
+                            if dy>0:
+                                intra_index_pairs_y.append((j, i))
+                            else:
+                                intra_index_pairs_y.append((i, j))
                             intra_margins_y.append([ymargin, xmargin])
             L = self.nz_tiles                
             nh = L * len(intra_index_pairs_x)              # Total number of left-right intra-layer pairs
