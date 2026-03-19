@@ -6354,7 +6354,7 @@ class FIBSEM_frame:
         else:
             metadata_file = kwargs.get('metadata_file', '')
         self.metadata_file = metadata_file
-        image_coordinates_file_default = os.path.join(os.path.split(fname0)[0], 'image_coordinates.txt')
+        image_coordinates_file_default = os.path.join(os.path.split(fname)[0], 'image_coordinates.txt')
         if os.path.exists(image_coordinates_file_default):
             image_coordinates_file = kwargs.get('image_coordinates_file', image_coordinates_file_default)
         else:
