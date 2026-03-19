@@ -6357,7 +6357,7 @@ class FIBSEM_frame:
         fname_suff = Path(fname).suffix.lower()
         if fname_suff == '.tif' or fname_suff == '.tiff':
             def_ftype = 1
-        if fname_suff == '.png' or fname_suff == '.PNG':
+        if fname_suff == '.png':
             def_ftype = 2
         #print('filename suffix: ',fname_suff, ', default filetype: ', def_ftype)
         self.ftype = kwargs.get("ftype", def_ftype) # ftype=0 - Shan Xu's binary format  ftype=1 - tif files

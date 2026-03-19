@@ -1222,7 +1222,14 @@ class FIBSEM_mosaic_dataset:
         image_coordinates_file = kwargs.get('image_coordinates_file', '')
         metadata_file = kwargs.get('metadata_file', '')
         self.data_dir = kwargs.get('data_dir', os.path.split(self.fls.ravel()[0])[0])
-        self.ftype = kwargs.get('ftype', 0) # ftype=0 - Shan Xu's binary format  ftype=1 - tif files, ftype=2 for PNG files
+        def_ftype = 0
+        fname_suff = Path(fname).suffix.lower()
+        if fname_suff == '.tif' or fname_suff == '.tiff':
+            def_ftype = 1
+        if fname_suff == '.png':
+            def_ftype = 2
+        #print('filename suffix: ',fname_suff, ', default filetype: ', def_ftype)
+        self.ftype = kwargs.get("ftype", def_ftype) # ftype=0 - Shan Xu's binary format  ftype=1 - tif files, ftype=2 for PNG files
         self.intralayer_weight = kwargs.get('intralayer_weight', 1.0)
         self.interlayer_weight = kwargs.get('interlayer_weight', 100.0)
         self.add_reverse_edges = kwargs.get('add_reverse_edges', False)
@@ -1304,8 +1311,8 @@ class FIBSEM_mosaic_dataset:
             self.ScanRate = kwargs.get('PixelSize', 1e9/metadata.get('Dwelltime_ns', 100.0))
             self.EHT = kwargs.get('EHT', metadata.get('Landing_Energy_keV', 0))
             self.SEMCurr = kwargs.get('SEMCurr', metadata.get('Beam_Current_pA', 0.0)/1e12)
-            self.XResolution = kwargs.get('XResolution', metadata.get('Width'), xs)
-            self.YResolution = kwargs.get("YResolution", metadata.get('Height'), ys)
+            self.XResolution = kwargs.get('XResolution', metadata.get('Width', xs))
+            self.YResolution = kwargs.get("YResolution", metadata.get('Height', ys))
             self.XResolutions = kwargs.get('XResolutions', np.full(len(fls[0]), self.XResolution))
             self.YResolutions = kwargs.get('YResolutions', np.full(len(fls[0]), self.YResolution))
             self.PixelSize = kwargs.get('PixelSize', metadata.get('Pixelsize_nm', 5.0))
