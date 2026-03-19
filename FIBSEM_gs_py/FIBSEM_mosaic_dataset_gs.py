@@ -1265,6 +1265,7 @@ class FIBSEM_mosaic_dataset:
             metadata_file = kwargs.get('metadata_file', metadata_file_default)
         else:
             metadata_file = kwargs.get('metadata_file', '')
+        self.metadata_file = metadata_file
         if self.ftype == 2 and metadata_file:
             metadata = parse_metadata_file(metadata_file)
             '''

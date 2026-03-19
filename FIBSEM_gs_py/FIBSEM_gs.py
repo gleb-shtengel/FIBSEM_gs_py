@@ -6352,6 +6352,7 @@ class FIBSEM_frame:
             metadata_file = kwargs.get('metadata_file', metadata_file_default)
         else:
             metadata_file = kwargs.get('metadata_file', '')
+        self.metadata_file = metadata_file
         def_ftype = 0
         fname_suff = Path(fname).suffix.lower()
         if fname_suff == '.tif' or fname_suff == '.tiff':
