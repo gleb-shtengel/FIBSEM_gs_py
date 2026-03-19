@@ -1351,8 +1351,8 @@ class FIBSEM_mosaic_dataset:
 
         if image_coordinates_file: # user-defined grid with FirstPixels determined from the image_coordinates_file file
             coord_dict = read_image_coordinates(image_coordinates_file)
-            FirstPixels = [coord_dict[os.path.split(fl)[1]][0:2] for fl in self.fls[0].ravel()]
-            self.FirstPixels = np.array(FirstPixels)
+            FirstPixels = np.array([coord_dict[os.path.split(fl)[1]][0:2] for fl in self.fls[0].ravel()])
+            self.FirstPixels = FirstPixels
             # Find all intra-layer neighbouring pairs by proximity.
             # Two tiles are neighbours if their bounding boxes overlap in both X and Y.
             # This naturally handles hexagonal layouts where each tile has 1 left/right
@@ -1513,9 +1513,9 @@ class FIBSEM_mosaic_dataset:
                         row += 1
 
         self.index_pairs = np.array(col_ind).reshape((row, 2))   # absolute (in 1D sense) tile indices for each pair
-        self.Xoverlap = self.XResolution - (self.FirstPixels[1, 0] - self.FirstPixels[0, 0])
+        self.Xoverlap = int(np.round(self.XResolution - (self.FirstPixels[1, 0] - self.FirstPixels[0, 0])))
         i1, i2 = self.index_pairs[nh, :]
-        self.Yoverlap = self.YResolution - np.abs((self.FirstPixels[i1, 1] - self.FirstPixels[i2, 1]))
+        self.Yoverlap = int(np.round(self.YResolution - np.abs((self.FirstPixels[i1, 1] - self.FirstPixels[i2, 1]))))
         self.pair_margins = [[self.YResolution, 2*self.Xoverlap] for x in np.arange(nh)] + [[2*self.Yoverlap, self.XResolution] for x in np.arange(nv)] + [[self.YResolution, self.XResolution] for x in np.arange(nl)]
         self.A_csr = csr_matrix((data, (row_ind, col_ind)), shape=(C, V)) # sparse matrix
 
@@ -1545,7 +1545,10 @@ class FIBSEM_mosaic_dataset:
         
         # initialize the translation matrix for each tile
         shifts_x = self.FirstPixels[:, 0] - self.FirstPixels[0, 0]
+        shifts_x = shifts_x - np.max(shifts_x)
         shifts_y = self.FirstPixels[:, 1] - self.FirstPixels[0, 1]
+        shifts_y = shifts_y - np.max(shifts_y)
+        self.tile_positions = np.vstack(shifts_x, shifts_y)
         single_layer_tr_matr = np.repeat(eye3x3[np.newaxis, :, :], self.n_tiles_per_layer, axis=0)
         single_layer_tr_matr[:, 0, 2] = - np.array(shifts_x).flatten()
         single_layer_tr_matr[:, 1, 2] = - np.array(shifts_y).flatten()
