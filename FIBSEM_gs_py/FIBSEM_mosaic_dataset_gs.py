@@ -1220,6 +1220,7 @@ class FIBSEM_mosaic_dataset:
             start_time = time.time()
 
         self.fls = np.array(fls)
+        fname0 = self.fls.ravel()[0]
 
         # Try to auto-detect image coordinates file
         image_coordinates_file_default = os.path.join(os.path.split(fname0)[0], 'image_coordinates.txt')
@@ -1236,7 +1237,6 @@ class FIBSEM_mosaic_dataset:
         else:
             metadata_file = kwargs.get('metadata_file', '')
         self.metadata_file = metadata_file
-        fname0 = self.fls.ravel()[0]
         self.data_dir = kwargs.get('data_dir', os.path.split(fname0)[0])
         def_ftype = 0
         fname_suff = Path(fname0).suffix.lower()
@@ -1377,7 +1377,7 @@ class FIBSEM_mosaic_dataset:
         w_sqrt_intra = np.sqrt(self.intralayer_weight)  # because LSQR minimizes ||W^{1/2} (Ax - b)||
         w_sqrt_inter = np.sqrt(self.interlayer_weight)
 
-        if image_coordinates_file: # suser-defined grid with FirstPixels determined from the image_coordinates_file file
+        if image_coordinates_file: # user-defined grid with FirstPixels determined from the image_coordinates_file file
             coord_dict = {}
             with open(image_coordinates_file, 'r') as f:
                 for line in f:
