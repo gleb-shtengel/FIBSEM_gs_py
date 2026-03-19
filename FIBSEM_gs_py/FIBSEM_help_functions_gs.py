@@ -1899,3 +1899,42 @@ def save_i8_mrc_stack(mrc_filename, **kwargs):
     if 'mrc' in fnm_types:
         mrc_new.close()
     return fnms_saved
+
+
+def parse_metadata_file(filename):
+    '''
+    Reads a mSEM metadata ASCII file and returns a dictionary. gleb.shtengel@gmail.com 03/2026.
+    First 3 data lines are returned as strings; all others as floats. Units are appended to key names.
+    '''
+    result = {}
+    
+    with open(filename, 'r', encoding='utf-8') as f:
+        lines = [l.rstrip('\n') for l in f if not l.strip().startswith('-')]
+    
+    line_count = 0
+    for line in lines:
+        if ':' not in line:  # skip lines not containing colon
+            continue
+        colon_pos = line.index(':')
+        key_raw   = line[:colon_pos].strip()
+        value_raw = line[colon_pos + 1:].strip()
+    
+        # Build key: replace spaces and dots with _, collapse multiples
+        key = re.sub(r'[. ]+', '_', key_raw).strip('_')
+        
+        if line_count < 3:
+            result[key] = value_raw
+        else:
+            # Match optional sign, digits, optional decimal, then optional unit
+            m = re.match(r'^([-+]?\d*\.?\d+)\s*(\S*)$', value_raw)
+            if m:
+                num  = float(m.group(1))
+                unit = m.group(2)
+                if unit:
+                    result[key + '_' + unit.replace('µ', 'u')] = num
+                else:
+                    result[key] = num
+            else:
+                result[key] = value_raw
+        line_count += 1
+    return result

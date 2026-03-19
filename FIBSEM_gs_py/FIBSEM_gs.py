@@ -6228,7 +6228,9 @@ class FIBSEM_frame:
     Initialization kwargs:
     ----------
         ftype : int
-            0 - Shan Xu's binary format (default).  1 - tif files
+            0 - Shan Xu's binary format (default),  1 - tif files, 2 - png files (MSEM).
+        metadata_file : str
+            Path to a text file with MSEM acquisition metadata. Will be parsed using parse_metadata_file(filename).
         read_header_only : boolean
             If True, reads only 1024 bit header. Default is False.
         calculate_scaled_images : boolean
@@ -6326,6 +6328,8 @@ class FIBSEM_frame:
         ----------
         ftype : int
             0 - Shan Xu's binary format (default).  1 - tif files
+        metadata_file : str
+            Path to a text file with MSEM acquisition metadata. Will be parsed using parse_metadata_file(filename).
         read_header_only : boolean
             If True, reads only 1024 bit header. Default is False.
         memory_profiling : boolean
@@ -6343,6 +6347,7 @@ class FIBSEM_frame:
             start_time = time.time()
 
         self.fname = fname
+        metadata_file = kwargs.get('metadata_file', '')
         def_ftype = 0
         fname_suff = Path(fname).suffix.lower()
         if fname_suff == '.tif' or fname_suff == '.tiff':
@@ -6370,6 +6375,14 @@ class FIBSEM_frame:
             self.DetB = 'None'     # Name of detector B
             self.EightBit = 1
             
+            if metadata_file:
+                metadata = parse_metadata_file(metadata_file)
+            else:
+                metadata = {}
+
+            PixelSize = metadata.get('Pixelsize_nm', 5.0)
+            ScanRate = 1e9/metadata.get('Dwelltime_ns', 100.0)
+
             self.Sample_ID = kwargs.get("Sample_ID", '')
             self.YResolution, self.XResolution = self.RawImageA.shape
             self.Scaling = np.array([[1.0, 0.0, 1.0, 1.0], [1.0, 0.0, 1.0, 1.0]]).T

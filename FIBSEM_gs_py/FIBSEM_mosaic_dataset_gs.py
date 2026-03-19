@@ -59,45 +59,9 @@ from FIBSEM_gs_py.FIBSEM_help_functions_gs import (check_DASK,
                                                     elapsed_since,
                                                     get_process_memory,
                                                     format_bytes,
-                                                    read_kwargs_xlsx)
+                                                    read_kwargs_xlsx,
+                                                    parse_metadata_file)
 
-def parse_metadata_file(filename):
-    '''
-    Reads a mSEM metadata ASCII file and returns a dictionary. gleb.shtengel@gmail.com 03/2026.
-    First 3 data lines are returned as strings; all others as floats. Units are appended to key names.
-    '''
-    result = {}
-    
-    with open(filename, 'r', encoding='utf-8') as f:
-        lines = [l.rstrip('\n') for l in f if not l.strip().startswith('-')]
-    
-    line_count = 0
-    for line in lines:
-        if ':' not in line:  # skip lines not containing colon
-            continue
-        colon_pos = line.index(':')
-        key_raw   = line[:colon_pos].strip()
-        value_raw = line[colon_pos + 1:].strip()
-    
-        # Build key: replace spaces and dots with _, collapse multiples
-        key = re.sub(r'[. ]+', '_', key_raw).strip('_')
-        
-        if line_count < 3:
-            result[key] = value_raw
-        else:
-            # Match optional sign, digits, optional decimal, then optional unit
-            m = re.match(r'^([-+]?\d*\.?\d+)\s*(\S*)$', value_raw)
-            if m:
-                num  = float(m.group(1))
-                unit = m.group(2)
-                if unit:
-                    result[key + '_' + unit.replace('µ', 'u')] = num
-                else:
-                    result[key] = num
-            else:
-                result[key] = value_raw
-        line_count += 1
-    return result
 
 def build_weight_array(shape, **kwargs):
     '''
@@ -1121,7 +1085,9 @@ class FIBSEM_mosaic_dataset:
             one tile per line: filename  X  Y  (additional columns ignored).
             X and Y are the stage coordinates of the tile's first pixel in pixel units;
             Tiles are matched to fls[0].ravel() by basename.
-            If empty string '' (default), tile positions are read from the .dat file        headers (Option 1). 
+            If empty string '' (default), tile positions are read from the .dat file        headers (Option 1).
+        metadata_file : str
+            Path to a text file with MSEM acquisition metadata. Will be parsed using parse_metadata_file(filename).
         grid : str
             grid for default tiles positions. Default is 'rect' - rectilinear grid, typical for FIB-SEM. Another options is 'hex' - hexagonal, typical for MSEM
         fnm_mosaic_stack : str
@@ -1281,7 +1247,6 @@ class FIBSEM_mosaic_dataset:
                 self.PixelSize = kwargs.get("PixelSize", test_frame.PixelSize)
             else:
                 self.PixelSize = kwargs.get("PixelSize", 8.0)
-            self.voxel_size = np.rec.array((self.PixelSize,  self.PixelSize,  self.PixelSize), dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4')])
             self.DetA = test_frame.DetA
             self.DetB = test_frame.DetB
             self.Notes = test_frame.Notes
@@ -1326,16 +1291,19 @@ class FIBSEM_mosaic_dataset:
             Stage pos. Y target:        -23813.574µm
             Stage pos. Z target:        39405.312µm
             '''
-            self.ScanRate = metadata['Scanspeed']
-            self.EHT = metadata['Landing_Energy_keV']
-            self.SEMCurr = metadata['Beam_Current_pA'] / 1e12
-            self.XResolution = kwargs.get("XResolution", metadata['Width'])
-            self.YResolution = kwargs.get("YResolution", metadata['Height'])
-            self.XResolutions = kwargs.get('XResolutions', np.full(len(fls[0]), metadata['Width']))
-            self.YResolutions = kwargs.get('YResolutions', np.full(len(fls[0]), metadata['Height']))
-            self.PixelSize = kwargs.get("PixelSize", metadata['Pixelsize_nm'])
-            self.EightBit = kwargs.get("EightBit", 1)
-
+            test_frame = FIBSEM_frame(self.fls.ravel()[0], ftype = 2)
+            self.metadata = metadata
+            ys, xs = test_frame.RawImageA.shape
+            self.ScanRate = kwargs.get('PixelSize', 1e9/metadata.get('Dwelltime_ns', 100.0))
+            self.EHT = kwargs.get('EHT', metadata.get('Landing_Energy_keV', 0))
+            self.SEMCurr = kwargs.get('SEMCurr', metadata.get('Beam_Current_pA')/1e12, 0.0)
+            self.XResolution = kwargs.get('XResolution', metadata.get('Width'), xs)
+            self.YResolution = kwargs.get("YResolution", metadata.get('Height'), ys)
+            self.XResolutions = kwargs.get('XResolutions', np.full(len(fls[0]), self.XResolution))
+            self.YResolutions = kwargs.get('YResolutions', np.full(len(fls[0]), self.YResolution))
+            self.PixelSize = kwargs.get('PixelSize', metadata.get('Pixelsize_nm', 5.0))
+            self.EightBit = kwargs.get('EightBit', 1)
+        self.voxel_size = np.rec.array((self.PixelSize,  self.PixelSize,  self.PixelSize), dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4')])
         self.DASK_client_retries = kwargs.get("DASK_client_retries", 3)
         self.thr_min = kwargs.get("thr_min", 1e-3)
         self.thr_max = kwargs.get("thr_max", 1e-3)
