@@ -9,6 +9,7 @@ import socket
 import platform
 import pickle
 import re
+from pathlib import Path
 
 from scipy.sparse import csr_matrix
 from scipy.sparse.linalg import lsqr
