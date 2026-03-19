@@ -1389,6 +1389,7 @@ class FIBSEM_mosaic_dataset:
             nl = (L - 1) * self.n_tiles_per_layer
             self.nl = nl
             C = n_intra + nl
+            self.C = self.nh + self.nv + self.nl
             V = L * self.n_tiles_per_layer                     # Total number of tiles
 
             if verbose:
@@ -1397,7 +1398,7 @@ class FIBSEM_mosaic_dataset:
                 print('Total number of up-down intra-layer pairs: ', nv)
                 print('Total number of intra-layer pairs: ', n_intra)
                 print('Total number of inter-layer pairs: ', nl)
-                print('Total number of of pairs (pair-wise translations): ', C)
+                print('Total number of of pairs (pair-wise translations): ', C, self.C)
 
             # Prepare data for sparse matrix A
             data = []
@@ -1467,6 +1468,7 @@ class FIBSEM_mosaic_dataset:
             nl = (L - 1) * M * N              # Total number of inter-layer pairs
             self.nl = nl
             C = nh + nv + nl                  # Total number of of pairs (pair-wise translations)
+            self.C = self.nh + self.nv + self.nl
             if verbose:
                 print('Total number of tiles: ', V)
                 print('Total number of left-right intra-layer pairs: ', nh)
@@ -2062,12 +2064,12 @@ class FIBSEM_mosaic_dataset:
             nl = (L - 1) * M * N              # Total number of inter-layer pairs
             C = nh + nv + nl                  # Total number of of pairs (pair-wise translations)
             '''
-            C = self.nh + self.nv + self.nl
+            
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intra-layer horisontal matches :', np.mean(self.SIFT_nmatches[0:self.nh]).astype(np.int64))
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intra-layer vertical matches :', np.mean(self.SIFT_nmatches[self.nh:self.nh+self.nv]).astype(np.int64))
-            if nl > 0:
+            if self.nl > 0:
                 print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for inter-layer matches :', np.mean(self.SIFT_nmatches[self.nh+self.nv:]).astype(np.int64))
-            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   {:d} out of {:d} SIFT transformations are valid  (SIFT_nmatches > {:d})'.format(np.sum(self.SIFT_transformation_valid), C, SIFT_nmatches_min))
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   {:d} out of {:d} SIFT transformations are valid  (SIFT_nmatches > {:d})'.format(np.sum(self.SIFT_transformation_valid), self.C, SIFT_nmatches_min))
         return transformations_results_3D
 
 
