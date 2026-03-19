@@ -2553,7 +2553,7 @@ class FIBSEM_mosaic_dataset:
         method = kwargs.get('method', 'ECC')
         valid_methods = ['SIFT-ECC', 'SIFT', 'ECC']
 
-
+        '''
         L = self.nz_tiles
         M = self.ny_tiles
         N = self.nx_tiles
@@ -2583,7 +2583,7 @@ class FIBSEM_mosaic_dataset:
         # each entry is a single sparse matrix element, there are two elements per pairwise translation condition, they enter with opposite signs
 
         # Horizontal adjacent pairs (intra-layer)
-        '''
+        
         for l in range(L):
             for i in range(M):
                 for j in range(N - 1):
@@ -2617,15 +2617,14 @@ class FIBSEM_mosaic_dataset:
         self.A_csr = csr_matrix((data, (row_ind, col_ind)), shape=(C, V)) # sparse matrix
         '''
 
-
         if method not in valid_methods:
             if verbose:
                 print('Method ' + method +' is not among valid methods: ', valid_methods)
             return np.nan
         else:
             if method == 'SIFT':
-                self.SIFT_residual_error_x = np.full(C, np.nan)
-                self.SIFT_residual_error_y = np.full(C, np.nan)
+                self.SIFT_residual_error_x = np.full(self.C, np.nan)
+                self.SIFT_residual_error_y = np.full(self.C, np.nan)
                 bx = self.SIFT_transformation_matrices[:, 0, 2] * weights
                 by = self.SIFT_transformation_matrices[:, 1, 2] * weights
                 res_x_all = lsqr(self.A_csr[self.SIFT_transformation_valid], bx[self.SIFT_transformation_valid])
@@ -2636,8 +2635,8 @@ class FIBSEM_mosaic_dataset:
                 self.SIFT_r2norm_x = res_x_all[4]
                 self.SIFT_r2norm_y = res_y_all[4]
             else:
-                self.ECC_residual_error_x = np.full(C, np.nan)
-                self.ECC_residual_error_y = np.full(C, np.nan)
+                self.ECC_residual_error_x = np.full(self.C, np.nan)
+                self.ECC_residual_error_y = np.full(self.C, np.nan)
                 bx = self.ECC_transformation_matrices[:, 0, 2] * weights
                 by = self.ECC_transformation_matrices[:, 1, 2] * weights
                 res_x_all = lsqr(self.A_csr[self.ECC_transformation_valid], bx[self.ECC_transformation_valid])
