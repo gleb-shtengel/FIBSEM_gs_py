@@ -1536,22 +1536,17 @@ class FIBSEM_mosaic_dataset:
             #print('Index of the top-left pair in the last Z-layer: ', (L -1)* M * (N - 1))
     
         if image_coordinates_file:
-            self.Xsize = int(np.round(np.max(self.FirstPixels[:, 0]) - np.min(self.FirstPixels[0, 0]) + self.XResolution))
-            self.Ysize = int(np.round(np.max(self.FirstPixels[:, 1]) - np.min(self.FirstPixels[0, 1]) + self.YResolution))
+            self.Xsize = int(np.round(np.max(self.FirstPixels[:, 0]) - np.min(self.FirstPixels[:, 0]) + self.XResolution))
+            self.Ysize = int(np.round(np.max(self.FirstPixels[:, 1]) - np.min(self.FirstPixels[:, 1]) + self.YResolution))
         else:
             # initialize the montage size (assuming rectangular shape)
             self.Xsize = self.shape[1] * (self.XResolution - self.Xoverlap) + self.Xoverlap
             self.Ysize = self.shape[0] * (self.YResolution - self.Yoverlap) + self.Yoverlap
         
         # initialize the translation matrix for each tile
-        shifts_x = self.FirstPixels[:, 0] - self.FirstPixels[0, 0]
-        shifts_x = shifts_x - np.max(shifts_x)
-        shifts_y = self.FirstPixels[:, 1] - self.FirstPixels[0, 1]
-        shifts_y = shifts_y - np.max(shifts_y)
-        try:
-            self.tile_positions = np.vstack((shifts_x, shifts_y))
-        except:
-            print(np.shape(shifts_x))
+        shifts_x = self.FirstPixels[:, 0] - np.min(self.FirstPixels[:, 0])
+        shifts_y = self.FirstPixels[:, 1] - np.min(self.FirstPixels[:, 1])
+        self.tile_positions = np.repeat(np.vstack((shifts_x, shifts_y)).T[np.newaxis, : :], L, axis=0)
         single_layer_tr_matr = np.repeat(eye3x3[np.newaxis, :, :], self.n_tiles_per_layer, axis=0)
         single_layer_tr_matr[:, 0, 2] = - np.array(shifts_x).flatten()
         single_layer_tr_matr[:, 1, 2] = - np.array(shifts_y).flatten()
