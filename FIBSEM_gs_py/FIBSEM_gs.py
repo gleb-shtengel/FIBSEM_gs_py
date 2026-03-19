@@ -6383,9 +6383,10 @@ class FIBSEM_frame:
                 metadata = parse_metadata_file(metadata_file)
             else:
                 metadata = {}
+            self.metadata = metadata
 
-            PixelSize = metadata.get('Pixelsize_nm', 5.0)
-            ScanRate = 1e9/metadata.get('Dwelltime_ns', 100.0)
+            self.PixelSize = metadata.get('Pixelsize_nm', 5.0)
+            self.ScanRate = 1e9/metadata.get('Dwelltime_ns', 100.0)
 
             self.Sample_ID = kwargs.get("Sample_ID", '')
             self.YResolution, self.XResolution = self.RawImageA.shape
