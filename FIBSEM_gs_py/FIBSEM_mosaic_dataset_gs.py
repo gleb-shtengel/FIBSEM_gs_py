@@ -1372,13 +1372,13 @@ class FIBSEM_mosaic_dataset:
                         ymargin = min(self.YResolution, max(100, int(2 * y_overlap)))
                         xmargin = min(self.XResolution, max(100, int(2 * x_overlap)))
                         if xmargin < ymargin:
-                            if dx>0:
+                            if dx<0:
                                 intra_index_pairs_x.append((j, i))
                             else:
                                 intra_index_pairs_x.append((i, j))
                             intra_margins_x.append([ymargin, xmargin])
                         else:
-                            if dy>0:
+                            if dy<0:
                                 intra_index_pairs_y.append((j, i))
                             else:
                                 intra_index_pairs_y.append((i, j))
