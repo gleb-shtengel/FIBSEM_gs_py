@@ -6231,6 +6231,7 @@ class FIBSEM_frame:
             0 - Shan Xu's binary format (default),  1 - tif files, 2 - png files (MSEM).
         metadata_file : str
             Path to a text file with MSEM acquisition metadata. Will be parsed using parse_metadata_file(filename).
+            If that kwarg is missing, the program will search for a file metadata.txt in the same directory. If found, will use it.
         read_header_only : boolean
             If True, reads only 1024 bit header. Default is False.
         calculate_scaled_images : boolean
@@ -6345,9 +6346,12 @@ class FIBSEM_frame:
         if memory_profiling:
             rss_before, vms_before, shared_before = get_process_memory()
             start_time = time.time()
-
         self.fname = fname
-        metadata_file = kwargs.get('metadata_file', '')
+        metadata_file_default = os.path.join(os.path.split(fname)[0], 'metadata.txt')
+        if os.path.exists(metadata_file_default):
+            metadata_file = kwargs.get('metadata_file', metadata_file_default)
+        else:
+            metadata_file = kwargs.get('metadata_file', '')
         def_ftype = 0
         fname_suff = Path(fname).suffix.lower()
         if fname_suff == '.tif' or fname_suff == '.tiff':

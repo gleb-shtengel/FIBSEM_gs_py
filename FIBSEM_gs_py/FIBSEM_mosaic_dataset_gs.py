@@ -1259,6 +1259,12 @@ class FIBSEM_mosaic_dataset:
             self.ContrastB = test_frame.ContrastB
             self.Sample_ID = kwargs.get("Sample_ID", test_frame.Sample_ID)
             self.EightBit = kwargs.get("EightBit", test_frame.EightBit)
+        if self.ftype ==2:
+            metadata_file_default = os.path.join(os.path.split(self.fls.ravel()[0])[0], 'metadata.txt')
+        if os.path.exists(metadata_file_default):
+            metadata_file = kwargs.get('metadata_file', metadata_file_default)
+        else:
+            metadata_file = kwargs.get('metadata_file', '')
         if self.ftype == 2 and metadata_file:
             metadata = parse_metadata_file(metadata_file)
             '''
