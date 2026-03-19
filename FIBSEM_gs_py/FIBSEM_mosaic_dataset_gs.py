@@ -1379,12 +1379,15 @@ class FIBSEM_mosaic_dataset:
                             intra_margins_y.append([ymargin, xmargin])
             L = self.nz_tiles                
             nh = L * len(intra_index_pairs_x)              # Total number of left-right intra-layer pairs
+            self.nh = nh
             nv = L * len(intra_index_pairs_y)              # Total number of up-down intra-layer pairs
+            self.nv = nv
             intra_index_pairs = np.array(intra_index_pairs_x + intra_index_pairs_y)
             intra_margins = intra_margins_x + intra_margins_y
             n_intra_single_layer = len(intra_index_pairs)
             n_intra = L * n_intra_single_layer
             nl = (L - 1) * self.n_tiles_per_layer
+            self.nl = nl
             C = n_intra + nl
             V = L * self.n_tiles_per_layer                     # Total number of tiles
 
@@ -1457,9 +1460,12 @@ class FIBSEM_mosaic_dataset:
             N = self.nx_tiles
             V = L * M * N                     # Total number of tiles
             nh = L * M * (N - 1)              # Total number of left-right intra-layer pairs
+            self.nh = nh
             nv = L * (M - 1) * N              # Total number of up-down intra-layer pairs
+            self.nv = nv
             n_intra = nh + nv
             nl = (L - 1) * M * N              # Total number of inter-layer pairs
+            self.nl = nl
             C = nh + nv + nl                  # Total number of of pairs (pair-wise translations)
             if verbose:
                 print('Total number of tiles: ', V)
@@ -2046,7 +2052,7 @@ class FIBSEM_mosaic_dataset:
                     if verbose:
                         print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   An error occurred: {}'.format(e))
                         print('transformations_result:  ', transformations_result)
-
+            '''
             L = self.nz_tiles
             M = self.ny_tiles
             N = self.nx_tiles
@@ -2055,10 +2061,12 @@ class FIBSEM_mosaic_dataset:
             nv = L * (M - 1) * N              # Total number of up-down intra-layer pairs
             nl = (L - 1) * M * N              # Total number of inter-layer pairs
             C = nh + nv + nl                  # Total number of of pairs (pair-wise translations)
-            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intra-layer horisontal matches :', np.mean(self.SIFT_nmatches[0:nh]).astype(np.int64))
-            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intra-layer vertical matches :', np.mean(self.SIFT_nmatches[nh:nh+nv]).astype(np.int64))
+            '''
+            C = self.nh + self.nv + self.nl
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intra-layer horisontal matches :', np.mean(self.SIFT_nmatches[0:self.nh]).astype(np.int64))
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intra-layer vertical matches :', np.mean(self.SIFT_nmatches[self.nh:self.nh+self.nv]).astype(np.int64))
             if nl > 0:
-                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for inter-layer matches :', np.mean(self.SIFT_nmatches[nh+nv:]).astype(np.int64))
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for inter-layer matches :', np.mean(self.SIFT_nmatches[self.nh+self.nv:]).astype(np.int64))
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   {:d} out of {:d} SIFT transformations are valid  (SIFT_nmatches > {:d})'.format(np.sum(self.SIFT_transformation_valid), C, SIFT_nmatches_min))
         return transformations_results_3D
 
