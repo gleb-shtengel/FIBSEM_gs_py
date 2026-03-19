@@ -1350,7 +1350,7 @@ class FIBSEM_mosaic_dataset:
 
         if image_coordinates_file: # user-defined grid with FirstPixels determined from the image_coordinates_file file
             coord_dict = read_image_coordinates(image_coordinates_file)
-            FirstPixels = [coord_dict[os.path.split(fl)[1]][1:3] for fl in self.fls[0].ravel()]
+            FirstPixels = [coord_dict[os.path.split(fl)[1]][0:2] for fl in self.fls[0].ravel()]
             self.FirstPixels = np.array(FirstPixels)
             # Find all intra-layer neighbouring pairs by proximity.
             # Two tiles are neighbours if their bounding boxes overlap in both X and Y.

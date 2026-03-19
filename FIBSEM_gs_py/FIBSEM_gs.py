@@ -6362,7 +6362,7 @@ class FIBSEM_frame:
         self.image_coordinates_file = image_coordinates_file
         if os.path.exists(image_coordinates_file):
             coord_dict = read_image_coordinates(image_coordinates_file)
-            self.FirstPixelX, self.FirstPixelY = coord_dict[os.path.split(fname)[1]][1:3]
+            self.FirstPixelX, self.FirstPixelY = coord_dict[os.path.split(fname)[1]][0:2]
         def_ftype = 0
         fname_suff = Path(fname).suffix.lower()
         if fname_suff == '.tif' or fname_suff == '.tiff':
