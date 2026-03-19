@@ -2647,7 +2647,7 @@ class FIBSEM_mosaic_dataset:
                 self.ECC_r2norm_y = res_y_all[4]
         res_x = res_x_all[0]
         res_y = res_y_all[0]
-        positions = np.zeros((V, 2))
+        positions = np.zeros((self.nz_tiles * self.n_tiles_per_layer, 2))
         positions[:, 0] = res_x - res_x[0]
         positions[:, 1] = res_y - res_y[0]
         self.tr_matr[:, :, 0:2, 2] = positions.reshape((self.nz_tiles, self.n_tiles_per_layer, 2))
