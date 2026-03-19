@@ -1714,7 +1714,7 @@ class FIBSEM_mosaic_dataset:
         self.YResolution = np.max(self.YResolutions)
         
         MillingYVoltage = self.FIBSEM_Data[6]
-        frame_inds_ext = np.repeat(np.array(frame_inds), self.nx_tiles*self.ny_tiles)
+        frame_inds_ext = np.repeat(np.array(frame_inds), self.n_tiles_per_layer)
 
         try:
             WD_fit_coef = np.polyfit(frame_inds_ext, WD, 1)
@@ -2012,7 +2012,7 @@ class FIBSEM_mosaic_dataset:
                 _, f2 = os.path.split(fname2)
                 fnm_matches = os.path.join(path_base, f1.replace('_kpdes.bin', '_')+f2.replace('_kpdes.bin', '_matches.bin'))
                 dt_kwargs['fnm_matches'] = fnm_matches
-                index_loc0, index_loc1 = np.mod(index_pair, self.nx_tiles*self.ny_tiles)
+                index_loc0, index_loc1 = np.mod(index_pair, self.n_tiles_per_layer)
                 FirstPixels_delta = self.FirstPixels[index_loc1] - self.FirstPixels[index_loc0]
                 ymargin, xmargin = pair_margins
                 dt_kwargs['warp_matrix'] = np.array([[1, 0, -FirstPixels_delta[0]], [0, 1, -FirstPixels_delta[1]]], dtype=np.float32)
@@ -2261,7 +2261,7 @@ class FIBSEM_mosaic_dataset:
             print('Key-point matches file:')
             print(fnm_matches)
         dt_kwargs['fnm_matches'] = fnm_matches
-        index_loc0, index_loc1 = np.mod(index_pair, self.nx_tiles*self.ny_tiles)
+        index_loc0, index_loc1 = np.mod(index_pair, self.n_tiles_per_layer)
         FirstPixels_delta = self.FirstPixels[index_loc1] - self.FirstPixels[index_loc0]
         ymargin, xmargin = pair_margins
         dt_kwargs['warp_matrix'] = np.array([[1, 0, -FirstPixels_delta[0]], [0, 1, -FirstPixels_delta[1]]], dtype=np.float32)
@@ -2485,7 +2485,7 @@ class FIBSEM_mosaic_dataset:
                      'verbose' : verbose}
             fname1 = fls[index_pair[0]]
             fname2 = fls[index_pair[1]]
-            index_loc0, index_loc1 = np.mod(index_pair, self.nx_tiles*self.ny_tiles)
+            index_loc0, index_loc1 = np.mod(index_pair, self.n_tiles_per_layer)
             FirstPixels_delta = self.FirstPixels[index_loc1] - self.FirstPixels[index_loc0]
             ymargin, xmargin = pair_margins
             dt_kwargs['warp_matrix'] = np.array([[1, 0, -FirstPixels_delta[0]], [0, 1, -FirstPixels_delta[1]]], dtype=np.float32)
@@ -2764,7 +2764,10 @@ class FIBSEM_mosaic_dataset:
         layer_mosaics, layer_id, layer_mosaic_weights, xy_limits
         
         '''
-        ifDetB = (self.DetB != 'None')
+        if hasattr(self, 'DetB'):
+            ifDetB = (self.DetB != 'None')
+        else:
+            ifDetB = False
         image_names = ['RawImageA']
         if ifDetB:
             image_names.append('RawImageB')
