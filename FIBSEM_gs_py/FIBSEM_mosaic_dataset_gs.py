@@ -1266,7 +1266,6 @@ class FIBSEM_mosaic_dataset:
             self.YResolution = kwargs.get("YResolution", test_frame.YResolution)
             self.XResolutions = kwargs.get('XResolutions', np.full(len(fls[0]), test_frame.XResolution))
             self.YResolutions = kwargs.get('YResolutions', np.full(len(fls[0]), test_frame.YResolution))
-            self.Scaling = kwargs.get("Scaling", test_frame.Scaling)
             if hasattr(test_frame, 'PixelSize'):
                 self.PixelSize = kwargs.get("PixelSize", test_frame.PixelSize)
             else:
@@ -1300,6 +1299,7 @@ class FIBSEM_mosaic_dataset:
             self.PixelSize = kwargs.get('PixelSize', metadata.get('Pixelsize_nm', 5.0))
             self.EightBit = kwargs.get('EightBit', 1)
             self.Sample_ID = kwargs.get("Sample_ID",  metadata.get('Experiment', ''))
+        self.Scaling = kwargs.get("Scaling", test_frame.Scaling)
         self.voxel_size = np.rec.array((self.PixelSize,  self.PixelSize,  self.PixelSize), dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4')])
         self.DASK_client_retries = kwargs.get("DASK_client_retries", 3)
         self.thr_min = kwargs.get("thr_min", 1e-3)
@@ -1372,10 +1372,10 @@ class FIBSEM_mosaic_dataset:
                         ymargin = min(self.YResolution, max(100, int(2 * y_overlap)))
                         xmargin = min(self.XResolution, max(100, int(2 * x_overlap)))
                         if xmargin < ymargin:
-                            intra_index_pairs_x.append((i, j))
+                            intra_index_pairs_x.append((j, i))
                             intra_margins_x.append([ymargin, xmargin])
                         else:
-                            intra_index_pairs_y.append((i, j))
+                            intra_index_pairs_y.append((j, i))
                             intra_margins_y.append([ymargin, xmargin])
             L = self.nz_tiles                
             nh = L * len(intra_index_pairs_x)              # Total number of left-right intra-layer pairs
