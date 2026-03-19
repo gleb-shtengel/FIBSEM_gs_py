@@ -1222,9 +1222,10 @@ class FIBSEM_mosaic_dataset:
         self.fls = np.array(fls)
         image_coordinates_file = kwargs.get('image_coordinates_file', '')
         metadata_file = kwargs.get('metadata_file', '')
-        self.data_dir = kwargs.get('data_dir', os.path.split(self.fls.ravel()[0])[0])
+        fname0 = self.fls.ravel()[0]
+        self.data_dir = kwargs.get('data_dir', os.path.split(fname0)[0])
         def_ftype = 0
-        fname_suff = Path(fname).suffix.lower()
+        fname_suff = Path(fname0).suffix.lower()
         if fname_suff == '.tif' or fname_suff == '.tiff':
             def_ftype = 1
         if fname_suff == '.png':
@@ -1236,7 +1237,7 @@ class FIBSEM_mosaic_dataset:
         self.add_reverse_edges = kwargs.get('add_reverse_edges', False)
         self.U8_conversion = kwargs.get('U8_conversion', 'local')
         if self.ftype == 0:
-            test_frame = FIBSEM_frame(self.fls.ravel()[0], ftype = self.ftype, calculate_scaled_images=False, read_header_only=True)
+            test_frame = FIBSEM_frame(fname0, ftype = self.ftype, calculate_scaled_images=False, read_header_only=True)
             self.MachineID = test_frame.MachineID
             self.FileVersion = test_frame.FileVersion
             self.ScanRate = test_frame.ScanRate
@@ -1268,7 +1269,7 @@ class FIBSEM_mosaic_dataset:
             self.Sample_ID = kwargs.get("Sample_ID", test_frame.Sample_ID)
             self.EightBit = kwargs.get("EightBit", test_frame.EightBit)
         if self.ftype ==2:
-            metadata_file_default = os.path.join(os.path.split(self.fls.ravel()[0])[0], 'metadata.txt')
+            metadata_file_default = os.path.join(os.path.split(fname0)[0], 'metadata.txt')
         if os.path.exists(metadata_file_default):
             metadata_file = kwargs.get('metadata_file', metadata_file_default)
         else:
@@ -1306,7 +1307,7 @@ class FIBSEM_mosaic_dataset:
             Stage pos. Y target:        -23813.574µm
             Stage pos. Z target:        39405.312µm
             '''
-            test_frame = FIBSEM_frame(self.fls.ravel()[0], ftype = 2)
+            test_frame = FIBSEM_frame(fname0, ftype = 2)
             self.metadata = metadata
             ys, xs = test_frame.RawImageA.shape
             self.ScanRate = kwargs.get('PixelSize', 1e9/metadata.get('Dwelltime_ns', 100.0))
@@ -1356,7 +1357,7 @@ class FIBSEM_mosaic_dataset:
                                                                     #    cv2.INTER_LANCZOS4  Uses a Lanczos kernel with an 8x8 neighborhood, providing the best quality, but it is the slowest method.
 
         try:
-            fnm_mosaic_stack_default = os.path.splitext(os.path.split(self.fls.ravel()[0])[1])[0][0:-5] + 'mosaic_stack.mrc'
+            fnm_mosaic_stack_default = os.path.splitext(os.path.split(fname0)[1])[0][0:-5] + 'mosaic_stack.mrc'
         except:
             fnm_mosaic_stack_default = 'mosaic_stack.mrc'
         self.fnm_mosaic_stack = kwargs.get('fnm_mosaic_stack', fnm_mosaic_stack_default)
