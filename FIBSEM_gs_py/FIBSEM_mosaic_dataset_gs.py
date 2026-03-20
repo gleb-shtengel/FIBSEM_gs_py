@@ -2646,8 +2646,8 @@ class FIBSEM_mosaic_dataset:
         res_x = res_x_all[0]
         res_y = res_y_all[0]
         positions = np.zeros((self.nz_tiles * self.n_tiles_per_layer, 2))
-        positions[:, 0] = res_x - res_x[0]
-        positions[:, 1] = res_y - res_y[0]
+        positions[:, 0] = res_x - np.min(res_x)
+        positions[:, 1] = res_y - np.min(res_y)
         self.tr_matr[:, :, 0:2, 2] = positions.reshape((self.nz_tiles, self.n_tiles_per_layer, 2))
         self.tile_positions = -positions.reshape((self.nz_tiles, self.n_tiles_per_layer, 2))
 
@@ -2660,6 +2660,8 @@ class FIBSEM_mosaic_dataset:
         
         kwargs:
         ----------
+        tile_id : int
+            tile ID to sho
         save_png : boolean
             If True (default), the plot is saved into PNG file.
         dpi : int
@@ -2701,7 +2703,7 @@ class FIBSEM_mosaic_dataset:
             my_col = plt.get_cmap("gist_rainbow_r")((n_tiles_per_layer-k)/(n_tiles_per_layer-1))
             tile_positions_xk = tile_positions_x[:, k]
             tile_positions_yk = tile_positions_y[:, k]
-            if k == self.nx_tiles*tile_id[0]+tile_id[1]:
+            if k == tile_id
                 axs[0].plot(frame_inds, tile_positions_xk, color=my_col, marker='x', markersize=4, label='Tile ({:d},{:d}), X-shift'.format(*tile_id))
                 axs[1].plot(frame_inds, tile_positions_yk, color=my_col, marker='x', markersize=4, label='Tile ({:d},{:d}), Y-shift'.format(*tile_id))
                 axs[2].plot(frame_inds, tile_positions_xk, color='red', label='Tile ({:d},{:d}), X-shift'.format(*tile_id))
