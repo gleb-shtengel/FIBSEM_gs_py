@@ -1357,9 +1357,7 @@ class FIBSEM_mosaic_dataset:
             # neighbour and up to 2 top/bottom neighbours.
 
             intra_index_pairs_x = []
-            intra_margins_x = []
             intra_index_pairs_y = []
-            intra_margins_y = []
             for i in range(self.n_tiles_per_layer):
                 for j in range(i + 1, self.n_tiles_per_layer):
                     dx = self.FirstPixels[j, 0] - self.FirstPixels[i, 0]
@@ -1374,22 +1372,16 @@ class FIBSEM_mosaic_dataset:
                                 intra_index_pairs_x.append((j, i))
                             else:
                                 intra_index_pairs_x.append((i, j))
-                            intra_margins_x.append([ymargin, xmargin])
                         else:
                             if dy<0:
                                 intra_index_pairs_y.append((j, i))
                             else:
                                 intra_index_pairs_y.append((i, j))
-                            intra_margins_y.append([ymargin, xmargin])
             L = self.nz_tiles                
             nh = L * len(intra_index_pairs_x)              # Total number of left-right intra-layer pairs
             self.nh = nh
             nv = L * len(intra_index_pairs_y)              # Total number of up-down intra-layer pairs
             self.nv = nv
-            intra_index_pairs = np.array(intra_index_pairs_x + intra_index_pairs_y)
-            intra_margins = intra_margins_x + intra_margins_y
-            n_intra_single_layer = len(intra_index_pairs)
-            n_intra = L * n_intra_single_layer
             nl = (L - 1) * self.n_tiles_per_layer
             self.nl = nl
             self.C = self.nh + self.nv + self.nl
@@ -1397,10 +1389,10 @@ class FIBSEM_mosaic_dataset:
 
             if verbose:
                 print('Total number of tiles: ', V)
-                print('Total number of left-right intra-layer pairs: ', nh)
-                print('Total number of up-down intra-layer pairs: ', nv)
-                print('Total number of intra-layer pairs: ', n_intra)
-                print('Total number of inter-layer pairs: ', nl)
+                print('Total number of left-right intra-layer pairs: ', self.nh)
+                print('Total number of up-down intra-layer pairs: ', self.nv)
+                print('Total number of intra-layer pairs: ', self.nh + self.nv)
+                print('Total number of inter-layer pairs: ', self.nl)
                 print('Total number of of pairs (pair-wise translations): ', self.C)
 
             # Prepare data for sparse matrix A
@@ -1415,9 +1407,17 @@ class FIBSEM_mosaic_dataset:
 
             # Intra-layer adjacent pairs
             for l in range(L):
-                for i in range(n_intra_single_layer):    
-                    idx1 = l * self.n_tiles_per_layer + intra_index_pairs[i, 0]
-                    idx2 = l * self.n_tiles_per_layer + intra_index_pairs[i, 1]
+                for i in range(self.nh):    
+                    idx1 = l * self.n_tiles_per_layer + intra_index_pairs_x[i, 0]
+                    idx2 = l * self.n_tiles_per_layer + intra_index_pairs_x[i, 1]
+                    row_ind.extend([row, row])
+                    col_ind.extend([idx1, idx2])
+                    data.extend([-w_sqrt_intra, w_sqrt_intra])
+                    row += 1
+            for l in range(L):
+                for i in range(self.nv):    
+                    idx1 = l * self.n_tiles_per_layer + intra_index_pairs_y[i, 0]
+                    idx2 = l * self.n_tiles_per_layer + intra_index_pairs_y[i, 1]
                     row_ind.extend([row, row])
                     col_ind.extend([idx1, idx2])
                     data.extend([-w_sqrt_intra, w_sqrt_intra])
@@ -1467,7 +1467,6 @@ class FIBSEM_mosaic_dataset:
             self.nh = nh
             nv = L * (M - 1) * N              # Total number of up-down intra-layer pairs
             self.nv = nv
-            n_intra = nh + nv
             nl = (L - 1) * M * N              # Total number of inter-layer pairs
             self.nl = nl
             C = nh + nv + nl                  # Total number of of pairs (pair-wise translations)
@@ -1476,7 +1475,7 @@ class FIBSEM_mosaic_dataset:
                 print('Total number of tiles: ', V)
                 print('Total number of left-right intra-layer pairs: ', nh)
                 print('Total number of up-down intra-layer pairs: ', nv)
-                print('Total number of intra-layer pairs: ', n_intra)
+                print('Total number of intra-layer pairs: ', nh + nv)
                 print('Total number of inter-layer pairs: ', nl)
                 print('Total number of of pairs (pair-wise translations): ', C)
 
@@ -1528,7 +1527,7 @@ class FIBSEM_mosaic_dataset:
         self.Xoverlap = int(np.round(self.XResolution - np.abs(self.FirstPixels[j1, 0] - self.FirstPixels[j2, 0])))
         i1, i2 = np.mod(self.index_pairs[self.nh, :], self.n_tiles_per_layer)
         self.Yoverlap = int(np.round(self.YResolution - np.abs(self.FirstPixels[i1, 1] - self.FirstPixels[i2, 1])))
-        self.pair_margins = [[self.YResolution, 2*self.Xoverlap] for x in np.arange(nh)] + [[2*self.Yoverlap, self.XResolution] for x in np.arange(nv)] + [[self.YResolution, self.XResolution] for x in np.arange(nl)]
+        self.pair_margins = [[self.YResolution, 2*self.Xoverlap] for x in np.arange(self.nh)] + [[2*self.Yoverlap, self.XResolution] for x in np.arange(self.nv)] + [[self.YResolution, self.XResolution] for x in np.arange(self.nl)]
         self.A_csr = csr_matrix((data, (row_ind, col_ind)), shape=(self.C, V)) # sparse matrix
 
         eye3x3 = np.eye(3,3)
