@@ -2646,8 +2646,8 @@ class FIBSEM_mosaic_dataset:
         res_x = res_x_all[0]
         res_y = res_y_all[0]
         positions = np.zeros((self.nz_tiles * self.n_tiles_per_layer, 2))
-        positions[:, 0] = res_x - np.min(res_x)
-        positions[:, 1] = res_y - np.min(res_y)
+        positions[:, 0] = res_x - np.max(res_x)
+        positions[:, 1] = res_y - np.max(res_y)
         self.tr_matr[:, :, 0:2, 2] = positions.reshape((self.nz_tiles, self.n_tiles_per_layer, 2))
         self.tile_positions = -positions.reshape((self.nz_tiles, self.n_tiles_per_layer, 2))
 
@@ -2704,10 +2704,10 @@ class FIBSEM_mosaic_dataset:
             tile_positions_xk = tile_positions_x[:, k]
             tile_positions_yk = tile_positions_y[:, k]
             if k == tile_id:
-                axs[0].plot(frame_inds, tile_positions_xk, color=my_col, marker='x', markersize=4, label='Tile ({:d},{:d}), X-shift'.format(*tile_id))
-                axs[1].plot(frame_inds, tile_positions_yk, color=my_col, marker='x', markersize=4, label='Tile ({:d},{:d}), Y-shift'.format(*tile_id))
-                axs[2].plot(frame_inds, tile_positions_xk, color='red', label='Tile ({:d},{:d}), X-shift'.format(*tile_id))
-                axs[2].plot(frame_inds, tile_positions_yk, color='blue', label='Tile ({:d},{:d}), Y-shift'.format(*tile_id))
+                axs[0].plot(frame_inds, tile_positions_xk, color=my_col, marker='x', markersize=4, label='Tile {:d}, X-shift'.format(tile_id))
+                axs[1].plot(frame_inds, tile_positions_yk, color=my_col, marker='x', markersize=4, label='Tile {:d}, Y-shift'.format(tile_id))
+                axs[2].plot(frame_inds, tile_positions_xk, color='red', label='Tile {:d}, X-shift'.format(tile_id))
+                axs[2].plot(frame_inds, tile_positions_yk, color='blue', label='Tile {:d}, Y-shift'.format(tile_id))
             else:
                 axs[0].plot(frame_inds, tile_positions_xk, color=my_col, linewidth = 0.25)
                 axs[1].plot(frame_inds, tile_positions_yk, color=my_col, linewidth = 0.25)
@@ -2915,6 +2915,10 @@ class FIBSEM_mosaic_dataset:
                 MachineID_text = '{:s}'.format(self.MachineID.strip('\x00'))
             else:
                 MachineID_text = ''
+            if hasattr(self, 'SampleID'):
+                Sample_ID_text = self.Sample_ID.strip('\x00')
+            else:
+                Sample_ID_text = ''
 
             if self.FileVersion > 8:
                 cell_text = [['Sample ID', '{:s}'.format(self.Sample_ID.strip('\x00')), '',
@@ -2944,7 +2948,7 @@ class FIBSEM_mosaic_dataset:
                                  'EHT Voltage', '{:.3f} kV'.format(self.EHT), '',
                                  'FIB Probe', '{:d}'.format(self.FIBProb)]]
                 else:
-                    cell_text = [['', '', '',
+                    cell_text = [['Sample ID', '{:s}'.format(Sample_ID_text), '',
                                   'Tile Size\n\n # of Tiles per layer', '{:d} x {:d}\n\n{:d}'.format(self.XResolution, self.YResolution, self.n_tiles_per_layer), '',
                                   'Scan Rate', ScanRate_text],
                                 ['Machine ID', MachineID_text, '',
