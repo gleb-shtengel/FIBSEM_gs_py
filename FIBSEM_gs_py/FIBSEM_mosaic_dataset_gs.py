@@ -2389,7 +2389,6 @@ class FIBSEM_mosaic_dataset:
             axs[0].text(0.01, 1.00 - 0.175*frame.XResolution/frame.YResolution, 'Image Margins: {:d}, {:d}'.format(*pair_margins), fontsize=fsize_text, transform=axs[0].transAxes)
 
             if n_matches > 0:
-    
                 columns_shifts=['X-src', 'Y-src', 'X-src transformed', 'Y-src transformed', 'X-dst', 'Y-dst', 'X-error', 'Y-error', 'Int-src', 'Int-dst']
                 int_results = pd.DataFrame(np.vstack((np.array(src_pts_filtered).T, np.array(src_pts_transformed).T, np.array(dst_pts_filtered).T, xshifts, yshifts, src_intensities, dst_intensities)).T, columns = columns_shifts, index = None)
 
@@ -2421,6 +2420,8 @@ class FIBSEM_mosaic_dataset:
                     print('Summary Image is saved into file:')
                     print(save_filename)
                 fig.savefig(save_filename, dpi=dpi)
+            else:
+                int_results = pd.DataFrame()
 
         return fnm_deformed1, fnm_deformed2, transformations_result, int_results
 
@@ -2915,7 +2916,7 @@ class FIBSEM_mosaic_dataset:
                 MachineID_text = '{:s}'.format(self.MachineID.strip('\x00'))
             else:
                 MachineID_text = ''
-            if hasattr(self, 'SampleID'):
+            if hasattr(self, 'Sample_ID'):
                 Sample_ID_text = self.Sample_ID.strip('\x00')
             else:
                 Sample_ID_text = ''
