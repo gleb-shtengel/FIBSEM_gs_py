@@ -406,8 +406,6 @@ def assemble_layer(params, deformation_field):
             vmax for weight.
         fill_value : int
             The value to assign to pixels outside the transformed image bounds.
-        shape : list of two ints
-            mosaic shape (ny_tiles, nx_tiles).
         Xsize : int
             Overall Mosaic width (pixels).
         Ysize : int
@@ -423,7 +421,7 @@ def assemble_layer(params, deformation_field):
     ----------
     layer_mosaic, layer_id
     '''
-    layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, shape, Xsize, Ysize, left_crop, verbose = params
+    layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, Xsize, Ysize, left_crop, verbose = params
     layer_mosaic = np.zeros((Ysize, Xsize-left_crop), dtype=float)
     layer_mosaic_weights = np.zeros((Ysize, Xsize-left_crop), dtype=float)
     tile_params_mult = []
@@ -443,7 +441,7 @@ def assemble_layer(params, deformation_field):
                 print('xi={:d}, xa={:d}, yi={:d},  ya={:d}'.format(xi, xa, yi,  ya))
             layer_mosaic[yi:ya, xi:xa] = layer_mosaic[yi:ya, xi:xa] + tile_out
             layer_mosaic_weights[yi:ya, xi:xa] = layer_mosaic_weights[yi:ya, xi:xa] + weight_out
-        layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*np.prod(shape)) 
+        layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*len(fls_layer)) 
         layer_mosaic = np.nan_to_num(layer_mosaic / layer_mosaic_weights, nan=-fill_value)
     return layer_mosaic, layer_id
 
@@ -2676,9 +2674,8 @@ class FIBSEM_mosaic_dataset:
         save_fname
 
         '''
-        mosaic_shape = kwargs.get('mosaic_shape', (self.ny_tiles, self.nx_tiles))
-        nxny = np.prod(mosaic_shape)
-        tile_id = kwargs.get('tile_id', (0, 0))
+        n_tiles_per_layer = kwargs.get('n_tiles_per_layer', self.n_tiles_per_layer)
+        tile_id = kwargs.get('tile_id', 0)
         verbose = kwargs.get('verbose', False)
         save_png = kwargs.get('save_png', True)
         dpi = kwargs.get('dpi', 300)
@@ -2700,8 +2697,8 @@ class FIBSEM_mosaic_dataset:
         fig, axs = plt.subplots(3,1, figsize = (6,10), sharex=True)
         fig.subplots_adjust(left=0.12, bottom=0.06, right=0.99, top=0.97, wspace=0.05, hspace=0.03)
 
-        for k in np.arange(nxny):
-            my_col = plt.get_cmap("gist_rainbow_r")((nxny-k)/(nxny-1))
+        for k in np.arange(n_tiles_per_layer):
+            my_col = plt.get_cmap("gist_rainbow_r")((n_tiles_per_layer-k)/(n_tiles_per_layer-1))
             tile_positions_xk = tile_positions_x[:, k]
             tile_positions_yk = tile_positions_y[:, k]
             if k == self.nx_tiles*tile_id[0]+tile_id[1]:
@@ -3147,7 +3144,7 @@ class FIBSEM_mosaic_dataset:
             for layer_id in layer_ids:
                 fls_layer = self.fls[layer_id].ravel()
                 tr_matr_layer = self.tr_matr[layer_id]
-                params_mult.append([layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, self.shape, self.Xsize, self.Ysize, left_crop, verbose])
+                params_mult.append([layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, self.Xsize, self.Ysize, left_crop, verbose])
 
             if use_DASK:
                 shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)
