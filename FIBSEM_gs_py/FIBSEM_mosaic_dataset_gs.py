@@ -1525,7 +1525,7 @@ class FIBSEM_mosaic_dataset:
 
         self.index_pairs = np.array(col_ind).reshape((row, 2))   # absolute (in 1D sense) tile indices for each pair
         j1, j2 = np.mod(self.index_pairs[0, :], self.n_tiles_per_layer)
-        self.Xoverlap = int(np.round(self.XResolution - np.abs(self.FirstPixels[j1, 0] - self.FirstPixels[j, 0])))
+        self.Xoverlap = int(np.round(self.XResolution - np.abs(self.FirstPixels[j1, 0] - self.FirstPixels[j2, 0])))
         i1, i2 = np.mod(self.index_pairs[self.nh, :], self.n_tiles_per_layer)
         self.Yoverlap = int(np.round(self.YResolution - np.abs(self.FirstPixels[i1, 1] - self.FirstPixels[i2, 1])))
         self.pair_margins = [[self.YResolution, 2*self.Xoverlap] for x in np.arange(nh)] + [[2*self.Yoverlap, self.XResolution] for x in np.arange(nv)] + [[self.YResolution, self.XResolution] for x in np.arange(nl)]
