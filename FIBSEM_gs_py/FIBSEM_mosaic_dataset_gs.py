@@ -1377,6 +1377,8 @@ class FIBSEM_mosaic_dataset:
                                 intra_index_pairs_y.append((j, i))
                             else:
                                 intra_index_pairs_y.append((i, j))
+            intra_index_pairs_x = np.array(intra_index_pairs_x)
+            intra_index_pairs_y = np.array(intra_index_pairs_y)
             L = self.nz_tiles                
             nh = L * len(intra_index_pairs_x)              # Total number of left-right intra-layer pairs
             self.nh = nh
