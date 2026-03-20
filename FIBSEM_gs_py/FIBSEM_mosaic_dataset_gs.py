@@ -1409,7 +1409,7 @@ class FIBSEM_mosaic_dataset:
 
             # Intra-layer adjacent pairs
             for l in range(L):
-                for i in range(self.nh):    
+                for i in range(len(intra_index_pairs_x)):    
                     idx1 = l * self.n_tiles_per_layer + intra_index_pairs_x[i, 0]
                     idx2 = l * self.n_tiles_per_layer + intra_index_pairs_x[i, 1]
                     row_ind.extend([row, row])
@@ -1417,7 +1417,7 @@ class FIBSEM_mosaic_dataset:
                     data.extend([-w_sqrt_intra, w_sqrt_intra])
                     row += 1
             for l in range(L):
-                for i in range(self.nv):    
+                for i in range(len(intra_index_pairs_y)):    
                     idx1 = l * self.n_tiles_per_layer + intra_index_pairs_y[i, 0]
                     idx2 = l * self.n_tiles_per_layer + intra_index_pairs_y[i, 1]
                     row_ind.extend([row, row])
