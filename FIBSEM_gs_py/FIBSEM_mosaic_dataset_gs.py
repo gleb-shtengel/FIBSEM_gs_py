@@ -1355,174 +1355,91 @@ class FIBSEM_mosaic_dataset:
             # Two tiles are neighbours if their bounding boxes overlap in both X and Y.
             # This naturally handles hexagonal layouts where each tile has 1 left/right
             # neighbour and up to 2 top/bottom neighbours.
-
-            intra_index_pairs_x = []
-            intra_index_pairs_y = []
-            for i in range(self.n_tiles_per_layer):
-                for j in range(i + 1, self.n_tiles_per_layer):
-                    dx = self.FirstPixels[j, 0] - self.FirstPixels[i, 0]
-                    dy = self.FirstPixels[j, 1] - self.FirstPixels[i, 1]
-                    x_overlap = self.XResolution - abs(dx)
-                    y_overlap = self.YResolution - abs(dy)
-                    if x_overlap > 0 and y_overlap > 0:
-                        ymargin = min(self.YResolution, max(100, int(2 * y_overlap)))
-                        xmargin = min(self.XResolution, max(100, int(2 * x_overlap)))
-                        if xmargin < ymargin:
-                            if dx<0:
-                                intra_index_pairs_x.append((j, i))
-                            else:
-                                intra_index_pairs_x.append((i, j))
-                        else:
-                            if dy<0:
-                                intra_index_pairs_y.append((j, i))
-                            else:
-                                intra_index_pairs_y.append((i, j))
-            intra_index_pairs_x = np.array(intra_index_pairs_x)
-            intra_index_pairs_y = np.array(intra_index_pairs_y)
-            L = self.nz_tiles                
-            nh = L * len(intra_index_pairs_x)              # Total number of left-right intra-layer pairs
-            self.nh = nh
-            nv = L * len(intra_index_pairs_y)              # Total number of up-down intra-layer pairs
-            self.nv = nv
-            nl = (L - 1) * self.n_tiles_per_layer
-            self.nl = nl
-            self.C = self.nh + self.nv + self.nl
-            V = L * self.n_tiles_per_layer                     # Total number of tiles
-
-            if verbose:
-                print('Total number of tiles: ', V)
-                print('Total number of left-right intra-layer pairs: ', self.nh)
-                print('Total number of up-down intra-layer pairs: ', self.nv)
-                print('Total number of intra-layer pairs: ', self.nh + self.nv)
-                print('Total number of inter-layer pairs: ', self.nl)
-                print('Total number of of pairs (pair-wise translations): ', self.C)
-
-            # Prepare data for sparse matrix A
-            data = []
-            row_ind = []
-            col_ind = []
-            row = 0   # row (entry) in the sparse matrix A (not a tile row)
-
-            # Build a sparse matrix A for Ax=b lsqr equation
-            # idx1 and idx2 are absolute (in 1D sense) tile indices
-            # each entry is a single sparse matrix element, there are two elements per pairwise translation condition, they enter with opposite signs
-
-            # Intra-layer adjacent pairs
-            for l in range(L):
-                for i in range(len(intra_index_pairs_x)):    
-                    idx1 = l * self.n_tiles_per_layer + intra_index_pairs_x[i, 0]
-                    idx2 = l * self.n_tiles_per_layer + intra_index_pairs_x[i, 1]
-                    row_ind.extend([row, row])
-                    col_ind.extend([idx1, idx2])
-                    data.extend([-w_sqrt_intra, w_sqrt_intra])
-                    row += 1
-            for l in range(L):
-                for i in range(len(intra_index_pairs_y)):    
-                    idx1 = l * self.n_tiles_per_layer + intra_index_pairs_y[i, 0]
-                    idx2 = l * self.n_tiles_per_layer + intra_index_pairs_y[i, 1]
-                    row_ind.extend([row, row])
-                    col_ind.extend([idx1, idx2])
-                    data.extend([-w_sqrt_intra, w_sqrt_intra])
-                    row += 1
-
-            # Inter-layer adjacent pairs
-            for l in range(L - 1):
-                for i in range(self.n_tiles_per_layer):
-                    idx1 = l * self.n_tiles_per_layer + i
-                    idx2 = (l + 1) * self.n_tiles_per_layer + i
-                    row_ind.extend([row, row])
-                    col_ind.extend([idx1, idx2])
-                    data.extend([-w_sqrt_inter, w_sqrt_inter])
-                    row += 1
-
         else:   # standard recti-linear grid with FirstPixels determined from the headers of .dat files
             FirstPixels = []
             for fl in fls[0].ravel():
                 fr = FIBSEM_frame(fl, read_header_only=True)
                 FirstPixels.append([fr.FirstPixelX, fr.FirstPixelY])
             self.FirstPixels = np.array(FirstPixels)
-    
-            # try to auto-determine shape and adjacent pairs
-            # self.nz_tiles  - # of layers (# of tiles along Z-axis)
-            # self.ny_tiles  - # of rows per layer (# of tiles along Y-axis)
-            # self.nx_tiles  - # of columns per layer(# of tiles along X-axis)
-            try:
-                tile_string = os.path.splitext(os.path.split(self.fls.ravel()[-1])[1])[0][-5:].split('-')    
-                auto_ny_tiles = int(tile_string[1])+1
-                auto_nx_tiles = int(tile_string[2])+1
-                auto_shape = (auto_ny_tiles, auto_nx_tiles)
-            except:
-                if verbose:
-                    print('Could not auto-determine the shape, and therefore the montage size and the adjacent tile pairs')
-                    print('Define the montage size (self.Xsize, self.Ysize) manually')
-                    print('Define the adjacent tile pairs (self.adjacent_pairs - list of indices of files of the adjacent tiles) manually')
-                auto_shape = (1, 1)
-            self.shape = kwargs.get('shape', auto_shape)
-            self.ny_tiles, self.nx_tiles = self.shape
 
-            # create the structure for pairwice tile transformation
-            L = self.nz_tiles
-            M = self.ny_tiles
-            N = self.nx_tiles
-            V = L * M * N                     # Total number of tiles
-            nh = L * M * (N - 1)              # Total number of left-right intra-layer pairs
-            self.nh = nh
-            nv = L * (M - 1) * N              # Total number of up-down intra-layer pairs
-            self.nv = nv
-            nl = (L - 1) * M * N              # Total number of inter-layer pairs
-            self.nl = nl
-            C = nh + nv + nl                  # Total number of of pairs (pair-wise translations)
-            self.C = self.nh + self.nv + self.nl
-            if verbose:
-                print('Total number of tiles: ', V)
-                print('Total number of left-right intra-layer pairs: ', nh)
-                print('Total number of up-down intra-layer pairs: ', nv)
-                print('Total number of intra-layer pairs: ', nh + nv)
-                print('Total number of inter-layer pairs: ', nl)
-                print('Total number of of pairs (pair-wise translations): ', C)
+        intra_index_pairs_x = []
+        intra_index_pairs_y = []
+        for i in range(self.n_tiles_per_layer):
+            for j in range(i + 1, self.n_tiles_per_layer):
+                dx = self.FirstPixels[j, 0] - self.FirstPixels[i, 0]
+                dy = self.FirstPixels[j, 1] - self.FirstPixels[i, 1]
+                x_overlap = self.XResolution - abs(dx)
+                y_overlap = self.YResolution - abs(dy)
+                if x_overlap > 0 and y_overlap > 0:
+                    ymargin = min(self.YResolution, max(100, int(2 * y_overlap)))
+                    xmargin = min(self.XResolution, max(100, int(2 * x_overlap)))
+                    if xmargin < ymargin:
+                        if dx<0:
+                            intra_index_pairs_x.append((j, i))
+                        else:
+                            intra_index_pairs_x.append((i, j))
+                    else:
+                        if dy<0:
+                            intra_index_pairs_y.append((j, i))
+                        else:
+                            intra_index_pairs_y.append((i, j))
+        intra_index_pairs_x = np.array(intra_index_pairs_x)
+        intra_index_pairs_y = np.array(intra_index_pairs_y)
+        L = self.nz_tiles                
+        nh = L * len(intra_index_pairs_x)              # Total number of left-right intra-layer pairs
+        self.nh = nh
+        nv = L * len(intra_index_pairs_y)              # Total number of up-down intra-layer pairs
+        self.nv = nv
+        nl = (L - 1) * self.n_tiles_per_layer
+        self.nl = nl
+        self.C = self.nh + self.nv + self.nl
+        V = L * self.n_tiles_per_layer                     # Total number of tiles
 
-            # Prepare data for sparse matrix A
-            data = []
-            row_ind = []
-            col_ind = []
-            row = 0   # row (entry) in the sparse matrix A (not a tile row)
+        if verbose:
+            print('Total number of tiles: ', V)
+            print('Total number of left-right intra-layer pairs: ', self.nh)
+            print('Total number of up-down intra-layer pairs: ', self.nv)
+            print('Total number of intra-layer pairs: ', self.nh + self.nv)
+            print('Total number of inter-layer pairs: ', self.nl)
+            print('Total number of of pairs (pair-wise translations): ', self.C)
 
-            # Build a sparse matrix A for Ax=b lsqr equation
-            # idx1 and idx2 are absolute (in 1D sense) tile indices
-            # each entry is a single sparse matrix element, there are two elements per pairwise translation condition, they enter with opposite signs
+        # Prepare data for sparse matrix A
+        data = []
+        row_ind = []
+        col_ind = []
+        row = 0   # row (entry) in the sparse matrix A (not a tile row)
 
-            # Horizontal adjacent pairs (intra-layer)
-            for l in range(L):
-                for i in range(M):
-                    for j in range(N - 1):
-                        idx1 = l * M * N + i * N + j
-                        idx2 = l * M * N + i * N + j + 1
-                        row_ind.extend([row, row])
-                        col_ind.extend([idx1, idx2])
-                        data.extend([-w_sqrt_intra, w_sqrt_intra])
-                        row += 1
+        # Build a sparse matrix A for Ax=b lsqr equation
+        # idx1 and idx2 are absolute (in 1D sense) tile indices
+        # each entry is a single sparse matrix element, there are two elements per pairwise translation condition, they enter with opposite signs
 
-            # Vertical adjacent pairs (intra-layer)
-            for l in range(L):
-                for i in range(M - 1):
-                    for j in range(N):
-                        idx1 = l * M * N + i * N + j
-                        idx2 = l * M * N + (i + 1) * N + j
-                        row_ind.extend([row, row])
-                        col_ind.extend([idx1, idx2])
-                        data.extend([-w_sqrt_intra, w_sqrt_intra])
-                        row += 1
+        # Intra-layer adjacent pairs
+        for l in range(L):
+            for i in range(len(intra_index_pairs_x)):    
+                idx1 = l * self.n_tiles_per_layer + intra_index_pairs_x[i, 0]
+                idx2 = l * self.n_tiles_per_layer + intra_index_pairs_x[i, 1]
+                row_ind.extend([row, row])
+                col_ind.extend([idx1, idx2])
+                data.extend([-w_sqrt_intra, w_sqrt_intra])
+                row += 1
+        for l in range(L):
+            for i in range(len(intra_index_pairs_y)):    
+                idx1 = l * self.n_tiles_per_layer + intra_index_pairs_y[i, 0]
+                idx2 = l * self.n_tiles_per_layer + intra_index_pairs_y[i, 1]
+                row_ind.extend([row, row])
+                col_ind.extend([idx1, idx2])
+                data.extend([-w_sqrt_intra, w_sqrt_intra])
+                row += 1
 
-            # Layer-to-layer correspondences (inter-layer)
-            for l in range(L - 1):
-                for i in range(M):
-                    for j in range(N):
-                        idx1 = l * M * N + i * N + j
-                        idx2 = (l + 1) * M * N + i * N + j
-                        row_ind.extend([row, row])
-                        col_ind.extend([idx1, idx2])
-                        data.extend([-w_sqrt_inter, w_sqrt_inter])
-                        row += 1
+        # Inter-layer adjacent pairs
+        for l in range(L - 1):
+            for i in range(self.n_tiles_per_layer):
+                idx1 = l * self.n_tiles_per_layer + i
+                idx2 = (l + 1) * self.n_tiles_per_layer + i
+                row_ind.extend([row, row])
+                col_ind.extend([idx1, idx2])
+                data.extend([-w_sqrt_inter, w_sqrt_inter])
+                row += 1
 
         self.index_pairs = np.array(col_ind).reshape((row, 2))   # absolute (in 1D sense) tile indices for each pair
         j1, j2 = np.mod(self.index_pairs[0, :], self.n_tiles_per_layer)
@@ -2059,16 +1976,6 @@ class FIBSEM_mosaic_dataset:
                     if verbose:
                         print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   An error occurred: {}'.format(e))
                         print('transformations_result:  ', transformations_result)
-            '''
-            L = self.nz_tiles
-            M = self.ny_tiles
-            N = self.nx_tiles
-            V = L * M * N                     # Total number of tiles
-            nh = L * M * (N - 1)              # Total number of left-right intra-layer pairs
-            nv = L * (M - 1) * N              # Total number of up-down intra-layer pairs
-            nl = (L - 1) * M * N              # Total number of inter-layer pairs
-            C = nh + nv + nl                  # Total number of of pairs (pair-wise translations)
-            '''
             
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intra-layer horisontal matches :', np.mean(self.SIFT_nmatches[0:self.nh]).astype(np.int64))
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intra-layer vertical matches :', np.mean(self.SIFT_nmatches[self.nh:self.nh+self.nv]).astype(np.int64))
@@ -2558,66 +2465,6 @@ class FIBSEM_mosaic_dataset:
         w_sqrt_inter = np.sqrt(self.interlayer_weight)
         weights = np.concatenate((np.full((self.nh+self.nv), w_sqrt_intra), np.full(self.nl, w_sqrt_inter)))
 
-        '''
-        L = self.nz_tiles
-        M = self.ny_tiles
-        N = self.nx_tiles
-        V = L * M * N                     # Total number of tiles
-        nh = L * M * (N - 1)              # Total number of left-right intra-layer pairs
-        nv = L * (M - 1) * N              # Total number of up-down intra-layer pairs
-        nl = (L - 1) * M * N              # Total number of inter-layer pairs
-        C = nh + nv + nl                  # Total number of pairs (pair-wise translations)
-        # horiz_trans: np.ndarray (L, M, N-1, 2), translations to right neighbor (x,y)
-        # vert_trans: np.ndarray (L, M-1, N, 2), translations to bottom neighbor (x,y)
-        # layer_trans: np.ndarray (L-1, M, N, 2), translations to upper layer (x,y)
-
-        # We already have self.A_csr = csr_matrix((data, (row_ind, col_ind)), shape=(C, V)) # sparse matrix
-        # Now we need to contruct the matrix B and solve LSQ
-
-        data = []
-        row_ind = []
-        col_ind = []
-        row = 0   # row (entry) in the sparse matrix A (not a tile row)
-
-        # Build a sparse matrix A for Ax=b lsqr equation
-        # idx1 and idx2 are absolute (in 1D sense) tile indices
-        # each entry is a single sparse matrix element, there are two elements per pairwise translation condition, they enter with opposite signs
-
-        # Horizontal adjacent pairs (intra-layer)
-        
-        for l in range(L):
-            for i in range(M):
-                for j in range(N - 1):
-                    idx1 = l * M * N + i * N + j
-                    idx2 = l * M * N + i * N + j + 1
-                    row_ind.extend([row, row])
-                    col_ind.extend([idx1, idx2])
-                    data.extend([-w_sqrt_intra, w_sqrt_intra])
-                    row += 1
-        # Vertical adjacent pairs (intra-layer)
-        for l in range(L):
-            for i in range(M - 1):
-                for j in range(N):
-                    idx1 = l * M * N + i * N + j
-                    idx2 = l * M * N + (i + 1) * N + j
-                    row_ind.extend([row, row])
-                    col_ind.extend([idx1, idx2])
-                    data.extend([-w_sqrt_intra, w_sqrt_intra])
-                    row += 1
-        # Layer-to-layer correspondences (inter-layer)
-        for l in range(L - 1):
-            for i in range(M):
-                for j in range(N):
-                    idx1 = l * M * N + i * N + j
-                    idx2 = (l + 1) * M * N + i * N + j
-                    row_ind.extend([row, row])
-                    col_ind.extend([idx1, idx2])
-                    data.extend([-w_sqrt_inter, w_sqrt_inter])
-                    row += 1
-
-        self.A_csr = csr_matrix((data, (row_ind, col_ind)), shape=(C, V)) # sparse matrix
-        '''
-
         if method not in valid_methods:
             if verbose:
                 print('Method ' + method +' is not among valid methods: ', valid_methods)
@@ -2996,26 +2843,14 @@ class FIBSEM_mosaic_dataset:
             header_new[100:104] = XResolution_new_string
             YResolution_new_string =  pack('>L', YResolution_new)
             header_new[104:108] = YResolution_new_string
-            #ChanNum_new = 1
-            #ChanNum_new_string =  pack('b', ChanNum_new)
-            #header_new[32:33] = ChanNum_new_string
-            #AI2_new = 0
-            #AI2_new_string =  pack('b', AI2_new)
-            #header_new[152:153] = AI2_new_string
-            '''
-            FirstPixelX_new_string =  pack('>l', FirstPixelX_new)
-            header_new[70:74] = FirstPixelX_new_string
-            FirstPixelY_new_string =  pack('>l', FirstPixelY_new)
-            header_new[74:78] = FirstPixelY_new_string
-            '''
+
             # Create new Raw data array
             dt = np.dtype(np.int16).newbyteorder('>')
 
             # Save new frame
             with open(dat_fname, 'wb') as f:
                 f.write(header_new)
-                for layer_mosaic in layer_mosaics:
-                    layer_mosaic.reshape(-1).astype(dt).tofile(f)
+                np.moveaxis(np.array(layer_mosaics), 0, 2).astype(dt).tofile(f)
 
         if save_images:
             imf1, imf2 = os.path.splitext(image_fname)
