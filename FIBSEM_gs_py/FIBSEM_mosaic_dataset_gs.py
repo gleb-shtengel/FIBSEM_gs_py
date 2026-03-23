@@ -1392,7 +1392,10 @@ class FIBSEM_mosaic_dataset:
         self.nh = nh
         nv = L * len(intra_index_pairs_y)              # Total number of up-down intra-layer pairs
         self.nv = nv
-        nl = (L - 1) * self.n_tiles_per_layer
+        if self.add_reverse_edges:
+            nl = (L - 1) * self.n_tiles_per_layer * 2
+        else:
+            nl = (L - 1) * self.n_tiles_per_layer
         self.nl = nl
         self.C = self.nh + self.nv + self.nl
         V = L * self.n_tiles_per_layer                     # Total number of tiles
