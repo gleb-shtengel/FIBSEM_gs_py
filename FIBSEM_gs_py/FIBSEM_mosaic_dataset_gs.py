@@ -1405,7 +1405,7 @@ class FIBSEM_mosaic_dataset:
             print('Total number of inter-layer pairs: ', self.nl)
             print('Total number of of pairs (pair-wise translations): ', self.C)
 
-        # Prepare data for sparse matrix A
+        # Prepare data for sparse matrix A 
         data = []
         row_ind = []
         col_ind = []
