@@ -1365,7 +1365,7 @@ class FIBSEM_mosaic_dataset:
         intra_index_pairs_x = []
         intra_index_pairs_y = []
         for i in range(self.n_tiles_per_layer):
-            for j in range(i + 1, self.n_tiles_per_layer):
+            for j in range(self.n_tiles_per_layer):
                 dx = self.FirstPixels[j, 0] - self.FirstPixels[i, 0]
                 dy = self.FirstPixels[j, 1] - self.FirstPixels[i, 1]
                 x_overlap = self.XResolution - abs(dx)
@@ -1374,15 +1374,17 @@ class FIBSEM_mosaic_dataset:
                     ymargin = min(self.YResolution, max(100, int(2 * y_overlap)))
                     xmargin = min(self.XResolution, max(100, int(2 * x_overlap)))
                     if xmargin < ymargin:
-                        if dx<0:
+                        if dx < 0:
                             intra_index_pairs_x.append((j, i))
                         else:
-                            intra_index_pairs_x.append((i, j))
+                            if self.add_reverse_edges:
+                                intra_index_pairs_x.append((i, j))
                     else:
-                        if dy<0:
+                        if dy < 0:
                             intra_index_pairs_y.append((j, i))
                         else:
-                            intra_index_pairs_y.append((i, j))
+                            if self.add_reverse_edges:
+                                intra_index_pairs_y.append((i, j))
         intra_index_pairs_x = np.array(intra_index_pairs_x)
         intra_index_pairs_y = np.array(intra_index_pairs_y)
         L = self.nz_tiles                
@@ -1440,6 +1442,12 @@ class FIBSEM_mosaic_dataset:
                 col_ind.extend([idx1, idx2])
                 data.extend([-w_sqrt_inter, w_sqrt_inter])
                 row += 1
+                if self.add_reverse_edges:
+                    row_ind.extend([row, row])
+                    col_ind.extend([idx2, idx1])
+                    data.extend([-w_sqrt_inter, w_sqrt_inter])
+                    row += 1
+
 
         self.index_pairs = np.array(col_ind).reshape((row, 2))   # absolute (in 1D sense) tile indices for each pair
         j1, j2 = np.mod(self.index_pairs[0, :], self.n_tiles_per_layer)
