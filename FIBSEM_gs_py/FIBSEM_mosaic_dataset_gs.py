@@ -1465,13 +1465,10 @@ class FIBSEM_mosaic_dataset:
             print('Total number of pairwise transformations : {:d}'.format(self.C))
             #print('Index of the top-left pair in the last Z-layer: ', (L -1)* M * (N - 1))
     
-        if image_coordinates_file:
-            self.Xsize = int(np.round(np.max(self.FirstPixels[:, 0]) - np.min(self.FirstPixels[:, 0]) + self.XResolution))
-            self.Ysize = int(np.round(np.max(self.FirstPixels[:, 1]) - np.min(self.FirstPixels[:, 1]) + self.YResolution))
-        else:
-            # initialize the montage size (assuming rectangular shape)
-            self.Xsize = self.shape[1] * (self.XResolution - self.Xoverlap) + self.Xoverlap
-            self.Ysize = self.shape[0] * (self.YResolution - self.Yoverlap) + self.Yoverlap
+
+        self.Xsize = int(np.round(np.max(self.FirstPixels[:, 0]) - np.min(self.FirstPixels[:, 0]) + self.XResolution))
+        self.Ysize = int(np.round(np.max(self.FirstPixels[:, 1]) - np.min(self.FirstPixels[:, 1]) + self.YResolution))
+
         
         # initialize the translation matrix for each tile
         shifts_x = self.FirstPixels[:, 0] - np.min(self.FirstPixels[:, 0])
