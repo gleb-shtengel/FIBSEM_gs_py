@@ -1225,6 +1225,8 @@ class FIBSEM_mosaic_dataset:
         image_coordinates_file_default = os.path.join(os.path.split(fname0)[0], 'image_coordinates.txt')
         if os.path.exists(image_coordinates_file_default):
             image_coordinates_file = kwargs.get('image_coordinates_file', image_coordinates_file_default)
+            if verbose:
+                print('Will use image coordinates file: ', image_coordinates_file)
         else:
             image_coordinates_file = kwargs.get('image_coordinates_file', '')
         self.image_coordinates_file = image_coordinates_file
@@ -1233,6 +1235,8 @@ class FIBSEM_mosaic_dataset:
         metadata_file_default = os.path.join(os.path.split(fname0)[0], 'metadata.txt')
         if os.path.exists(metadata_file_default):
             metadata_file = kwargs.get('metadata_file', metadata_file_default)
+            if verbose:
+                print('Will use metadata file: ', metadata_file)
         else:
             metadata_file = kwargs.get('metadata_file', '')
         self.metadata_file = metadata_file
@@ -1366,23 +1370,22 @@ class FIBSEM_mosaic_dataset:
         intra_index_pairs_y = []
         for i in range(self.n_tiles_per_layer):
             for j in range(self.n_tiles_per_layer):
-                dx = self.FirstPixels[j, 0] - self.FirstPixels[i, 0]
-                dy = self.FirstPixels[j, 1] - self.FirstPixels[i, 1]
-                dx_abs = self.XResolution - abs(dx)
-                dy_abs = self.YResolution - abs(dy)
-                if dx_abs > 0 and dy_abs > 0:
-                    if dx_abs < dy_abs:
-                        if dx < 0:
-                            intra_index_pairs_x.append((j, i))
+                if i != j:
+                    dx = self.FirstPixels[j, 0] - self.FirstPixels[i, 0]
+                    dy = self.FirstPixels[j, 1] - self.FirstPixels[i, 1]
+                    if np.abs(dx) < self.XResolution and np.abs(dy) < self.YResolution:
+                        if np.abs(dx) > np.abs(dy):
+                            if dx < 0:
+                                intra_index_pairs_x.append((j, i))
+                            else:
+                                if self.add_reverse_edges:
+                                    intra_index_pairs_x.append((i, j))
                         else:
-                            if self.add_reverse_edges:
-                                intra_index_pairs_x.append((i, j))
-                    else:
-                        if dy < 0:
-                            intra_index_pairs_y.append((j, i))
-                        else:
-                            if self.add_reverse_edges:
-                                intra_index_pairs_y.append((i, j))
+                            if dy < 0:
+                                intra_index_pairs_y.append((j, i))
+                            else:
+                                if self.add_reverse_edges:
+                                    intra_index_pairs_y.append((i, j))
         intra_index_pairs_x = np.array(intra_index_pairs_x)
         intra_index_pairs_y = np.array(intra_index_pairs_y)
         L = self.nz_tiles                
