@@ -7230,6 +7230,8 @@ class FIBSEM_frame:
         if self.EightBit==1:
             #print('8-bit image already - no need to convert')
             dt = self.RawImageA
+            data_min = 0
+            data_max = 255
         else:
             if data_min >= data_max:
                 data_min, data_max = self.get_image_min_max(image_name ='RawImageA', thr_min=thr_min, thr_max=thr_max, nbins=nbins, disp_res=False)
@@ -7266,6 +7268,8 @@ class FIBSEM_frame:
         if self.EightBit==1:
             #print('8-bit image already - no need to convert')
             dt = self.RawImageB
+            data_min = 0
+            data_max = 255
         else:
             if data_min == data_max:
                 data_min, data_max = self.get_image_min_max(image_name ='RawImageB', thr_min=thr_min, thr_max=thr_max, nbins=nbins, disp_res=False)
