@@ -1368,12 +1368,10 @@ class FIBSEM_mosaic_dataset:
             for j in range(self.n_tiles_per_layer):
                 dx = self.FirstPixels[j, 0] - self.FirstPixels[i, 0]
                 dy = self.FirstPixels[j, 1] - self.FirstPixels[i, 1]
-                x_overlap = self.XResolution - abs(dx)
-                y_overlap = self.YResolution - abs(dy)
-                if x_overlap > 0 and y_overlap > 0:
-                    ymargin = min(self.YResolution, max(100, int(2 * y_overlap)))
-                    xmargin = min(self.XResolution, max(100, int(2 * x_overlap)))
-                    if xmargin < ymargin:
+                dx_abs = self.XResolution - abs(dx)
+                dy_abs = self.YResolution - abs(dy)
+                if dx_abs > 0 and dy_abs > 0:
+                    if dx_abs < dy_abs:
                         if dx < 0:
                             intra_index_pairs_x.append((j, i))
                         else:
@@ -1408,7 +1406,7 @@ class FIBSEM_mosaic_dataset:
             print('Total number of inter-layer pairs: ', self.nl)
             print('Total number of of pairs (pair-wise translations): ', self.C)
 
-        # Prepare data for sparse matrix A 
+        # Prepare data for sparse matrix A
         data = []
         row_ind = []
         col_ind = []
