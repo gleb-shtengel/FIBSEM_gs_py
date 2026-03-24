@@ -1059,6 +1059,9 @@ class FIBSEM_mosaic_dataset:
     solve_stack_stitching(**kwargs)
         Solve mosaic stack stitching (perform bundle optimization).
 
+    solve_intensity_normalization(**kwargs)
+        Solve mosaic stack intensity matching (perform bundle optimization).
+
     generate_transformation_report(**kwargs)
         Generate Report Plot for transformation summary.
 
