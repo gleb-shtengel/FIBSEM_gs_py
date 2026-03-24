@@ -1104,6 +1104,8 @@ class FIBSEM_mosaic_dataset:
             Weight for pairwise constraints for tiles between adjacent Z-layers.(100–10000 typical).
         add_reverse_edges : bool, default False
             If True, adds both (i->j) and (j->i) with same weight (increases robustness).
+        diagonal_exclusion_threshold : float
+            A criteria for exclusion of "diagonal" neighbours if the sum of margins in X- and Y- directions is larger than a sum of X- and Y- tiles times this number, the pair is NOT considered.
         shape : tuple of two int (self.ny_tiles, self.nx_tiles)
             The program will try to auto-determine the shape, but it can be set explicitly.
                 # self.ny_tiles  - # of rows per layer (# of tiles along Y-axis)
@@ -1252,6 +1254,7 @@ class FIBSEM_mosaic_dataset:
         self.intralayer_weight = kwargs.get('intralayer_weight', 1.0)
         self.interlayer_weight = kwargs.get('interlayer_weight', 100.0)
         self.add_reverse_edges = kwargs.get('add_reverse_edges', False)
+        self.diagonal_exclusion_threshold = kwargs.get('diagonal_exclusion_threshold', 0.75)
         self.U8_conversion = kwargs.get('U8_conversion', 'local')
         if self.ftype == 0:
             test_frame = FIBSEM_frame(fname0, ftype = self.ftype, calculate_scaled_images=False, read_header_only=True)
@@ -1373,8 +1376,10 @@ class FIBSEM_mosaic_dataset:
                 if i != j:
                     dx = self.FirstPixels[j, 0] - self.FirstPixels[i, 0]
                     dy = self.FirstPixels[j, 1] - self.FirstPixels[i, 1]
-                    if np.abs(dx) < self.XResolution and np.abs(dy) < self.YResolution:
-                        if np.abs(dx) > np.abs(dy):
+                    dx_abs = np.abs(dx)
+                    dy_abs = np.abs(dy)
+                    if dx_abs < self.XResolution and dy_abs < self.YResolution and (dx_abs + dy_abs < self.diagonal_exclusion_threshold * (self.XResolution + self.YResolution)):
+                        if dx_abs > dy_abs:
                             if dx < 0:
                                 intra_index_pairs_x.append((j, i))
                             else:
@@ -1517,7 +1522,7 @@ class FIBSEM_mosaic_dataset:
                         print('')
                         print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Failed to restore the object parameters from dump filename: ', dump_filename)
                         print(str(ex2))
-                        
+
 
     def save_parameters(self, **kwargs):
         '''
