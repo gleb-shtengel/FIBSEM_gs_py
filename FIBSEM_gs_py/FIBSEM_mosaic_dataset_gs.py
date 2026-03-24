@@ -1452,7 +1452,6 @@ class FIBSEM_mosaic_dataset:
                     data.extend([-w_sqrt_inter, w_sqrt_inter])
                     row += 1
 
-
         self.index_pairs = np.array(col_ind).reshape((row, 2))   # absolute (in 1D sense) tile indices for each pair
         j1, j2 = np.mod(self.index_pairs[0, :], self.n_tiles_per_layer)
         self.Xoverlap = int(np.round(self.XResolution - np.abs(self.FirstPixels[j1, 0] - self.FirstPixels[j2, 0])))
@@ -1475,12 +1474,9 @@ class FIBSEM_mosaic_dataset:
             print('Total number of tile files: {:d}'.format(V))
             print('Number of Z-slices (nz_tiles): {:d}'.format(self.nz_tiles))
             print('Total number of pairwise transformations : {:d}'.format(self.C))
-            #print('Index of the top-left pair in the last Z-layer: ', (L -1)* M * (N - 1))
-    
 
         self.Xsize = int(np.round(np.max(self.FirstPixels[:, 0]) - np.min(self.FirstPixels[:, 0]) + self.XResolution))
         self.Ysize = int(np.round(np.max(self.FirstPixels[:, 1]) - np.min(self.FirstPixels[:, 1]) + self.YResolution))
-
         
         # initialize the translation matrix for each tile
         shifts_x = self.FirstPixels[:, 0] - np.min(self.FirstPixels[:, 0])
@@ -1521,7 +1517,7 @@ class FIBSEM_mosaic_dataset:
                         print('')
                         print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Failed to restore the object parameters from dump filename: ', dump_filename)
                         print(str(ex2))
-
+                        
 
     def save_parameters(self, **kwargs):
         '''
