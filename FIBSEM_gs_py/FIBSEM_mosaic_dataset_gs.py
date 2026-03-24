@@ -2579,7 +2579,7 @@ class FIBSEM_mosaic_dataset:
         log_scales = res[0]
 
         # Normalise: geometric mean of all scale factors = 1
-        log_scales -= np.mean(log_scales)
+        log_scales = np.mean(log_scales)
         tile_scales = np.exp(log_scales).reshape(self.nz_tiles, self.n_tiles_per_layer)
 
         if verbose:
