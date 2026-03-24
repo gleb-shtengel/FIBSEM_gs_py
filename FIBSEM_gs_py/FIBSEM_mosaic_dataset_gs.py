@@ -99,7 +99,7 @@ def transform_tile(tile_params, deformation_field):
     
     Parameters:
     -----------
-    tile_params : list :  j, fl, image_name, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max
+    tile_params : list :  j, fl, image_name, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max, left_crop, I0, scale
         j : int, tile ID
         fl : str, filename for the tile
         image_name : str, image name ('RawImageA' or 'RawImageB')
@@ -108,6 +108,9 @@ def transform_tile(tile_params, deformation_field):
         montage_ysz : int : montage y-size in pixels
         weight_min : float :  weight_min for weight
         weight_max : float :  weight_max for weight
+        left_crop : int
+        I0 : float : offset
+        scale : float : scale
 
     deformation_field : 3D array
         Deformation field for distortion corrections to be executed before ECC. Default is np.nan - no distortion correction
@@ -117,12 +120,13 @@ def transform_tile(tile_params, deformation_field):
     tile_out, weight_out, xi, xa-left_crop-x0, yi,  ya-y0
     
     '''
-    j, fl, image_name, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max, left_crop = tile_params
+    j, fl, image_name, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max, left_crop, I0, scale = tile_params
     fr = FIBSEM_frame(fl)
     if image_name == 'RawImageB':
         tile_initial = fr.RawImageB
     else:
         tile_initial = fr.RawImageA
+    tile_initial_rescaled = (tile_initial - I0) * scale + I0
     perform_deformation = not np.all(np.isnan(deformation_field))
     if perform_deformation:
         df0 = convert_tr_matr_into_deformation_field(tr_matr_single, (fr.YResolution, fr.XResolution)).astype(np.float32)
@@ -130,7 +134,7 @@ def transform_tile(tile_params, deformation_field):
         df = deformation_field + df0
     else:
         df = convert_tr_matr_into_deformation_field(tr_matr_single, (fr.YResolution, fr.XResolution)).astype(np.float32)
-    tile_transformed, shift_x, shift_y = remap_tile(tile_initial, df)
+    tile_transformed, shift_x, shift_y = remap_tile(tile_initial_rescaled, df)
     loc_szy, loc_szx = tile_transformed.shape
     #xi = - shift_x
     #xa = np.min(((xi + loc_szx), montage_xsz-1))
@@ -169,7 +173,7 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
     tile_positions : 2D array or list
         Actual tile positions. Default is montage_object.tile_positions.
     left_crop : int 
-        Cropping value for cropping the image from the left side (used along with deformation_filed or on its own). Default is 0 - no cropping.
+        Cropping value for cropping the image from the left side (used along with deformation_field or on its own). Default is 0 - no cropping.
     dx : int
         X-size of the tile. Default is montage_object.XResolution-left_crop
     dy : int
@@ -342,7 +346,7 @@ def find_Transform_ECC_DASK(params, deformation_field):
         Subsets img1[-ymargin:, -xmargin:] and  img2[0:ymargin, 0:xmargin] will be used for correlation.
         Default is full images, so image_margins = (ymargin, xmargin) = img1.shape
     left_crop : int 
-        Cropping value for cropping the image from the left side (used along with deformation_filed or on its own). Default is 0 - no cropping.
+        Cropping value for cropping the image from the left side (used along with deformation_field or on its own). Default is 0 - no cropping.
     warp_matrix : 3x2 initial guess of the transf matrix.
         Default is np.array([[1, 0, 0], [0, 1, 0]], dtype=np.float32)
     motion : target transformation.
@@ -391,7 +395,7 @@ def assemble_layer(params, deformation_field):
     Parameters:
     ----------
     params : list
-        params = [layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, shape, Xsize, Ysize, left_crop, verbose]
+        params = [layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, Xsize, Ysize, left_crop, tile_I0s, tile_scales, verbose]
         layer_id : int
             Layer ID should be a value bewteen -1 and self.nz_tiles-1. -1 means the last layer will be assembled.
         fls_layer : list
@@ -411,7 +415,7 @@ def assemble_layer(params, deformation_field):
         Ysize : int
             Overall Mosaic height (pixels).
         left_crop : int 
-            Cropping value for cropping the image from the left side (used along with deformation_filed or on its own).
+            Cropping value for cropping the image from the left side (used along with deformation_field or on its own).
         verbose : boolean
             Display intermediate results.
     deformation_field : 2D array
@@ -421,13 +425,14 @@ def assemble_layer(params, deformation_field):
     ----------
     layer_mosaic, layer_id
     '''
-    layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, Xsize, Ysize, left_crop, verbose = params
+    layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, Xsize, Ysize, left_crop, tile_I0s, tile_scales, verbose = params
     layer_mosaic = np.zeros((Ysize, Xsize-left_crop), dtype=float)
     layer_mosaic_weights = np.zeros((Ysize, Xsize-left_crop), dtype=float)
     tile_params_mult = []
     xy_limits = []
     for fl, (j, tr_matr_single) in zip(tqdm(fls_layer, desc = 'Building tile parameter sets', display = verbose), enumerate(tr_matr_layer)):
-        tile_params_mult.append([j, fl, image_name, tr_matr_single, Ysize, Xsize, weight_min, weight_max, left_crop])
+        #tile_params : list :  j, fl, image_name, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max, left_crop, I0, scale
+        tile_params_mult.append([j, fl, image_name, tr_matr_single, Ysize, Xsize, weight_min, weight_max, left_crop, tile_I0s[j], tile_scales[j]])
     if len(tile_params_mult)>0:
         for tile_params in tqdm(tile_params_mult, desc = 'Building mosaic for layer_id={:d}'.format(layer_id), display = verbose):
             if verbose:
@@ -459,10 +464,10 @@ def generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs):
     ----------
     Mill_Volt_Rate_um_per_V : float
         Milling Voltage to Z conversion (µm/V). Default is 31.235258870176065.
-    mosaic_shape : tuple or list of of 2 ints
+    mosaic_shape : tuple or list of 2 ints
         Mosaic shape (ny_tiles, nx_tiles). Default is (1,1).
-    tile_id : tuple or list of of 2 ints
-        Y and X indices of the tile for which the WD fs frame will be evaluzted. Default is (0, 0).
+    tile_id : tuple or list of 2 ints
+        Y and X indices of the tile for which the WD fs frame will be evaluated. Default is (0, 0).
     save_png : boolean
         If True (default), the plot is saved into PNG file.
     dpi : int
@@ -487,7 +492,7 @@ def generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs):
     save_png = kwargs.get('save_png', True)
     dpi = kwargs.get('dpi', 300)
     if save_png:
-        save_fname = kwargs.get ('save_fname', os.path.join(data_dir, Mill_Rate_Data_xlsx.replace('.xlsx','_Mill_Rate.png')))
+        save_fname = kwargs.get('save_fname', os.path.join(data_dir, Mill_Rate_Data_xlsx.replace('.xlsx','_Mill_Rate.png')))
     else:
         save_fname = 'Image not saved'
     if verbose:
@@ -568,10 +573,10 @@ def generate_report_SEM_param_mosaic_stack_xlsx(FIBSEM_Data_xlsx, **kwargs):
     ----------
     SEM_params : list of str
         SEM parameters to analyze. Options are: 'WD', 'SEMStiX', 'SEMStiY', 'SEMAlnX', 'SEMAlnY'. Default is ['SEMStiX', 'SEMStiY'].
-    mosaic_shape : tuple or list of of 2 ints
+    mosaic_shape : tuple or list of 2 ints
         Mosaic shape (ny_tiles, nx_tiles). Default is (1,1).
-    tile_id : tuple or list of of 2 ints
-        Y and X indices of the tile for which the WD fs frame will be evaluzted. Default is (0, 0).
+    tile_id : tuple or list of 2 ints
+        Y and X indices of the tile for which the WD fs frame will be evaluated. Default is (0, 0).
     save_png : boolean
         If True (default), the plot is saved into PNG file.
     dpi : int
@@ -644,7 +649,7 @@ def generate_report_SEM_param_mosaic_stack_xlsx(FIBSEM_Data_xlsx, **kwargs):
             ax.set_ylabel(SEM_key)
             ax.legend(fontsize=12, loc = 'lower right')
         if save_png:
-            save_fname = kwargs.get ('save_fname', os.path.join(data_dir, FIBSEM_Data_xlsx.replace('.xlsx', '_' + SEM_params[k] + '.png')))
+            save_fname = kwargs.get('save_fname', os.path.join(data_dir, FIBSEM_Data_xlsx.replace('.xlsx', '_' + SEM_params[k] + '.png')))
             axs[-1].text(-0.12, -0.23, save_fname, fontsize = 5, transform=axs[-1].transAxes)
             fig.savefig(save_fname, dpi=dpi)
         else:
@@ -666,7 +671,7 @@ def generate_report_SEM_param_mosaic_layer_xlsx(FIBSEM_Data_xlsx, **kwargs):
     ----------
     SEM_params : list of str
         SEM parameters to analyze. Options are: 'WD', 'SEMStiX', 'SEMStiY', 'SEMAlnX', 'SEMAlnY'. Default is ['SEMStiX', 'SEMStiY'].
-    mosaic_shape : tuple or list of of 2 ints
+    mosaic_shape : tuple or list of 2 ints
         Mosaic shape (ny_tiles, nx_tiles). Default is (1,1).
     frame_id : int
         ID of the frame to show the SEM parameter map over the tile mosaic.
@@ -768,7 +773,7 @@ def generate_report_SEM_param_mosaic_layer_xlsx(FIBSEM_Data_xlsx, **kwargs):
                    zorder=10)
         
     if save_png:
-        save_fname = kwargs.get ('save_fname', os.path.join(data_dir, FIBSEM_Data_xlsx.replace('.xlsx',fname_repl_suffix+'_frame{:d}.png'.format(frame_id))))
+        save_fname = kwargs.get('save_fname', os.path.join(data_dir, FIBSEM_Data_xlsx.replace('.xlsx',fname_repl_suffix+'_frame{:d}.png'.format(frame_id))))
         axs[-1].text(-0.12, -0.07, save_fname, fontsize = 4, transform=axs[-1].transAxes)
         fig.savefig(save_fname, dpi=dpi)
     else:
@@ -787,10 +792,10 @@ def generate_report_data_minmax_montage_xlsx(minmax_xlsx_file, **kwargs):
 
     kwargs:
     ----------
-    mosaic_shape : tuple or list of of 2 ints
+    mosaic_shape : tuple or list of 2 ints
         Mosaic shape (ny_tiles, nx_tiles). Default is (1,1).
-    tile_id : tuple or list of of 2 ints
-        Y and X indices of the tile for which the WD fs frame will be evaluzted. Default is (0, 0).
+    tile_id : tuple or list of 2 ints
+        Y and X indices of the tile for which the WD fs frame will be evaluated. Default is (0, 0).
     save_png : boolean
         If True (default), the plot is saved into PNG file.
     dpi : int
@@ -815,7 +820,7 @@ def generate_report_data_minmax_montage_xlsx(minmax_xlsx_file, **kwargs):
     save_png = kwargs.get('save_png', True)
     dpi = kwargs.get('dpi', 300)
     if save_png:
-        save_fname = kwargs.get ('save_fname', os.path.join(data_dir, minmax_xlsx_file.replace('.xlsx','_Min_Max.png')))
+        save_fname = kwargs.get('save_fname', os.path.join(data_dir, minmax_xlsx_file.replace('.xlsx','_Min_Max.png')))
     else:
         save_fname = 'Image not saved'
     if verbose:
@@ -1406,14 +1411,6 @@ class FIBSEM_mosaic_dataset:
         self.C = self.nh + self.nv + self.nl
         V = L * self.n_tiles_per_layer                     # Total number of tiles
 
-        if verbose:
-            print('Total number of tiles: ', V)
-            print('Total number of left-right intra-layer pairs: ', self.nh)
-            print('Total number of up-down intra-layer pairs: ', self.nv)
-            print('Total number of intra-layer pairs: ', self.nh + self.nv)
-            print('Total number of inter-layer pairs: ', self.nl)
-            print('Total number of of pairs (pair-wise translations): ', self.C)
-
         # Prepare data for sparse matrix A
         data = []
         row_ind = []
@@ -1441,7 +1438,6 @@ class FIBSEM_mosaic_dataset:
                 col_ind.extend([idx1, idx2])
                 data.extend([-w_sqrt_intra, w_sqrt_intra])
                 row += 1
-
         # Inter-layer adjacent pairs
         for l in range(L - 1):
             for i in range(self.n_tiles_per_layer):
@@ -1472,12 +1468,20 @@ class FIBSEM_mosaic_dataset:
         self.SIFT_transformation_valid = np.full(self.C, False)
         self.SIFT_fnms_matches = ['' for x in np.arange(self.C)]
         self.SIFT_nmatches = np.full(self.C, 0)
+        self.SIFT_intensity_ratios = np.full(self.C, np.nan)
+        self.tile_I0s = np.zeros((self.nz_tiles, self.n_tiles_per_layer))
+        self.tile_scales = np.ones((self.nz_tiles, self.n_tiles_per_layer))
 
         if verbose:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Initialized FIBSEM_mosaic_dataset instance:')
-            print('Number of tiles per Z-layer: {:d}'.format(self.n_tiles_per_layer))
             print('Total number of tile files: {:d}'.format(V))
+            print('Number of tiles per Z-layer: {:d}'.format(self.n_tiles_per_layer))
             print('Number of Z-slices (nz_tiles): {:d}'.format(self.nz_tiles))
+            print('')
+            print('Total number of left-right intra-layer pairs: ', self.nh)
+            print('Total number of up-down intra-layer pairs: ', self.nv)
+            print('Total number of intra-layer pairs: ', self.nh + self.nv)
+            print('Total number of inter-layer pairs: ', self.nl)
             print('Total number of pairwise transformations : {:d}'.format(self.C))
 
         self.Xsize = int(np.round(np.max(self.FirstPixels[:, 0]) - np.min(self.FirstPixels[:, 0]) + self.XResolution))
@@ -1798,7 +1802,7 @@ class FIBSEM_mosaic_dataset:
         if U8_conversion == 'sliding':
             params_s3 = []
             for j, fl in enumerate(self.fls.ravel()):
-                params_s3. append([fl, data_min_sliding[j], data_max_sliding[j], kpt_kwargs])
+                params_s3.append([fl, data_min_sliding[j], data_max_sliding[j], kpt_kwargs])
         else:
             if U8_conversion == 'global': 
                 params_s3 = [[fl, data_min_glob, data_max_glob, kpt_kwargs] for fl in self.fls.ravel()]
@@ -1835,7 +1839,7 @@ class FIBSEM_mosaic_dataset:
         deformation_field : 3D array
             Deformation field for distortion corrections to be executed before SIFT. Default is np.nan - no distortion correction
         left_crop : int 
-            Cropping value for cropping the image from the left side (used along with deformation_filed or on its own). Default is 0 - no cropping.
+            Cropping value for cropping the image from the left side (used along with deformation_field or on its own). Default is 0 - no cropping.
         TransformType : object reference
             Transformation model used for determining the transformation matrix from Key-Point pairs. Default is object attribute.
             Choose from the following options:
@@ -1880,13 +1884,14 @@ class FIBSEM_mosaic_dataset:
         Returns:
         ----------
         transformations_results_3D : array of lists containing the results:
-            [transformation_matrix, fnm_matches, npt, error_abs_mean, error_FWHMx, error_FWHMy, iteration]
+            [transformation_matrix, fnm_matches, npt, kpt_ints, error_abs_mean, error_FWHMx, error_FWHMy, iteration]
             transformation_matrix : 2D float array
                 Transformation matrix for each sequential frame pair.
             fnm_matches : str
                 Filename containing the matches used to determine the transformation for the pair of frames.
             npts : int
                 Number of matches.
+            kpt_ints : list of keypoint intensities
             error_abs_mean : float
                 Mean abs error of registration for all matched Key-Points.
         '''
@@ -1981,6 +1986,8 @@ class FIBSEM_mosaic_dataset:
                     self.SIFT_fnms_matches[j] = transformations_result[1]
                     self.SIFT_nmatches[j] = len(transformations_result[2][0])
                     self.SIFT_transformation_valid[j] = self.SIFT_nmatches[j] > SIFT_nmatches_min
+                    src_selected_ints, dst_selected_ints = transformations_result[3]
+                    self.SIFT_intensity_ratios[j] = np.mean(dst_selected_ints / src_selected_ints)
 
                 except Exception as e:
                     if verbose:
@@ -2012,7 +2019,7 @@ class FIBSEM_mosaic_dataset:
         ftype : int
             File type (0 - Shan Xu's .dat, 1 - tif). Default is object attribute.
         left_crop : int
-            Cropping value for cropping the image from the left side (used along with deformation_filed or on its own). Default is 0 - no cropping.
+            Cropping value for cropping the image from the left side (used along with deformation_field or on its own). Default is 0 - no cropping.
         deformation_field : 3D array
             Deformation field for distortion corrections to be executed before SIFT. Default is np.nan - no distortion correction
         thr_min : float
@@ -2364,7 +2371,7 @@ class FIBSEM_mosaic_dataset:
         deformation_field : 3D array
             Deformation field for distortion corrections to be executed before ECC. Default is np.nan - no distortion correction
         left_crop : int 
-            Cropping value for cropping the image from the left side (used along with deformation_filed or on its own). Default is 0 - no cropping.
+            Cropping value for cropping the image from the left side (used along with deformation_field or on its own). Default is 0 - no cropping.
         motion : target transformation.
             Default is cv2.MOTION_TRANSLATION
         repeats : int
@@ -2513,11 +2520,80 @@ class FIBSEM_mosaic_dataset:
 
         return self.tile_positions
 
+    def solve_intensity_normalization(self, **kwargs):
+        '''
+        Solve for per-tile multiplicative intensity scale factors using bundle optimization.
+        ©G.Shtengel gleb.shtengel@gmail.com
+
+        For each valid adjacent tile pair the ratio of mean matched keypoint intensities
+        (after dark-count subtraction) constrains the relative scale between the two tiles.
+        The same sparse constraint matrix (A_csr) used for position bundle optimization is
+        reused. lsqr minimizes the total weighted log-scale residual across all pairs,
+        yielding one scale factor per tile. The result is normalized so that the mean
+        log-scale is zero (i.e. the geometric mean of all scale factors is 1).
+
+        kwargs:
+        ----------
+        method : str
+          Source of intensity ratios. Currently only 'SIFT' is supported. Default is 'SIFT'.
+        I0 : float
+          Dark-count offset subtracted before computing ratios. Default is self.Scaling[1, 0].
+        intralayer_weight : float
+          Weight for intra-layer pair constraints. Default is self.intralayer_weight.
+        interlayer_weight : float
+          Weight for inter-layer pair constraints. Default is self.interlayer_weight.
+        verbose : boolean
+          Display intermediate results. Default is False.
+
+        Returns:
+        ----------
+        tile_scales : 2D float array, shape (nz_tiles, n_tiles_per_layer)
+          Multiplicative scale factor to apply to each tile before assembling the mosaic.
+          Stored as self.tile_scales.
+        '''
+        verbose = kwargs.get('verbose', False)
+        method = kwargs.get('method', 'SIFT')
+        I0 = kwargs.get('I0', self.Scaling[1, 0])
+        intralayer_weight = kwargs.get('intralayer_weight', self.intralayer_weight)
+        interlayer_weight = kwargs.get('interlayer_weight', self.interlayer_weight)
+
+        w_sqrt_intra = np.sqrt(intralayer_weight)
+        w_sqrt_inter = np.sqrt(interlayer_weight)
+        weights = np.concatenate((np.full(self.nh + self.nv, w_sqrt_intra),
+                                np.full(self.nl, w_sqrt_inter)))
+
+        if method == 'SIFT':
+          ratios = self.SIFT_intensity_ratios
+          valid = self.SIFT_transformation_valid & np.isfinite(ratios) & (ratios > 0)
+        else:
+          raise ValueError("method '{}' not supported. Only 'SIFT' is currently available.".format(method))
+
+        if np.sum(valid) == 0:
+          if verbose:
+              print('No valid intensity ratios found. Returning unit scales.')
+          self.tile_scales = np.ones((self.nz_tiles, self.n_tiles_per_layer))
+          return self.tile_scales
+
+        log_ratios = np.log(ratios[valid]) * weights[valid]
+        res = lsqr(self.A_csr[valid], log_ratios)
+        log_scales = res[0]
+
+        # Normalise: geometric mean of all scale factors = 1
+        log_scales -= np.mean(log_scales)
+        tile_scales = np.exp(log_scales).reshape(self.nz_tiles, self.n_tiles_per_layer)
+
+        if verbose:
+          print('Intensity scale factors: min={:.4f}, max={:.4f}, std={:.4f}'.format(
+              np.min(tile_scales), np.max(tile_scales), np.std(tile_scales)))
+
+        self.tile_scales = tile_scales
+        return tile_scales
+
 
     def generate_transformation_report(self, **kwargs):
         '''
         Generate Report Plot for transformation summary. ©G.Shtengel 12/2022 gleb.shtengel@gmail.com
-        
+
         kwargs:
         ----------
         tile_id : int
@@ -2544,9 +2620,9 @@ class FIBSEM_mosaic_dataset:
         data_dir = kwargs.get('data_dir', self.data_dir)
         if save_png:
             try:
-                save_fname = kwargs.get ('save_fname', os.path.splitext(self.fnm_mosaic_stack)[0] + '_Relative_Tile_Shifts.png')
+                save_fname = kwargs.get('save_fname', os.path.splitext(self.fnm_mosaic_stack)[0] + '_Relative_Tile_Shifts.png')
             except:
-                save_fname = kwargs.get ('save_fname', os.path.join(data_dir, 'Relative_Tile_Shifts.png'))
+                save_fname = kwargs.get('save_fname', os.path.join(data_dir, 'Relative_Tile_Shifts.png'))
         else:
             save_fname = 'Image not saved'
         Sample_ID = kwargs.get('Sample_ID', self.Sample_ID)
@@ -2607,9 +2683,11 @@ class FIBSEM_mosaic_dataset:
         deformation_field : 3D array
             Deformation field for distortion corrections to be executed before ECC. Default is np.nan - no distortion correction
         left_crop : int 
-            Cropping value for cropping the image from the left side (used along with deformation_filed or on its own). Default is 0 - no cropping.
+            Cropping value for cropping the image from the left side (used along with deformation_field or on its own). Default is 0 - no cropping.
         fill_value : int
             The value to assign to pixels outside the transformed image bounds. Default is -10000.
+        perform_intensity_normalization : boolean
+            Default is False. If True and tile_scales attribute is avilable, perform intensity normalization (tile intensity rescaling).
         DASK_client : DASK client. If set to empty string '' (default), local computations are performed.
         DASK_client_retries : int (default to 3)
             Number of allowed automatic retries if a task fails. Default is object attribute.
@@ -2659,7 +2737,8 @@ class FIBSEM_mosaic_dataset:
         left_crop = kwargs.get('left_crop', 0)
         weight_min = kwargs.get('weight_min', 1.0)
         weight_max = kwargs.get('weight_max', 2048.0) 
-        fill_value = kwargs.get ('fill_value', -10000) 
+        fill_value = kwargs.get('fill_value', -10000) 
+        perform_intensity_normalization = kwargs.get('perform_intensity_normalization', False)
         verbose = kwargs.get('verbose', False)
         data_dir = kwargs.get('data_dir', self.data_dir)
         save_snapshot = kwargs.get('save_snapshot', False)
@@ -2690,7 +2769,11 @@ class FIBSEM_mosaic_dataset:
             tile_params_mult = []
             xy_limits = []
             for fl, (j, tr_matr_single) in zip(tqdm(self.fls[layer_id].ravel(), desc = 'Building tile parameter sets', display = verbose), enumerate(self.tr_matr[layer_id])):
-                tile_params_mult.append([j, fl, image_name, tr_matr_single, self.Ysize, self.Xsize, weight_min, weight_max, left_crop])
+                #tile_params : list :  j, fl, image_name, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max, left_crop, I0, scale
+                if hasattr(self, 'tile_scales') and perform_intensity_normalization:
+                    tile_params_mult.append([j, fl, image_name, tr_matr_single, self.Ysize, self.Xsize, weight_min, weight_max, left_crop, self.tile_I0s[layer_id, j], self.tile_scales[layer_id, j]])
+                else:
+                    tile_params_mult.append([j, fl, image_name, tr_matr_single, self.Ysize, self.Xsize, weight_min, weight_max, left_crop, 0, 1.0])
             if len(tile_params_mult)>0:
                 if use_DASK:
                     if verbose:
@@ -2922,9 +3005,11 @@ class FIBSEM_mosaic_dataset:
         deformation_field : 3D array
             Deformation field for distortion corrections to be executed before ECC. Default is np.nan - no distortion correction
         left_crop : int 
-            Cropping value for cropping the image from the left side (used along with deformation_filed or on its own). Default is 0 - no cropping.
+            Cropping value for cropping the image from the left side (used along with deformation_field or on its own). Default is 0 - no cropping.
         fill_value : int
             The value to assign to pixels outside the transformed image bounds. Default is -10000.
+        perform_intensity_normalization : boolean
+            Default is False. If True and tile_scales attribute is avilable, perform intensity normalization (tile intensity rescaling).
         image_name : str
             Image name ('RawImageA' or 'RawImageB'). Default is 'RawImageA'.
         DASK_client : DASK client. If set to empty string '' (default), local computations are performed.
@@ -2938,6 +3023,7 @@ class FIBSEM_mosaic_dataset:
         fnms_saved
         
         '''
+        perform_intensity_normalization = kwargs.get('perform_intensity_normalization', False)
         DASK_client = kwargs.get('DASK_client', '')
         fnm_mosaic_stack = kwargs.get('fnm_mosaic_stack', self.fnm_mosaic_stack)
         fnm_types = kwargs.get("fnm_types", ['mrc'])
@@ -2969,7 +3055,7 @@ class FIBSEM_mosaic_dataset:
         kwargs['weight_min'] = weight_min 
         weight_max = kwargs.get('weight_max', 2048.0)
         kwargs['weight_max'] = weight_max 
-        fill_value = kwargs.get ('fill_value', -10000)
+        fill_value = kwargs.get('fill_value', -10000)
         kwargs['fill_value'] = fill_value
         verbose = kwargs.get('verbose', False)
         use_DASK, status_update_address = check_DASK(DASK_client, verbose=True)
@@ -2995,11 +3081,14 @@ class FIBSEM_mosaic_dataset:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Stack Voxel Size (Angstroms): {:2f} x {:2f} x {:2f}'.format(voxel_size_angstr.x, voxel_size_angstr.y, voxel_size_angstr.z))
             layer_ids = np.arange(self.nz_tiles)
             params_mult = []
+            # params = [layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, Xsize, Ysize, left_crop, tile_I0s, tile_scales, verbose]
             for layer_id in layer_ids:
                 fls_layer = self.fls[layer_id].ravel()
                 tr_matr_layer = self.tr_matr[layer_id]
-                params_mult.append([layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, self.Xsize, self.Ysize, left_crop, verbose])
-
+                if hasattr(self, 'tile_scales') and perform_intensity_normalization:
+                    params_mult.append([layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, self.Xsize, self.Ysize, left_crop, self.tile_I0s[layer_id], self.tile_scales[layer_id], verbose])
+                else:
+                    params_mult.append([layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, self.Xsize, self.Ysize, left_crop, np.zeros(len(fls_layer)), np.ones(len(fls_layer)), verbose])
             if use_DASK:
                 shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)
                 futures = DASK_client.map(assemble_layer, params_mult, deformation_field = shared_data_future, retries = DASK_client_retries)
