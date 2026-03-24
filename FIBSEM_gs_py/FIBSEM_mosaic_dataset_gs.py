@@ -446,7 +446,7 @@ def assemble_layer(params, deformation_field):
                 print('xi={:d}, xa={:d}, yi={:d},  ya={:d}'.format(xi, xa, yi,  ya))
             layer_mosaic[yi:ya, xi:xa] = layer_mosaic[yi:ya, xi:xa] + tile_out
             layer_mosaic_weights[yi:ya, xi:xa] = layer_mosaic_weights[yi:ya, xi:xa] + weight_out
-        layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*len(fls_layer)) 
+        #layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*len(fls_layer)) 
         layer_mosaic = np.nan_to_num(layer_mosaic / layer_mosaic_weights, nan=-fill_value)
     return layer_mosaic, layer_id
 
@@ -2582,8 +2582,8 @@ class FIBSEM_mosaic_dataset:
         log_scales = res[0]
 
         # Normalise: geometric mean of all scale factors = 1
-        log_scales = np.mean(log_scales)
-        tile_scales = np.exp(log_scales).reshape(self.nz_tiles, self.n_tiles_per_layer)
+        log_scales -= np.mean(log_scales)
+        tile_scales = 1.0 / np.exp(log_scales).reshape(self.nz_tiles, self.n_tiles_per_layer)
 
         if verbose:
           print('Intensity scale factors: min={:.4f}, max={:.4f}, std={:.4f}'.format(
@@ -2804,7 +2804,7 @@ class FIBSEM_mosaic_dataset:
                             print('xi={:d}, xa={:d}, yi={:d},  ya={:d}'.format(xi, xa, yi,  ya))
                         layer_mosaic[yi:ya, xi:xa] = layer_mosaic[yi:ya, xi:xa] + tile_out
                         layer_mosaic_weights[yi:ya, xi:xa] = layer_mosaic_weights[yi:ya, xi:xa] + weight_out
-                layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*self.n_tiles_per_layer) 
+                #layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*self.n_tiles_per_layer)
                 layer_mosaic = np.nan_to_num(layer_mosaic / layer_mosaic_weights, nan=-fill_value)
                 layer_mosaics.append(layer_mosaic)
 
