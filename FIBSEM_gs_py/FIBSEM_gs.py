@@ -45,6 +45,7 @@ from scipy import ndimage
 from scipy.signal import convolve2d
 from scipy.ndimage import gaussian_filter, map_coordinates
 from scipy.optimize import curve_fit
+from scipy.linalg import toeplitz
 
 #from sklearn import __version__ as sklearn_version
 #print('sklearn version: ', sklearn_version)
@@ -428,82 +429,84 @@ def ransac(
 
     return model, best_inliers
 
-def levinson_durbin(s, nlags=10, isacov=False):
-    """
-    Levinson-Durbin recursion for autoregressive processes.
-    copied from:
-    https://www.statsmodels.org/stable/_modules/statsmodels/tsa/stattools.html#levinson_durbin
 
-    Parameters
-    ----------
-    s : array_like
-        If isacov is False, then this is the time series. If isacov is true
-        then this is interpreted as autocovariance starting with lag 0.
-    nlags : int, optional
-        The largest lag to include in recursion or order of the autoregressive
-        process.
-    isacov : bool, optional
-        Flag indicating whether the first argument, s, contains the
-        autocovariances or the data series.
-
-    Returns
-    ----------
-    sigma_v : float
-        The estimate of the error variance.
-    arcoefs : ndarray
-        The estimate of the autoregressive coefficients for a model including
-        nlags.
-    pacf : ndarray
-        The partial autocorrelation function.
-    sigma : ndarray
-        The entire sigma array from intermediate result, last value is sigma_v.
-    phi : ndarray
-        The entire phi array from intermediate result, last column contains
-        autoregressive coefficients for AR(nlags).
-
-    Notes
-    ----------
-    This function returns currently all results, but maybe we drop sigma and
-    phi from the returns.
-
-    If this function is called with the time series (isacov=False), then the
-    sample autocovariance function is calculated with the default options
-    (biased, no fft).
-    """
-    #s = array_like(s, "s")
-    #nlags = int_like(nlags, "nlags")
-    #isacov = bool_like(isacov, "isacov")
-
-    order = nlags
-
-    if isacov:
-        sxx_m = s
-    else:
-        sxx_m = acovf(s, fft=False)[: order + 1]  # not tested
-
-    phi = np.zeros((order + 1, order + 1), "d")
-    sig = np.zeros(order + 1)
-    # initial points for the recursion
-    phi[1, 1] = sxx_m[1] / sxx_m[0]
-    sig[1] = sxx_m[0] - phi[1, 1] * sxx_m[1]
-    for k in range(2, order + 1):
-        phi[k, k] = (
-            sxx_m[k] - np.dot(phi[1:k, k - 1], sxx_m[1:k][::-1])
-        ) / sig[k - 1]
-        for j in range(1, k):
-            phi[j, k] = phi[j, k - 1] - phi[k, k] * phi[k - j, k - 1]
-        sig[k] = sig[k - 1] * (1 - phi[k, k] ** 2)
-
-    sigma_v = sig[-1]
-    arcoefs = phi[1:, -1]
-    pacf_ = np.diag(phi).copy()
-    pacf_[0] = 1.0
-    return sigma_v, arcoefs, pacf_, sig, phi  # return everything
 
 
 ################################################
 #      Single Frame Image Processing Functions
 ################################################
+
+def _solve_modified_yw(r, p):
+    """
+    Estimate AR(p) coefficients using only lags p+1 .. N-1.
+
+    For k >= p+1: R_x(k) = -sum_{i=1}^p a_i * R_x(k-i)
+    All k-i >= 1, so no lag-0 contamination.
+    """
+    r = np.asarray(r, dtype=float)
+    N = len(r)
+    n_eqs = N - 1 - p
+    if n_eqs < p:
+        raise ValueError(
+            "ACF too short. Need len(r) >= 2p+2 = {0}, got {1}. "
+            "Provide more lags or reduce ar_order.".format(2 * p + 2, N)
+        )
+
+    k_rows = np.arange(p + 1, N)          # equation lags: p+1, ..., N-1
+    i_cols = np.arange(1, p + 1)          # AR lag offsets: 1, ..., p
+
+    # A[row, col] = R_x(k - i), all indices >= 1
+    A = r[k_rows[:, None] - i_cols[None, :]]
+    b = r[k_rows]
+
+    a, _, _, _ = np.linalg.lstsq(A, -b, rcond=None)
+    return a
+
+
+def estimate_snr_modified_yw(r_acf, ar_order):
+    """
+    SNR estimation via Modified Yule-Walker equations.
+
+    Steps:
+      1. Fit AR(p) from lags p+1..N-1 (uncontaminated by white noise at lag 0).
+      2. Back-solve for R_s(0) from Yule-Walker at lags 1..p.
+         Yule-Walker at lag k:  R_s(k) + sum_{i=1}^p a_i * R_s(|k-i|) = 0
+         When i=k the term is  a_k * R_s(0); all other terms use lags >= 1.
+         => R_s(0) = [ -R_x(k) - sum_{i!=k} a_i * R_x(|k-i|) ] / a_k
+      3. Noise power = R_x(0) - R_s(0).
+
+    Parameters
+    ----------
+    r_acf : array_like
+        Measured ACF [R(0), R(1), ..., R(N-1)]
+    ar_order : int
+        AR model order p  (requires len(r_acf) >= 2*p+2)
+
+    Returns
+    -------
+    snr_linear, r, signal_power, noise_power, ar_coeffs
+    """
+    r = np.asarray(r_acf, dtype=float)
+    p = ar_order
+    ar_coeffs = _solve_modified_yw(r, p)
+
+    r_s0_estimates = []
+    for k in range(1, p + 1):
+        if abs(ar_coeffs[k-1]) > 1e-12:
+            rhs = -r[k] - sum(
+                ar_coeffs[i-1] * r[abs(k - i)]
+                for i in range(1, p + 1) if i != k
+            )
+            r_s0_estimates.append(rhs / ar_coeffs[k-1])
+
+    r_s0 = float(np.median(r_s0_estimates)) if r_s0_estimates else r[0]
+    r_s0 = min(r_s0, r[0])   # signal power cannot exceed total power
+
+    noise_power = max(0.0, r[0] - r_s0)
+    signal_power = r[0] - noise_power
+    snr_linear = signal_power / noise_power
+    return snr_linear, r, signal_power, noise_power, ar_coeffs
+
 
 def find_autocorrelation_peak(ind_acr, mag_acr, **kwargs):
     '''
@@ -524,16 +527,17 @@ def find_autocorrelation_peak(ind_acr, mag_acr, **kwargs):
             'linear'   - linear interpolation of 2-points next to center (same as FO in [1]).
             'parabolic' - parabolic interpolation of 2 point left and 2 points right (for 4-point interpolation this is the same as NN+FO in [1]).
             'gaussian'  - gaussian interpolation with number of points = aperture
-            'LDR' - use Levinson-Durbin recusrsion (ACLDR in [1]).
+            'MYW' - use Modified Yule-Walker (noise-contaminated AR estimation) [2].
         Default is 'parabolic'.
     nlags : int
-        in case of 'LDR' (Levinson-Durbin recusrsion) nlags is the recursion order (a number of lags)
+        in case of 'MYW' (Modified Yule-Walker) nlags is the recursion order (a number of lags)
     aperture : int
         total number of points for gaussian interpolation
     edge_fraction : float
         Fraction of the full auto-correlation  range used to calculate the "zero value" (default is 0.10).
 
     [1]. K. s. Sim, M. s. Lim, Z. x. Yeap, Performance of signal-to-noise ratio estimation for scanning electron microscope using autocorrelation Levinson–Durbin recursion model. J. Microsc. 263, 64–77 (2016).
+    [2]. T. Söderström and P. Stoica, System Identification, Prentice Hall, 1989. (Chapter on bias-compensated AR estimation). 
 
     Returns: mag_acr_peak, mag_NFacr, ind_acr, mag_acr
     '''
@@ -549,10 +553,10 @@ def find_autocorrelation_peak(ind_acr, mag_acr, **kwargs):
     mag_acr_left = mag_acr[(sz//2-2):(sz//2)]
     mag_acr_right = mag_acr[(sz//2+1):(sz//2+3)]
     
-    if extrapolate_signal == 'LDR':
+    if extrapolate_signal == 'MYW':
         half_ACR = mag_acr[sz//2:]
-        sigma_v, ar_coefs, pacf, sigma , phi = levinson_durbin(half_ACR, nlags=nlags, isacov=True)
-        mag_NFacr = np.sum(ar_coefs[0:nlags]*half_ACR[0:nlags])
+        snr_linear, r, signal_power, noise_power, ar_coeffs = estimate_snr_modified_yw(half_ACR, nlags)
+        mag_NFacr = half_ACR[0]-noise_power
     elif extrapolate_signal == 'gaussian':
         di = aperture//2
         ACR_nozero = np.concatenate((mag_acr[sz//2-di : sz//2], mag_acr[sz//2+1 : sz//2+di+1]))
