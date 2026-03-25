@@ -78,15 +78,15 @@ def build_weight_array(shape, **kwargs):
     weight_min : float
         weight_min for weight. Default is 1
     weight_max : float
-        weight_max for weight. Default is 2048
+        weight_max for weight. Default is 512
 
     Returns:
     ----------
     weights
     '''
     weight_min = kwargs.get('weight_min', 1.0)
-    weight_max = kwargs.get('weight_max', 1024.0)
-    indy, indx = np.indices(shape)
+    weight_max = kwargs.get('weight_max', 512.0)
+    indy, indx = np.indices(shape).astype(float)
     indx_r = np.flip(indx)
     indy_r = np.flip(indy)
     weights = np.clip((np.min(np.array([indx, indx_r, indy, indy_r]), axis=0) + weight_min), weight_min, weight_max)
@@ -123,9 +123,9 @@ def transform_tile(tile_params, deformation_field):
     j, fl, image_name, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max, left_crop, I0, scale = tile_params
     fr = FIBSEM_frame(fl)
     if image_name == 'RawImageB':
-        tile_initial = fr.RawImageB
+        tile_initial = fr.RawImageB.astype(float)
     else:
-        tile_initial = fr.RawImageA
+        tile_initial = fr.RawImageA.astype(float)
     tile_initial_rescaled = (tile_initial - I0) * scale + I0
     perform_deformation = not np.all(np.isnan(deformation_field))
     if perform_deformation:
@@ -2739,7 +2739,7 @@ class FIBSEM_mosaic_dataset:
         deformation_field = kwargs.get('deformation_field', np.nan)
         left_crop = kwargs.get('left_crop', 0)
         weight_min = kwargs.get('weight_min', 1.0)
-        weight_max = kwargs.get('weight_max', 2048.0) 
+        weight_max = kwargs.get('weight_max', 2048.0)
         fill_value = kwargs.get('fill_value', -10000) 
         perform_intensity_normalization = kwargs.get('perform_intensity_normalization', False)
         verbose = kwargs.get('verbose', False)
