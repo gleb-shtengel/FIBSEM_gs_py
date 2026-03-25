@@ -446,7 +446,7 @@ def assemble_layer(params, deformation_field):
                 print('xi={:d}, xa={:d}, yi={:d},  ya={:d}'.format(xi, xa, yi,  ya))
             layer_mosaic[yi:ya, xi:xa] = layer_mosaic[yi:ya, xi:xa] + tile_out
             layer_mosaic_weights[yi:ya, xi:xa] = layer_mosaic_weights[yi:ya, xi:xa] + weight_out
-        #layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*len(fls_layer)) 
+        layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*len(fls_layer)) 
         layer_mosaic = np.nan_to_num(layer_mosaic / layer_mosaic_weights, nan=-fill_value)
     return layer_mosaic, layer_id
 
@@ -2680,9 +2680,9 @@ class FIBSEM_mosaic_dataset:
         kwargs:
         ----------
         weight_min : float
-            vmin for weight. Default is 1
+            vmin for weight. Default is 1.
         weight_max : float
-            vmax for weight. Default is 2048
+            vmax for weight. Default is 512.
         deformation_field : 3D array
             Deformation field for distortion corrections to be executed before ECC. Default is np.nan - no distortion correction
         left_crop : int 
@@ -2739,7 +2739,7 @@ class FIBSEM_mosaic_dataset:
         deformation_field = kwargs.get('deformation_field', np.nan)
         left_crop = kwargs.get('left_crop', 0)
         weight_min = kwargs.get('weight_min', 1.0)
-        weight_max = kwargs.get('weight_max', 2048.0)
+        weight_max = kwargs.get('weight_max', 512.0)
         fill_value = kwargs.get('fill_value', -10000) 
         perform_intensity_normalization = kwargs.get('perform_intensity_normalization', False)
         verbose = kwargs.get('verbose', False)
@@ -2804,7 +2804,7 @@ class FIBSEM_mosaic_dataset:
                             print('xi={:d}, xa={:d}, yi={:d},  ya={:d}'.format(xi, xa, yi,  ya))
                         layer_mosaic[yi:ya, xi:xa] = layer_mosaic[yi:ya, xi:xa] + tile_out
                         layer_mosaic_weights[yi:ya, xi:xa] = layer_mosaic_weights[yi:ya, xi:xa] + weight_out
-                #layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*self.n_tiles_per_layer)
+                layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*self.n_tiles_per_layer)
                 layer_mosaic = np.nan_to_num(layer_mosaic / layer_mosaic_weights, nan=-fill_value)
                 layer_mosaics.append(layer_mosaic)
 
