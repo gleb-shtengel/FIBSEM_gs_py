@@ -2961,14 +2961,20 @@ class FIBSEM_mosaic_dataset:
                     else:
                         vmin = vminA
                         vmax = vmaxA
-                    det_str = 'Detector A:  '+ self.DetA.strip('\x00')
+                    try:
+                        det_str = 'Detector A:  '+ self.DetA.strip('\x00')
+                    except:
+                        det_str = 'Detector:'
                 else:
                     if not save_snapshot:
                         vmin, vmax = get_min_max_thresholds(layer_mosaic, thr_min=thr_min, thr_max=thr_max, nbins=nbins, disp_res=False)
                     else:
                         vmin = vminB
                         vmax = vmaxB
-                    det_str = 'Detector B:  '+ self.DetB.strip('\x00')
+                    try:
+                        det_str = 'Detector B:  '+ self.DetB.strip('\x00')
+                    except:
+                        det_str = 'Detector:'
                 print(det_str + ', data range: vmin={:.2f}, vmax={:.2f}'.format(vmin, vmax))
                 ax.imshow(layer_mosaic, cmap='Greys', vmin = vmin, vmax = vmax)
                 ax.axis(False)
