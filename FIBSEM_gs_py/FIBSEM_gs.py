@@ -6384,7 +6384,7 @@ class FIBSEM_frame:
                         elapsed_time))
     # for png files
         if self.ftype == 2:
-            self.RawImageA = np.array(PILImage.open(fname))
+            
             self.FileVersion = -1
             self.DetA = 'Detector A'     # Name of detector A
             self.DetB = 'None'     # Name of detector B
@@ -6400,7 +6400,12 @@ class FIBSEM_frame:
             self.SEMCurr = kwargs.get('SEMCurr', metadata.get('Beam_Current_pA', 0.0)/1e12)
 
             self.Sample_ID = kwargs.get('Sample_ID',  metadata.get('Experiment', ''))
-            self.YResolution, self.XResolution = self.RawImageA.shape
+            if read_header_only:
+                self.XResolution = metadata.get('Width_px', 0)
+                self.YResolution = metadata.get('Height_px', 0)
+            else:
+                self.RawImageA = np.array(PILImage.open(fname))
+                self.YResolution, self.XResolution = self.RawImageA.shape
             self.Scaling = np.array([[1.0, 0.0, 1.0, 1.0], [1.0, 0.0, 1.0, 1.0]]).T
             if memory_profiling:
                 elapsed_time = elapsed_since(start_time)
