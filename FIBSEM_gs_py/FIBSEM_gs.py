@@ -12261,6 +12261,7 @@ class FIBSEM_dataset:
             self.transformation_matrix = np.nan_to_num(np.array([result[0] for result in results_s4]))
             self.fnms_matches = [result[1] for result in results_s4]
             self.npts = np.nan_to_num(np.array([len(result[2][0])  for result in results_s4]))
+            self.SIFT_intensity_ratios = np.nan_to_num(np.array([np.mean(np.array(result[3][1])/np.array(result[3][0])) for result in results_s4]))
             self.error_abs_mean = np.nan_to_num(np.array([result[4] for result in results_s4]))
             self.error_FWHMx = [result[5] for result in results_s4]
             self.error_FWHMy = [result[6] for result in results_s4]
