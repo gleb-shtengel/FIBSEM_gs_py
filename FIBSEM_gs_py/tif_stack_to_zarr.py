@@ -507,14 +507,20 @@ def generate_neuroglancer_link(
     name = os.path.basename(zarr_path.rstrip("/\\"))
     if layer_name is None:
         layer_name = name
-    source_url = f"{serve_base_url.rstrip('/')}/{name}"
+    # Source must point to the s0 array, using the pipe syntax: url/s0/|zarr2:
+    source_url = f"{serve_base_url.rstrip('/')}/{name}/s0/"
     layer_config = {
-        "layers": {
-            layer_name: {
-                "type": "image",
-                "source": f"zarr2://{source_url}",
+        # layers must be a JSON array, not an object
+        "layers": [
+            {
+                "type":   "image",
+                "source": f"{source_url}|zarr2:",
+                "tab":    "source",
+                "name":   layer_name,
             }
-        }
+        ],
+        "selectedLayer": {"visible": True, "layer": layer_name},
+        "layout": "4panel-alt",
     }
     encoded = urllib.parse.quote(json.dumps(layer_config))
     return f"{viewer_url}#!{encoded}"
@@ -536,7 +542,7 @@ def _print_neuroglancer_info(
     print("Neuroglancer — how to view")
     print("=" * 60)
     print(f"  Serve:  python -m http.server 9000 --directory {parent}")
-    print(f"  Source: zarr2://http://localhost:9000/{name}")
+    print(f"  Source: http://localhost:9000/{name}/s0/|zarr2:")
     print(f"\n  Link:   {link}")
     print("=" * 60)
 
