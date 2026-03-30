@@ -616,7 +616,7 @@ def Single_Image_SNR(img, **kwargs):
             'linear'   - linear interpolation of 2-points next to center
             'parabolic' - parabolic interpolation of 2 points left and 2 points right 
             'gaussian'  - gaussian interpolation with number of points = aperture
-            'LDR' - use Levinson-Durbin recusrsion (ACLDR in [1]).
+            'MYW' - use Modified Yule-Walker (noise-contaminated AR estimation) [2].
     nlags : int
         In case of 'LDR' (Levinson-Durbin recursion) nlags is the recursion order (a number of lags). Default is min(xsize/4, ysize/4).
     aperture : int
@@ -645,7 +645,8 @@ def Single_Image_SNR(img, **kwargs):
         usually get increasingly worse with increasing Y. 
         So for typical FIB-SEM data use ySNR
 
-    [1] J. T. L. Thong et al, Single-image signal-to-noise ratio estimation. Scanning, 328–336 (2001).
+    [1]. K. s. Sim, M. s. Lim, Z. x. Yeap, Performance of signal-to-noise ratio estimation for scanning electron microscope using autocorrelation Levinson–Durbin recursion model. J. Microsc. 263, 64–77 (2016).
+    [2]. T. Söderström and P. Stoica, System Identification, Prentice Hall, 1989. (Chapter on bias-compensated AR estimation). 
     '''
     edge_fraction = kwargs.get("edge_fraction", 0.10)
     extrapolate_signal = kwargs.get('extrapolate_signal', 'parabolic')
