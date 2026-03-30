@@ -2131,6 +2131,7 @@ class FIBSEM_mosaic_dataset:
         smoothing_kernel = kwargs.get('smoothing_kernel', def_smoothing_kernel)
         verbose = kwargs.get('verbose', True)
         dpi = kwargs.get('dpi', 600)
+        int_results = pd.DataFrame()
 
         fl1 = self.fls.ravel()[index_pair[0]]
         fl2 = self.fls.ravel()[index_pair[1]]
@@ -2349,8 +2350,7 @@ class FIBSEM_mosaic_dataset:
                     print('Summary Image is saved into file:')
                     print(save_filename)
                 fig.savefig(save_filename, dpi=dpi)
-            else:
-                int_results = pd.DataFrame()
+                
 
         return fnm_deformed1, fnm_deformed2, transformations_result, int_results
 
