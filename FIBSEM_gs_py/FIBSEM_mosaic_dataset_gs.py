@@ -2464,19 +2464,21 @@ class FIBSEM_mosaic_dataset:
     def solve_stack_stitching(self, **kwargs):
         '''
         Solve mosaic stack stitching (perform bundle optimization). ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
-        
+
         kwargs:
         ----------
         verbose : boolean
             Display intermediate results. Default is True.
         method : string
             Options are: ['SIFT-ECC', 'SIFT', 'ECC']. Default is 'ECC'.  'SIFT-ECC' means - try SIFT first, and for the tiles that SIFT failed, try ECC.
-        
+
         Returns:
         ----------
-        positions : array of new tile positions.
+        tile_positions : (nz_tiles, n_tiles_per_layer, 2) array of updated tile positions.
+            Only tiles that appear in at least one valid constraint are updated;
+            all other tiles retain their existing tr_matr translation values.
         '''
-        
+
         verbose = kwargs.get('verbose', False)
         method = kwargs.get('method', 'ECC')
         valid_methods = ['SIFT-ECC', 'SIFT', 'ECC']
@@ -2502,6 +2504,9 @@ class FIBSEM_mosaic_dataset:
                 self.SIFT_residual_error_y[self.SIFT_transformation_valid] = by[self.SIFT_transformation_valid] - self.A_csr[self.SIFT_transformation_valid] @ res_y_all[0]
                 self.SIFT_r2norm_x = res_x_all[4]
                 self.SIFT_r2norm_y = res_y_all[4]
+                # Valid-constraint mask for this method — used below to identify
+                # which tiles should have their tr_matr updated.
+                valid_constraint_mask = self.SIFT_transformation_valid
             else:
                 self.ECC_residual_error_x = np.full(self.C, np.nan)
                 self.ECC_residual_error_y = np.full(self.C, np.nan)
@@ -2513,13 +2518,44 @@ class FIBSEM_mosaic_dataset:
                 self.ECC_residual_error_y[self.ECC_transformation_valid] = by[self.ECC_transformation_valid] - self.A_csr[self.ECC_transformation_valid] @ res_y_all[0]
                 self.ECC_r2norm_x = res_x_all[4]
                 self.ECC_r2norm_y = res_y_all[4]
+                # Valid-constraint mask for this method — used below to identify
+                # which tiles should have their tr_matr updated.
+                valid_constraint_mask = self.ECC_transformation_valid
+
         res_x = res_x_all[0]
         res_y = res_y_all[0]
         positions = np.zeros((self.nz_tiles * self.n_tiles_per_layer, 2))
         positions[:, 0] = res_x - np.max(res_x)
         positions[:, 1] = res_y - np.max(res_y)
-        self.tr_matr[:, :, 0:2, 2] = positions.reshape((self.nz_tiles, self.n_tiles_per_layer, 2))
-        self.tile_positions = -positions.reshape((self.nz_tiles, self.n_tiles_per_layer, 2))
+        positions_3d = positions.reshape((self.nz_tiles, self.n_tiles_per_layer, 2))
+
+        # Determine which tiles appear in at least one valid pairwise constraint.
+        # self.index_pairs has shape (C, 2): each row holds the two flat tile
+        # indices for that constraint row in A_csr.  Collecting the unique indices
+        # from all valid rows gives exactly the tiles whose lsqr-solved positions
+        # are meaningful (i.e. anchored by real image data).
+        valid_tile_flat = np.unique(self.index_pairs[valid_constraint_mask])  # flat 1D tile indices
+        valid_z = valid_tile_flat // self.n_tiles_per_layer   # layer index
+        valid_t = valid_tile_flat  % self.n_tiles_per_layer   # within-layer tile index
+
+        # Update tr_matr only for tiles that had at least one valid constraint.
+        # Tiles with no valid constraints keep their existing tr_matr translations
+        # (i.e. the nominal/initialised positions), since the solver has no real
+        # data to constrain their positions and would otherwise write arbitrary values.
+        self.tr_matr[valid_z, valid_t, 0, 2] = positions_3d[valid_z, valid_t, 0]
+        self.tr_matr[valid_z, valid_t, 1, 2] = positions_3d[valid_z, valid_t, 1]
+
+        # Derive tile_positions from the (selectively updated) tr_matr so that
+        # it stays consistent with tr_matr for both updated and untouched tiles.
+        self.tile_positions = -self.tr_matr[:, :, 0:2, 2]
+
+        if verbose:
+            n_total = self.nz_tiles * self.n_tiles_per_layer
+            n_updated = len(valid_tile_flat)
+            n_skipped = n_total - n_updated
+            print(f'  solve_stack_stitching ({method}): '
+                  f'updated {n_updated}/{n_total} tiles; '
+                  f'{n_skipped} tile(s) with no valid constraints left unchanged.')
 
         return self.tile_positions
 
@@ -2868,7 +2904,7 @@ class FIBSEM_mosaic_dataset:
 
             if self.FileVersion > 8:
                 cell_text = [['Sample ID', '{:s}'.format(self.Sample_ID.strip('\x00')), '',
-                              'Tile Size\n\nShape', '{:d} x {:d}\n\n{:d} x {:d}'.format(self.XResolution, self.YResolution, self.shape[1], self.shape[0]), '',
+                              'Tile Size\n\n # of Tiles per layer', '{:d} x {:d}\n\n{:d}'.format(self.XResolution, self.YResolution, self.n_tiles_per_layer), '',
                               'Scan Rate', '{:.3f} MHz'.format(self.ScanRate/1.0e6)],
                             ['Machine ID', '{:s}'.format(self.MachineID.strip('\x00')), '',
                               'Pixel Size', '{:.1f} nm'.format(self.PixelSize), '',
@@ -2882,7 +2918,7 @@ class FIBSEM_mosaic_dataset:
             else:
                 if self.FileVersion > 0:
                     cell_text = [['', '', '',
-                                  'Tile Size\n\nShape', '{:d} x {:d}\n\n{:d} x {:d}'.format(self.XResolution, self.YResolution, self.shape[1], self.shape[0]), '',
+                                  'Tile Size\n\n # of Tiles per layer', '{:d} x {:d}\n\n{:d}'.format(self.XResolution, self.YResolution, self.n_tiles_per_layer), '',
                                   'Scan Rate', '{:.3f} MHz'.format(self.ScanRate/1.0e6)],
                                 ['Machine ID', '{:s}'.format(self.MachineID.strip('\x00')), '',
                                   'Pixel Size', '{:.1f} nm'.format(self.PixelSize), '',
