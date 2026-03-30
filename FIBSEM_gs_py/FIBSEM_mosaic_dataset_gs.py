@@ -3001,8 +3001,8 @@ class FIBSEM_mosaic_dataset:
         fnm_mosaic_stack : string
             Filename to save the data. Default is object attribute self.fnm_mosaic_stack
         fnm_types : list of strings.
-            File type(s) for output data. Options are: ['mrc', 'h5'].
-            Defauls is ['mrc']. 'h5' is BigDataViewer HDF5 format, uses npy2bdv package. Use empty list if do not want to save the data.
+            File type(s) for output data. Options are: ['mrc', 'tifs'].
+            Default is ['mrc']. If 'tifs' is selected, the data will be saved as individual tif files, one per layer. Use empty list if do not want to save the data.
         voxel_size : rec array of 3 elements
             voxel size in nm
         dtp  : dtype
@@ -3079,15 +3079,18 @@ class FIBSEM_mosaic_dataset:
             DASK_client_retries = kwargs.get("DASK_client_retries", 3)
 
         fnms_saved = []
-        if 'mrc' in fnm_types:
-            mrc_filename = os.path.splitext(fnm_mosaic_stack)[0] + '.mrc'
-            fnms_saved.append(mrc_filename)
-            stack_shape = (self.nz_tiles, self.Ysize, self.Xsize-left_crop)
-            mrc_new = mrcfile.new_mmap(mrc_filename, shape = stack_shape, mrc_mode=mrc_mode, overwrite=True)
-            mrc_new.voxel_size = voxel_size_angstr
-            print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Saving the registered stack into the file: ', mrc_filename)
-            print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Stack dimensions nz, ny, nx (pixels): {:d} x {:d} x {:d}'.format(*stack_shape))
-            print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Stack Voxel Size (Angstroms): {:2f} x {:2f} x {:2f}'.format(voxel_size_angstr.x, voxel_size_angstr.y, voxel_size_angstr.z))
+
+        if fnm_types:            
+            if 'mrc' in fnm_types:
+                mrc_filename = os.path.splitext(fnm_mosaic_stack)[0] + '.mrc'
+                fnms_saved.append(mrc_filename)
+                stack_shape = (self.nz_tiles, self.Ysize, self.Xsize-left_crop)
+                mrc_new = mrcfile.new_mmap(mrc_filename, shape = stack_shape, mrc_mode=mrc_mode, overwrite=True)
+                mrc_new.voxel_size = voxel_size_angstr
+                print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Saving the registered stack into the file: ', mrc_filename)
+                print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Stack dimensions nz, ny, nx (pixels): {:d} x {:d} x {:d}'.format(*stack_shape))
+                print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Stack Voxel Size (Angstroms): {:2f} x {:2f} x {:2f}'.format(voxel_size_angstr.x, voxel_size_angstr.y, voxel_size_angstr.z))
+
             layer_ids = np.arange(self.nz_tiles)
             params_mult = []
             # params = [layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, Xsize, Ysize, left_crop, tile_I0s, tile_scales, verbose]
@@ -3103,11 +3106,23 @@ class FIBSEM_mosaic_dataset:
                 futures = DASK_client.map(assemble_layer, params_mult, deformation_field = shared_data_future, retries = DASK_client_retries)
                 for future in as_completed(futures):
                     mosaic_out, j = future.result()
-                    mrc_new.data[j, :, :] = mosaic_out.astype(dtp)
+                    if 'mrc' in fnm_types:
+                        mrc_new.data[j, :, :] = mosaic_out.astype(dtp)
+                    if 'tifs' in fnm_types:
+                        tif_fname = os.path.splitext(fnm_mosaic_stack)[0] + 'layer_{:d}.tif'.format(j)
+                        tiff.imsave(tif_fname, mosaic_out.astype(dtp))
+                        fnms_saved.append(tif_fname)
                     future.cancel()
             else:
                 for j, params in enumerate(tqdm(params_mult, desc = 'Saving the data stack into MRC file')):
-                    mrc_new.data[j, :, :] = assemble_layer(params, deformation_field)[0].astype(dtp)
-            mrc_new.close()
+                    if 'mrc' in fnm_types:
+                        mrc_new.data[j, :, :] = assemble_layer(params, deformation_field)[0].astype(dtp)
+                    if 'tifs' in fnm_types:
+                        tif_fname = os.path.splitext(fnm_mosaic_stack)[0] + 'layer_{:d}.tif'.format(j)
+                        tiff.imsave(tif_fname, mosaic_out.astype(dtp))
+                        fnms_saved.append(tif_fname)
+            if 'mrc' in fnm_types:
+                mrc_new.close()
+            
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Saving Finished')
         return fnms_saved
