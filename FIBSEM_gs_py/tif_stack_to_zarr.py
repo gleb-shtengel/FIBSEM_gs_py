@@ -508,16 +508,16 @@ def generate_neuroglancer_link(
     name = os.path.basename(zarr_path.rstrip("/\\"))
     if layer_name is None:
         layer_name = name
-    # Neuroglancer pipe syntax: <http-url-to-zarr-root>/|zarr2:<internal-path>
-    # The zarr2 driver receives the root store URL and navigates to s0/ internally.
-    # Putting s0/ before the pipe (as part of the HTTP URL) does NOT work.
+    # Neuroglancer pipe syntax: <http-url-to-zarr-root>/|zarr2:
+    # The zarr2 driver receives the root store URL and reads the OME-NGFF
+    # multiscales metadata directly from the store root.
     source_url = f"{serve_base_url.rstrip('/')}/{name}/"
     layer_config = {
         # layers must be a JSON array, not an object
         "layers": [
             {
                 "type":   "image",
-                "source": f"{source_url}|zarr2:s0/",
+                "source": f"{source_url}|zarr2:",
                 "tab":    "source",
                 "name":   layer_name,
             }
@@ -545,7 +545,7 @@ def _print_neuroglancer_info(
     print("Neuroglancer — how to view")
     print("=" * 60)
     print(f"  Serve:  python -m http.server 9000 --directory {parent}")
-    print(f"  Source: {serve_base_url.rstrip('/')}/{name}/|zarr2:s0/")
+    print(f"  Source: {serve_base_url.rstrip('/')}/{name}/|zarr2:")
     print(f"\n  Link:   {link}")
     print("=" * 60)
 
