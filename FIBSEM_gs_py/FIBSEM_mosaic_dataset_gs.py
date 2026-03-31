@@ -170,8 +170,10 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
         Matplotlib linewidth. Default is 1.0.
     color : string
         Matplotlib color. Default 'cyan'.
+    tile_positions_actual : bool
+        If True (default), use actual solved positions from tr_matr. If False, use nominal positions from montage_object.FirstPixels.
     tile_positions : 2D array or list
-        Actual tile positions. Default is montage_object.tile_positions.
+        Actual tile positions. Default is derived from montage_object.tr_matr (layer 0 positions).
     left_crop : int 
         Cropping value for cropping the image from the left side (used along with deformation_field or on its own). Default is 0 - no cropping.
     dx : int
@@ -182,16 +184,15 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
     linestyle = kwargs.get('linestyle', 'dashed')
     linewidth = kwargs.get('linewidth', 1.0)
     color = kwargs.get('color', 'cyan')
-    tile_positions_actual = kwargs.get('tile_positions_actual', True)
-    if tile_positions_actual:
-        tile_positions = kwargs.get('tile_positions', montage_object.tile_positions)
-
     left_crop = kwargs.get('left_crop', 0)
-    
     dx = kwargs.get('dx', montage_object.XResolution-left_crop)
     dy = kwargs.get('dy', montage_object.YResolution)
-    
+    tile_positions_actual = kwargs.get('tile_positions_actual', True)
+
     if tile_positions_actual:
+        # Default: derive (positive) tile positions from tr_matr on the fly.
+        # Callers can override by passing tile_positions= explicitly.
+        tile_positions = kwargs.get('tile_positions', -montage_object.tr_matr[0, :, 0:2, 2])
         for tile_position in tile_positions:
             xi, yi = tile_position
             rect_patch = patches.Rectangle((xi,yi), dx-2, dy-2,
@@ -1507,10 +1508,14 @@ class FIBSEM_mosaic_dataset:
         self.Xsize = int(np.round(np.max(self.FirstPixels[:, 0]) - np.min(self.FirstPixels[:, 0]) + self.XResolution))
         self.Ysize = int(np.round(np.max(self.FirstPixels[:, 1]) - np.min(self.FirstPixels[:, 1]) + self.YResolution))
         
-        # initialize the translation matrix for each tile
+        # Initialize the translation matrix for each tile.
+        # tr_matr stores translations as NEGATIVE pixel offsets (tr_matr[:,:,i,2] = -position_i),
+        # consistent with the convention that the transformation maps tile-local
+        # coordinates to canvas coordinates: x_canvas = x_tile + tr_matr[0,2].
+        # tile_positions is no longer stored separately — derive it on demand as
+        # -tr_matr[:, :, 0:2, 2] whenever (positive) pixel positions are needed.
         shifts_x = self.FirstPixels[:, 0] - np.min(self.FirstPixels[:, 0])
         shifts_y = self.FirstPixels[:, 1] - np.min(self.FirstPixels[:, 1])
-        self.tile_positions = np.repeat(np.vstack((shifts_x, shifts_y)).T[np.newaxis, : :], L, axis=0)
         single_layer_tr_matr = np.repeat(eye3x3[np.newaxis, :, :], self.n_tiles_per_layer, axis=0)
         single_layer_tr_matr[:, 0, 2] = - np.array(shifts_x).flatten()
         single_layer_tr_matr[:, 1, 2] = - np.array(shifts_y).flatten()
@@ -2485,15 +2490,16 @@ class FIBSEM_mosaic_dataset:
         kwargs:
         ----------
         verbose : boolean
-            Display intermediate results. Default is True.
+            Display intermediate results. Default is False.
         method : string
             Options are: ['SIFT-ECC', 'SIFT', 'ECC']. Default is 'ECC'.  'SIFT-ECC' means - try SIFT first, and for the tiles that SIFT failed, try ECC.
 
         Returns:
         ----------
-        tile_positions : (nz_tiles, n_tiles_per_layer, 2) array of updated tile positions.
-            Only tiles that appear in at least one valid constraint are updated;
-            all other tiles retain their existing tr_matr translation values.
+        tile_positions : ndarray, shape (nz_tiles, n_tiles_per_layer, 2)
+            Tile positions derived on the fly from tr_matr as -tr_matr[:, :, 0:2, 2].
+            Only tiles with at least one valid constraint are updated;
+            all other tiles retain their initialised tr_matr values.
         '''
 
         verbose = kwargs.get('verbose', False)
@@ -2562,10 +2568,6 @@ class FIBSEM_mosaic_dataset:
         self.tr_matr[valid_z, valid_t, 0, 2] = positions_3d[valid_z, valid_t, 0]
         self.tr_matr[valid_z, valid_t, 1, 2] = positions_3d[valid_z, valid_t, 1]
 
-        # Derive tile_positions from the (selectively updated) tr_matr so that
-        # it stays consistent with tr_matr for both updated and untouched tiles.
-        self.tile_positions = -self.tr_matr[:, :, 0:2, 2]
-
         if verbose:
             n_total = self.nz_tiles * self.n_tiles_per_layer
             n_updated = len(valid_tile_flat)
@@ -2574,7 +2576,11 @@ class FIBSEM_mosaic_dataset:
                   f'updated {n_updated}/{n_total} tiles; '
                   f'{n_skipped} tile(s) with no valid constraints left unchanged.')
 
-        return self.tile_positions
+        # Return tile positions derived on the fly from tr_matr.
+        # tr_matr[:,:,i,2] stores the negative translation, so negate to get
+        # positive (x, y) pixel positions in canvas space.
+        # tile_positions = -self.tr_matr[:, :, 0:2, 2]
+        return -self.tr_matr[:, :, 0:2, 2]
 
     def solve_intensity_normalization(self, **kwargs):
         '''
@@ -2652,8 +2658,16 @@ class FIBSEM_mosaic_dataset:
 
         kwargs:
         ----------
+        frame_inds : array or list
+            Array of frame/layer indices to plot; default is np.arange(self.nz_tiles).
+        Sample_ID : str
+            Sample label for the plot title; default is self.Sample_ID.
+        n_tiles_per_layer : int
+            Number of tiles to iterate over; default is self.n_tiles_per_layer.
+        data_dir : path
+            Directory used as fallback for save_fname; default is self.data_dir.
         tile_id : int
-            tile ID to sho
+            tile ID to show. Default is 0.
         save_png : boolean
             If True (default), the plot is saved into PNG file.
         dpi : int
@@ -2683,8 +2697,10 @@ class FIBSEM_mosaic_dataset:
             save_fname = 'Image not saved'
         Sample_ID = kwargs.get('Sample_ID', self.Sample_ID)
         frame_inds = kwargs.get('frame_inds', np.arange(self.nz_tiles))
-        tile_positions_x = self.tile_positions[frame_inds, :, 0] - self.tile_positions[0, :, 0]
-        tile_positions_y = self.tile_positions[frame_inds, :, 1] - self.tile_positions[0, :, 1]
+        # Derive relative tile positions from tr_matr (tr_matr[:,:,i,2] = -position_i).
+        # Subtracting frame 0 gives positions relative to the first layer.
+        tile_positions_x = self.tr_matr[0, :, 0, 2] - self.tr_matr[frame_inds, :, 0, 2]
+        tile_positions_y = self.tr_matr[0, :, 1, 2] - self.tr_matr[frame_inds, :, 1, 2]
 
         if verbose:
             print('Generating Plot')
@@ -2887,10 +2903,10 @@ class FIBSEM_mosaic_dataset:
                 ax.set_title(ttls[j], fontsize=10)
                 if overlay_tile_grid:
                         overlay_montage_grid(ax, self,
-                                tile_positions = self.tile_positions[layer_id],
-                                 linewidth=linewidth,
-                                 linestyle=linestyle,
-                                 edgecolor=color)
+                                tile_positions = -self.tr_matr[layer_id, :, 0:2, 2],
+                                 linewidth = linewidth,
+                                 linestyle = linestyle,
+                                 color = color)
             fig.suptitle(snapshot_fname, fontsize = fontsize)
 
             if hasattr(self, 'EHT'):
@@ -3035,7 +3051,7 @@ class FIBSEM_mosaic_dataset:
                 ax.imshow(layer_mosaic, cmap='Greys', vmin = vmin, vmax = vmax)
                 ax.axis(False)
                 overlay_montage_grid(ax, self,
-                                     tile_positions = self.tile_positions[layer_id],
+                                     tile_positions = -self.tr_matr[layer_id, :, 0:2, 2],
                                      left_crop = left_crop,
                                      tile_positions_actual = True,
                                      linewidth=0.1, color = 'red')
