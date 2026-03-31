@@ -51,7 +51,7 @@ output.zarr/
   ...
 
 Neuroglancer:
-  zarr2://http://<host>:<port>/path/to/output.zarr
+  http://<host>:<port>/path/to/output.zarr/|zarr2:s0/
 
 ©G.Shtengel 2026  gleb.shtengel@gmail.com
 """
@@ -487,7 +487,7 @@ def generate_neuroglancer_link(
     zarr_path: str,
     layer_name: str = None,
     viewer_url: str = "https://neuroglancer-demo.appspot.com/",
-    serve_base_url: str = "http://localhost:9000",
+    serve_base_url: str = "https://s3.janelia.org/hess-lab/FIBSEM",
 ) -> str:
     """
     Generate a Neuroglancer link for a local or remote OME-ZARR store.
@@ -498,7 +498,8 @@ def generate_neuroglancer_link(
     layer_name      : display name for the Neuroglancer layer (default: zarr filename)
     viewer_url      : Neuroglancer viewer URL
     serve_base_url  : base URL under which the zarr file is served, e.g.
-                      "http://localhost:9000" or "https://s3.my-bucket.org/data"
+                      "https://s3.janelia.org/hess-lab/FIBSEM" (default) or
+                      "http://localhost:9000" for local serving
 
     Returns
     -------
@@ -507,14 +508,16 @@ def generate_neuroglancer_link(
     name = os.path.basename(zarr_path.rstrip("/\\"))
     if layer_name is None:
         layer_name = name
-    # Source must point to the s0 array, using the pipe syntax: url/s0/|zarr2:
-    source_url = f"{serve_base_url.rstrip('/')}/{name}/s0/"
+    # Neuroglancer pipe syntax: <http-url-to-zarr-root>/|zarr2:<internal-path>
+    # The zarr2 driver receives the root store URL and navigates to s0/ internally.
+    # Putting s0/ before the pipe (as part of the HTTP URL) does NOT work.
+    source_url = f"{serve_base_url.rstrip('/')}/{name}/"
     layer_config = {
         # layers must be a JSON array, not an object
         "layers": [
             {
                 "type":   "image",
-                "source": f"{source_url}|zarr2:",
+                "source": f"{source_url}|zarr2:s0/",
                 "tab":    "source",
                 "name":   layer_name,
             }
@@ -528,7 +531,7 @@ def generate_neuroglancer_link(
 
 def _print_neuroglancer_info(
     zarr_path: str,
-    serve_base_url: str = "http://localhost:9000",
+    serve_base_url: str = "https://s3.janelia.org/hess-lab/FIBSEM",
     layer_name: str = None,
     viewer_url: str = "https://neuroglancer-demo.appspot.com/",
 ):
@@ -542,7 +545,7 @@ def _print_neuroglancer_info(
     print("Neuroglancer — how to view")
     print("=" * 60)
     print(f"  Serve:  python -m http.server 9000 --directory {parent}")
-    print(f"  Source: http://localhost:9000/{name}/s0/|zarr2:")
+    print(f"  Source: {serve_base_url.rstrip('/')}/{name}/|zarr2:s0/")
     print(f"\n  Link:   {link}")
     print("=" * 60)
 
@@ -569,7 +572,7 @@ def tif_stack_to_zarr(
     dataset_name: str = "volume",
     overwrite: bool = True,
     DASK_client_retries: int = 3,
-    neuroglancer_serve_base_url: str = "http://localhost:9000",
+    neuroglancer_serve_base_url: str = "https://s3.janelia.org/hess-lab/FIBSEM",
     neuroglancer_viewer_url: str = "https://neuroglancer-demo.appspot.com/",
 ):
     """
