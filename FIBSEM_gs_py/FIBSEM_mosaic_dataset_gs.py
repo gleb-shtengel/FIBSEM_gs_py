@@ -1295,6 +1295,23 @@ class FIBSEM_mosaic_dataset:
             self.ContrastB = test_frame.ContrastB
             self.Sample_ID = kwargs.get("Sample_ID", test_frame.Sample_ID)
             self.EightBit = kwargs.get("EightBit", test_frame.EightBit)
+            # try to auto-determine shape and adjacent pairs
+            # self.nz_tiles  - # of layers (# of tiles along Z-axis)
+            # self.ny_tiles  - # of rows per layer (# of tiles along Y-axis)
+            # self.nx_tiles  - # of columns per layer(# of tiles along X-axis)
+            try:
+                tile_string = os.path.splitext(os.path.split(self.fls.ravel()[-1])[1])[0][-5:].split('-')    
+                auto_ny_tiles = int(tile_string[1])+1
+                auto_nx_tiles = int(tile_string[2])+1
+                auto_shape = (auto_ny_tiles, auto_nx_tiles)
+            except:
+                if verbose:
+                    print('Could not auto-determine the shape, and therefore the montage size and the adjacent tile pairs')
+                    print('Define the montage size (self.Xsize, self.Ysize) manually')
+                    print('Define the adjacent tile pairs (self.adjacent_pairs - list of indices of files of the adjacent tiles) manually')
+                auto_shape = (1, 1)
+            self.shape = kwargs.get('shape', auto_shape)
+            self.ny_tiles, self.nx_tiles = self.shape
         
         if self.ftype == 2 and metadata_file:
             metadata = parse_metadata_file(metadata_file)
@@ -2901,10 +2918,13 @@ class FIBSEM_mosaic_dataset:
                 Sample_ID_text = self.Sample_ID.strip('\x00')
             else:
                 Sample_ID_text = ''
-
+            if hasattr(self, 'shape'):
+                shape_strings = 'Tile Size\n\nShape', '{:d} x {:d}\n\n{:d} x {:d}'.format(self.XResolution, self.YResolution, self.shape[1], self.shape[0]), '',
+            else:
+                shape_strings = 'Tile Size\n\n # of Tiles per layer', '{:d} x {:d}\n\n{:d}'.format(self.XResolution, self.YResolution, self.n_tiles_per_layer), ''
             if self.FileVersion > 8:
                 cell_text = [['Sample ID', '{:s}'.format(self.Sample_ID.strip('\x00')), '',
-                              'Tile Size\n\n # of Tiles per layer', '{:d} x {:d}\n\n{:d}'.format(self.XResolution, self.YResolution, self.n_tiles_per_layer), '',
+                              shape_strings,
                               'Scan Rate', '{:.3f} MHz'.format(self.ScanRate/1.0e6)],
                             ['Machine ID', '{:s}'.format(self.MachineID.strip('\x00')), '',
                               'Pixel Size', '{:.1f} nm'.format(self.PixelSize), '',
@@ -2918,7 +2938,7 @@ class FIBSEM_mosaic_dataset:
             else:
                 if self.FileVersion > 0:
                     cell_text = [['', '', '',
-                                  'Tile Size\n\n # of Tiles per layer', '{:d} x {:d}\n\n{:d}'.format(self.XResolution, self.YResolution, self.n_tiles_per_layer), '',
+                                  shape_strings,
                                   'Scan Rate', '{:.3f} MHz'.format(self.ScanRate/1.0e6)],
                                 ['Machine ID', '{:s}'.format(self.MachineID.strip('\x00')), '',
                                   'Pixel Size', '{:.1f} nm'.format(self.PixelSize), '',
@@ -2931,7 +2951,7 @@ class FIBSEM_mosaic_dataset:
                                  'FIB Probe', '{:d}'.format(self.FIBProb)]]
                 else:
                     cell_text = [['Sample ID', '{:s}'.format(Sample_ID_text), '',
-                                  'Tile Size\n\n # of Tiles per layer', '{:d} x {:d}\n\n{:d}'.format(self.XResolution, self.YResolution, self.n_tiles_per_layer), '',
+                                  shape_strings,
                                   'Scan Rate', ScanRate_text],
                                 ['Machine ID', MachineID_text, '',
                                   'Pixel Size', '{:.1f} nm'.format(self.PixelSize), '',
