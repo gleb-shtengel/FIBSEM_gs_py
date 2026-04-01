@@ -2917,7 +2917,6 @@ class FIBSEM_mosaic_dataset:
                 SEMCurr_text = '{:.3f} nA'.format(self.SEMCurr*1.0e9)
             else:
                 SEMCurr_text = ''
-
             if hasattr(self, 'ScanRate'):
                 ScanRate_text = '{:.3f} MHz'.format(self.ScanRate/1.0e6)
             else:
@@ -2940,7 +2939,7 @@ class FIBSEM_mosaic_dataset:
                 shape_strings = 'Tile Size\n\n # of Tiles per layer', '{:d} x {:d}\n\n{:d}'.format(self.XResolution, self.YResolution, self.n_tiles_per_layer), ''
             if self.FileVersion > 8:
                 cell_text = [['Sample ID', '{:s}'.format(self.Sample_ID.strip('\x00')), '',
-                              shape_strings,
+                              *shape_strings,
                               'Scan Rate', '{:.3f} MHz'.format(self.ScanRate/1.0e6)],
                             ['Machine ID', '{:s}'.format(self.MachineID.strip('\x00')), '',
                               'Pixel Size', '{:.1f} nm'.format(self.PixelSize), '',
@@ -2954,7 +2953,7 @@ class FIBSEM_mosaic_dataset:
             else:
                 if self.FileVersion > 0:
                     cell_text = [['', '', '',
-                                  shape_strings,
+                                  *shape_strings,
                                   'Scan Rate', '{:.3f} MHz'.format(self.ScanRate/1.0e6)],
                                 ['Machine ID', '{:s}'.format(self.MachineID.strip('\x00')), '',
                                   'Pixel Size', '{:.1f} nm'.format(self.PixelSize), '',
@@ -2967,7 +2966,7 @@ class FIBSEM_mosaic_dataset:
                                  'FIB Probe', '{:d}'.format(self.FIBProb)]]
                 else:
                     cell_text = [['Sample ID', '{:s}'.format(Sample_ID_text), '',
-                                  shape_strings,
+                                  *shape_strings,
                                   'Scan Rate', ScanRate_text],
                                 ['Machine ID', MachineID_text, '',
                                   'Pixel Size', '{:.1f} nm'.format(self.PixelSize), '',
