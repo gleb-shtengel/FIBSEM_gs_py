@@ -396,7 +396,7 @@ def assemble_layer(params, deformation_field):
     Parameters:
     ----------
     params : list
-        params = [layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, Xsize, Ysize, left_crop, tile_I0s, tile_scales, verbose]
+        params = [layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, Xsize, Ysize, left_crop, tile_I0s, tile_scales, save_mrc, save_tif, tif_fname, dtp, verbose]
         layer_id : int
             Layer ID should be a value bewteen -1 and self.nz_tiles-1. -1 means the last layer will be assembled.
         fls_layer : list
@@ -417,6 +417,13 @@ def assemble_layer(params, deformation_field):
             Overall Mosaic height (pixels).
         left_crop : int 
             Cropping value for cropping the image from the left side (used along with deformation_field or on its own).
+        save_mrc : bool
+            If True, the layer moosaic is output as an array for saving into mrc file by a caller
+        save_tif : bool
+            If True, the layer mosaic is saved into tif file
+        tif_fname : str
+            path for the TIF file
+        dtp : data type
         verbose : boolean
             Display intermediate results.
     deformation_field : 2D array
@@ -426,7 +433,7 @@ def assemble_layer(params, deformation_field):
     ----------
     layer_mosaic, layer_id
     '''
-    layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, Xsize, Ysize, left_crop, tile_I0s, tile_scales, verbose = params
+    layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, Xsize, Ysize, left_crop, tile_I0s, tile_scales, save_mrc, save_tif, tif_fname, dtp, verbose = params
     layer_mosaic = np.zeros((Ysize, Xsize-left_crop), dtype=float)
     layer_mosaic_weights = np.zeros((Ysize, Xsize-left_crop), dtype=float)
     tile_params_mult = []
@@ -449,7 +456,14 @@ def assemble_layer(params, deformation_field):
             layer_mosaic_weights[yi:ya, xi:xa] = layer_mosaic_weights[yi:ya, xi:xa] + weight_out
         layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*len(fls_layer)) 
         layer_mosaic = np.nan_to_num(layer_mosaic / layer_mosaic_weights, nan=-fill_value)
-    return layer_mosaic, layer_id
+        if save_tif:
+            tiff.imwrite(tif_fname, layer_mosaic.astype(dtp))
+            if save_mrc:
+                return layer_mosaic, layer_id
+            else:
+                return np.zeros(1), layer_id
+        else:
+            return layer_mosaic, layer_id
 
 
 def generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs):
@@ -3089,6 +3103,8 @@ class FIBSEM_mosaic_dataset:
         fnm_types : list of strings.
             File type(s) for output data. Options are: ['mrc', 'tifs'].
             Default is ['mrc']. If 'tifs' is selected, the data will be saved as individual tif files, one per layer. Use empty list if do not want to save the data.
+        tif_folder : str
+            sub-directory name (will be created inside data_dir). Default is 'tif_stack'
         voxel_size : rec array of 3 elements
             voxel size in nm
         dtp  : dtype
@@ -3122,6 +3138,16 @@ class FIBSEM_mosaic_dataset:
         DASK_client = kwargs.get('DASK_client', '')
         fnm_mosaic_stack = kwargs.get('fnm_mosaic_stack', self.fnm_mosaic_stack)
         fnm_types = kwargs.get("fnm_types", ['mrc'])
+        tif_folder = kwargs.get('tif_folder', 'tif_stack')
+        save_tif = False
+        save_folder = ''
+        if 'tifs' in fnm_types:
+            save_tif = True
+            save_folder = os.path.join(os.path.split(fnm_mosaic_stack)[0], tif_folder)
+            os.makedirs(save_folder, exist_ok=True)
+        save_mrc = False
+        if 'mrc' in fnm_types:
+            save_mrc = True
         image_name = kwargs.get('image_name', 'RawImageA')
         if hasattr(self, 'voxel_size'):
             voxel_size = kwargs.get("voxel_size", self.voxel_size)
@@ -3167,7 +3193,7 @@ class FIBSEM_mosaic_dataset:
         fnms_saved = []
 
         if fnm_types:            
-            if 'mrc' in fnm_types:
+            if save_mrc:
                 mrc_filename = os.path.splitext(fnm_mosaic_stack)[0] + '.mrc'
                 fnms_saved.append(mrc_filename)
                 stack_shape = (self.nz_tiles, self.Ysize, self.Xsize-left_crop)
@@ -3183,32 +3209,29 @@ class FIBSEM_mosaic_dataset:
             for layer_id in layer_ids:
                 fls_layer = self.fls[layer_id].ravel()
                 tr_matr_layer = self.tr_matr[layer_id]
+                #tif_fname = os.path.splitext(fnm_mosaic_stack)[0] + '_layer_{:d}.tif'.format(layer_id)
+                tif_fname = os.path.join(save_folder, os.path.splitext(os.path.split(fnm_mosaic_stack)[1])[0] + '_layer_{:d}.tif'.format(layer_id))
+                if save_tif:
+                    fnms_saved.append(tif_fname)
+                #params = [layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, Xsize, Ysize, left_crop, tile_I0s, tile_scales, save_mrc, save_tif, tif_fname, dtp, verbose]
                 if hasattr(self, 'tile_scales') and perform_intensity_normalization:
-                    params_mult.append([layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, self.Xsize, self.Ysize, left_crop, self.tile_I0s[layer_id], self.tile_scales[layer_id], verbose])
+                    params_mult.append([layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, self.Xsize, self.Ysize, left_crop, self.tile_I0s[layer_id], self.tile_scales[layer_id], save_mrc, save_tif, tif_fname, dtp, verbose])
                 else:
-                    params_mult.append([layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, self.Xsize, self.Ysize, left_crop, np.zeros(len(fls_layer)), np.ones(len(fls_layer)), verbose])
+                    params_mult.append([layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, self.Xsize, self.Ysize, left_crop, np.zeros(len(fls_layer)), np.ones(len(fls_layer)), save_mrc, save_tif, tif_fname, dtp, verbose])
             if use_DASK:
                 shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)
                 futures = DASK_client.map(assemble_layer, params_mult, deformation_field = shared_data_future, retries = DASK_client_retries)
                 for future in as_completed(futures):
                     mosaic_out, j = future.result()
-                    if 'mrc' in fnm_types:
+                    if save_mrc:
                         mrc_new.data[j, :, :] = mosaic_out.astype(dtp)
-                    if 'tifs' in fnm_types:
-                        tif_fname = os.path.splitext(fnm_mosaic_stack)[0] + '_layer_{:d}.tif'.format(j)
-                        tiff.imwrite(tif_fname, mosaic_out.astype(dtp))
-                        fnms_saved.append(tif_fname)
                     future.cancel()
             else:
                 for j, params in enumerate(tqdm(params_mult, desc = 'Saving the data stack into MRC file')):
                     mosaic_out = assemble_layer(params, deformation_field)[0].astype(dtp)
-                    if 'mrc' in fnm_types:
+                    if save_mrc:
                         mrc_new.data[j, :, :] = mosaic_out
-                    if 'tifs' in fnm_types:
-                        tif_fname = os.path.splitext(fnm_mosaic_stack)[0] + '_layer_{:d}.tif'.format(j)
-                        tiff.imwrite(tif_fname, mosaic_out)
-                        fnms_saved.append(tif_fname)
-            if 'mrc' in fnm_types:
+            if save_mrc:
                 mrc_new.close()
             
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Saving Finished')
