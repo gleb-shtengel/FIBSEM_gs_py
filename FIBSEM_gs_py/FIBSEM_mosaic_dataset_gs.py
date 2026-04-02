@@ -3196,7 +3196,7 @@ class FIBSEM_mosaic_dataset:
                         mrc_new.data[j, :, :] = mosaic_out.astype(dtp)
                     if 'tifs' in fnm_types:
                         tif_fname = os.path.splitext(fnm_mosaic_stack)[0] + '_layer_{:d}.tif'.format(j)
-                        tiff.imsave(tif_fname, mosaic_out.astype(dtp))
+                        tiff.imwrite(tif_fname, mosaic_out.astype(dtp))
                         fnms_saved.append(tif_fname)
                     future.cancel()
             else:
@@ -3206,7 +3206,7 @@ class FIBSEM_mosaic_dataset:
                         mrc_new.data[j, :, :] = mosaic_out
                     if 'tifs' in fnm_types:
                         tif_fname = os.path.splitext(fnm_mosaic_stack)[0] + '_layer_{:d}.tif'.format(j)
-                        tiff.imsave(tif_fname, mosaic_out)
+                        tiff.imwrite(tif_fname, mosaic_out)
                         fnms_saved.append(tif_fname)
             if 'mrc' in fnm_types:
                 mrc_new.close()
