@@ -632,7 +632,7 @@ def generate_report_SEM_param_mosaic_stack_xlsx(FIBSEM_Data_xlsx, **kwargs):
         fig.subplots_adjust(left=0.12, bottom=0.1, right=0.99, top=0.96, wspace=0.05, hspace=0.05)
 
         for l in np.arange(nxny):
-            my_col = plt.get_cmap("gist_rainbow_r")((nxny-l)/nxny)
+            my_col = plt.get_cmap("gist_rainbow_r")((nxny-l)/nxny-1)
             SEMl = int_results_all.iloc[l::nxny, :][SEM_key]
             if l == mosaic_shape[1]*tile_id[0]+tile_id[1]:
                 label = SEM_params[k] + ', Tile={:d},{:d}'.format(*tile_id)
@@ -1289,7 +1289,7 @@ class FIBSEM_mosaic_dataset:
             self.Notes = test_frame.Notes
             self.ImgB_fraction = kwargs.get("ImgB_fraction", 0.0)
             if self.DetB == 'None':
-                ImgB_fraction = 0.0
+                self.ImgB_fraction = 0.0
             self.BrightnessA = test_frame.BrightnessA 
             self.BrightnessB = test_frame.BrightnessB
             self.ContrastA = test_frame.ContrastA
@@ -1516,10 +1516,11 @@ class FIBSEM_mosaic_dataset:
         # -tr_matr[:, :, 0:2, 2] whenever (positive) pixel positions are needed.
         shifts_x = self.FirstPixels[:, 0] - np.min(self.FirstPixels[:, 0])
         shifts_y = self.FirstPixels[:, 1] - np.min(self.FirstPixels[:, 1])
-        single_layer_tr_matr = np.repeat(eye3x3[np.newaxis, :, :], self.n_tiles_per_layer, axis=0)
-        single_layer_tr_matr[:, 0, 2] = - np.array(shifts_x).flatten()
-        single_layer_tr_matr[:, 1, 2] = - np.array(shifts_y).flatten()
-        self.tr_matr = np.repeat(single_layer_tr_matr[np.newaxis, :, :, :], L, axis=0)
+        single_layer_default_tr_matr = np.repeat(eye3x3[np.newaxis, :, :], self.n_tiles_per_layer, axis=0)
+        single_layer_default_tr_matr[:, 0, 2] = - np.array(shifts_x).flatten()
+        single_layer_default_tr_matr[:, 1, 2] = - np.array(shifts_y).flatten()
+        self.single_layer_default_tr_matr = single_layer_default_tr_matr
+        self.tr_matr = np.repeat(self.single_layer_default_tr_matr[np.newaxis, :, :, :], L, axis=0)
 
         if memory_profiling:
             elapsed_time = elapsed_since(start_time)
@@ -2489,6 +2490,8 @@ class FIBSEM_mosaic_dataset:
 
         kwargs:
         ----------
+        initialize_transformation_first : bool
+            if True (default), re-initialize the tr_matr first.
         verbose : boolean
             Display intermediate results. Default is False.
         method : string
@@ -2501,7 +2504,7 @@ class FIBSEM_mosaic_dataset:
             Only tiles with at least one valid constraint are updated;
             all other tiles retain their initialised tr_matr values.
         '''
-
+        initialize_transformation_first = kwargs.get('initialize_transformation_first', True)
         verbose = kwargs.get('verbose', False)
         method = kwargs.get('method', 'ECC')
         valid_methods = ['SIFT-ECC', 'SIFT', 'ECC']
@@ -2509,6 +2512,8 @@ class FIBSEM_mosaic_dataset:
         w_sqrt_intra = np.sqrt(self.intralayer_weight)  # because LSQR minimizes ||W^{1/2} (Ax - b)||
         w_sqrt_inter = np.sqrt(self.interlayer_weight)
         weights = np.concatenate((np.full((self.nh+self.nv), w_sqrt_intra), np.full(self.nl, w_sqrt_inter)))
+        if initialize_transformation_first:
+            self.tr_matr = np.repeat(self.single_layer_default_tr_matr[np.newaxis, :, :, :], self.nz_tiles, axis=0)
 
         if method not in valid_methods:
             if verbose:
@@ -2548,8 +2553,8 @@ class FIBSEM_mosaic_dataset:
         res_x = res_x_all[0]
         res_y = res_y_all[0]
         positions = np.zeros((self.nz_tiles * self.n_tiles_per_layer, 2))
-        positions[:, 0] = res_x - np.max(res_x)
-        positions[:, 1] = res_y - np.max(res_y)
+        positions[:, 0] = res_x #- np.max(res_x)
+        positions[:, 1] = res_y #- np.max(res_y)
         positions_3d = positions.reshape((self.nz_tiles, self.n_tiles_per_layer, 2))
 
         # Determine which tiles appear in at least one valid pairwise constraint.
@@ -2565,8 +2570,12 @@ class FIBSEM_mosaic_dataset:
         # Tiles with no valid constraints keep their existing tr_matr translations
         # (i.e. the nominal/initialised positions), since the solver has no real
         # data to constrain their positions and would otherwise write arbitrary values.
-        self.tr_matr[valid_z, valid_t, 0, 2] = positions_3d[valid_z, valid_t, 0]
-        self.tr_matr[valid_z, valid_t, 1, 2] = positions_3d[valid_z, valid_t, 1]
+        # dx and dy are average shifts of new positions relative to default positions.
+        dx = np.mean(self.tr_matr[valid_z, valid_t, 0, 2] - positions_3d[valid_z, valid_t, 0])
+        dy = np.mean(self.tr_matr[valid_z, valid_t, 1, 2] - positions_3d[valid_z, valid_t, 1])
+
+        self.tr_matr[valid_z, valid_t, 0, 2] = positions_3d[valid_z, valid_t, 0] + dx 
+        self.tr_matr[valid_z, valid_t, 1, 2] = positions_3d[valid_z, valid_t, 1] + dy
 
         if verbose:
             n_total = self.nz_tiles * self.n_tiles_per_layer
@@ -3186,11 +3195,12 @@ class FIBSEM_mosaic_dataset:
                     future.cancel()
             else:
                 for j, params in enumerate(tqdm(params_mult, desc = 'Saving the data stack into MRC file')):
+                    mosaic_out = assemble_layer(params, deformation_field)[0].astype(dtp)
                     if 'mrc' in fnm_types:
-                        mrc_new.data[j, :, :] = assemble_layer(params, deformation_field)[0].astype(dtp)
+                        mrc_new.data[j, :, :] = mosaic_out
                     if 'tifs' in fnm_types:
                         tif_fname = os.path.splitext(fnm_mosaic_stack)[0] + 'layer_{:d}.tif'.format(j)
-                        tiff.imsave(tif_fname, mosaic_out.astype(dtp))
+                        tiff.imsave(tif_fname, mosaic_out)
                         fnms_saved.append(tif_fname)
             if 'mrc' in fnm_types:
                 mrc_new.close()
