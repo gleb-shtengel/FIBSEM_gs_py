@@ -632,7 +632,7 @@ def generate_report_SEM_param_mosaic_stack_xlsx(FIBSEM_Data_xlsx, **kwargs):
         fig.subplots_adjust(left=0.12, bottom=0.1, right=0.99, top=0.96, wspace=0.05, hspace=0.05)
 
         for l in np.arange(nxny):
-            my_col = plt.get_cmap("gist_rainbow_r")((nxny-l)/nxny-1)
+            my_col = plt.get_cmap("gist_rainbow_r")((nxny-l)/(nxny-1))
             SEMl = int_results_all.iloc[l::nxny, :][SEM_key]
             if l == mosaic_shape[1]*tile_id[0]+tile_id[1]:
                 label = SEM_params[k] + ', Tile={:d},{:d}'.format(*tile_id)
@@ -754,7 +754,7 @@ def generate_report_SEM_param_mosaic_layer_xlsx(FIBSEM_Data_xlsx, **kwargs):
 
     for k, SEM_key in enumerate(SEM_keys):
         for j in np.arange(ny):
-            my_col = plt.get_cmap("gist_rainbow_r")((ny-j)/(ny))
+            my_col = plt.get_cmap("gist_rainbow_r")((ny-j)/(ny-1))
             label = 'Y Tile = {:d}'.format(j)
             axs[k].plot(all_params[k, j, :], color=my_col, marker='x', markersize=4, label = label)
         axs[k].set_ylabel(SEM_keys[k])
@@ -1320,7 +1320,7 @@ class FIBSEM_mosaic_dataset:
             self.FileVersion = test_frame.FileVersion
             self.metadata = metadata
             ys, xs = test_frame.RawImageA.shape
-            self.ScanRate = kwargs.get('PixelSize', 1e9/metadata.get('Dwelltime_ns', 100.0))
+            self.ScanRate = kwargs.get('ScanRate', 1e9/metadata.get('Dwelltime_ns', 100.0))
             self.EHT = kwargs.get('EHT', metadata.get('Landing_Energy_keV', 0))
             self.SEMCurr = kwargs.get('SEMCurr', metadata.get('Beam_Current_pA', 0.0)/1e12)
             self.XResolution = kwargs.get('XResolution', metadata.get('Width', xs))
@@ -1475,10 +1475,16 @@ class FIBSEM_mosaic_dataset:
                     row += 1
 
         self.index_pairs = np.array(col_ind).reshape((row, 2))   # absolute (in 1D sense) tile indices for each pair
-        j1, j2 = np.mod(self.index_pairs[0, :], self.n_tiles_per_layer)
-        self.Xoverlap = int(np.round(self.XResolution - np.abs(self.FirstPixels[j1, 0] - self.FirstPixels[j2, 0])))
-        i1, i2 = np.mod(self.index_pairs[self.nh, :], self.n_tiles_per_layer)
-        self.Yoverlap = int(np.round(self.YResolution - np.abs(self.FirstPixels[i1, 1] - self.FirstPixels[i2, 1])))
+        if len(intra_index_pairs_x) > 0:
+            j1, j2 = intra_index_pairs_x[0]
+            self.Xoverlap = int(np.round(self.XResolution - np.abs(self.FirstPixels[j1, 0] - self.FirstPixels[j2, 0])))
+        else:
+            self.Xoverlap = 0
+        if len(intra_index_pairs_y) > 0:
+            i1, i2 = intra_index_pairs_y[0]
+            self.Yoverlap = int(np.round(self.YResolution - np.abs(self.FirstPixels[i1, 1] - self.FirstPixels[i2, 1])))
+        else:
+            self.Yoverlap = 0
         self.pair_margins = [[self.YResolution, 2*self.Xoverlap] for x in np.arange(self.nh)] + [[2*self.Yoverlap, self.XResolution] for x in np.arange(self.nv)] + [[self.YResolution, self.XResolution] for x in np.arange(self.nl)]
         self.A_csr = csr_matrix((data, (row_ind, col_ind)), shape=(self.C, V)) # sparse matrix
 
@@ -2110,7 +2116,7 @@ class FIBSEM_mosaic_dataset:
         ftype = kwargs.get("ftype", self.ftype)
         left_crop = kwargs.get('left_crop', 0)
         deformation_field = kwargs.get('deformation_field', np.nan)
-        perform_deformation = np.any(np.invert(np.isnan(deformation_field)))
+        perform_deformation = not np.all(np.isnan(deformation_field))
         if perform_deformation:
             perform_deformation_text = 'True'
         else:
@@ -2361,7 +2367,7 @@ class FIBSEM_mosaic_dataset:
                 cbar.set_label('SIFT Error Magnitude (pix)', fontsize=fsize_label)
 
                 axs[0].text(0.01, 1.00 - 0.195*frame.XResolution/frame.YResolution, '# of keypoints = {:d} and {:d}, # of matches ={:d}'.format(n_kpts1, n_kpts2, n_matches), fontsize=fsize_text, transform=axs[0].transAxes) 
-                axs[0].text(0.01, 1.00 - 0.215*frame.XResolution/frame.YResolution, 'mean_error = {:.3f}, error_FWHMx = {:3f},  error_FWHMy={:3f}'.format(error_abs_mean, error_FWHMx, error_FWHMy), fontsize=fsize_text, transform=axs[0].transAxes) 
+                axs[0].text(0.01, 1.00 - 0.215*frame.XResolution/frame.YResolution, 'mean_error = {:.3f}, error_FWHMx = {:.3f},  error_FWHMy={:.3f}'.format(error_abs_mean, error_FWHMx, error_FWHMy), fontsize=fsize_text, transform=axs[0].transAxes) 
 
             for title, ax in zip([fnm_deformed1, fnm_deformed2], axs):
                 ax.set_title(title, fontsize = fsize_text)
@@ -3169,7 +3175,7 @@ class FIBSEM_mosaic_dataset:
                 mrc_new.voxel_size = voxel_size_angstr
                 print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Saving the registered stack into the file: ', mrc_filename)
                 print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Stack dimensions nz, ny, nx (pixels): {:d} x {:d} x {:d}'.format(*stack_shape))
-                print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Stack Voxel Size (Angstroms): {:2f} x {:2f} x {:2f}'.format(voxel_size_angstr.x, voxel_size_angstr.y, voxel_size_angstr.z))
+                print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Stack Voxel Size (Angstroms): {:.2f} x {:.2f} x {:.2f}'.format(voxel_size_angstr.x, voxel_size_angstr.y, voxel_size_angstr.z))
 
             layer_ids = np.arange(self.nz_tiles)
             params_mult = []
@@ -3189,7 +3195,7 @@ class FIBSEM_mosaic_dataset:
                     if 'mrc' in fnm_types:
                         mrc_new.data[j, :, :] = mosaic_out.astype(dtp)
                     if 'tifs' in fnm_types:
-                        tif_fname = os.path.splitext(fnm_mosaic_stack)[0] + 'layer_{:d}.tif'.format(j)
+                        tif_fname = os.path.splitext(fnm_mosaic_stack)[0] + '_layer_{:d}.tif'.format(j)
                         tiff.imsave(tif_fname, mosaic_out.astype(dtp))
                         fnms_saved.append(tif_fname)
                     future.cancel()
@@ -3199,7 +3205,7 @@ class FIBSEM_mosaic_dataset:
                     if 'mrc' in fnm_types:
                         mrc_new.data[j, :, :] = mosaic_out
                     if 'tifs' in fnm_types:
-                        tif_fname = os.path.splitext(fnm_mosaic_stack)[0] + 'layer_{:d}.tif'.format(j)
+                        tif_fname = os.path.splitext(fnm_mosaic_stack)[0] + '_layer_{:d}.tif'.format(j)
                         tiff.imsave(tif_fname, mosaic_out)
                         fnms_saved.append(tif_fname)
             if 'mrc' in fnm_types:
