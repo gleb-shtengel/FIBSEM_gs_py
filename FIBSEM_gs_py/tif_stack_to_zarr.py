@@ -32,7 +32,6 @@ Each Z-slab (chunk_z consecutive slices) is one independent unit of work:
         2. Writes the slab to zarr[f's{level}']
            zarr handles XY chunking internally
 
-Each TIF is read exactly ONCE.  No Dask rechunking is involved.
 Multiple workers can write to the same zarr store simultaneously because
 zarr chunks are independent files and each job writes a non-overlapping Z range.
 
@@ -59,6 +58,7 @@ Neuroglancer:
 import json
 import os
 import math
+import shutil
 import time
 import urllib.parse
 import warnings
@@ -91,17 +91,6 @@ def _read_tif(path: str) -> np.ndarray:
     if img.ndim == 3:
         img = img[..., 0]   # RGB → first channel
     return img
-
-
-def _read_slab_parallel(tif_files: list, n_threads: int = 8) -> np.ndarray:
-    """Read a list of TIF files in parallel and stack into (nz, ny, nx)."""
-    n = len(tif_files)
-    results = [None] * n
-    with ThreadPoolExecutor(max_workers=min(n_threads, n)) as pool:
-        futures = {pool.submit(_read_tif, f): i for i, f in enumerate(tif_files)}
-        for fut in thread_as_completed(futures):
-            results[futures[fut]] = fut.result()
-    return np.stack(results, axis=0)
 
 
 # ---------------------------------------------------------------------------
@@ -381,6 +370,168 @@ def _write_pyramid_chunk(
         out_x[0]:out_x[0] + dx] = downsampled
 
     return {"elapsed_s": time.time() - t0}
+
+
+# ---------------------------------------------------------------------------
+# Rechunker
+# ---------------------------------------------------------------------------
+
+def _rechunk_chunk(src_path: str, dst_path: str,
+                   z0: int, z1: int, y0: int, y1: int, x0: int, x1: int) -> dict:
+    """
+    Copy one chunk region from src_path/s0 to dst_path/s0.
+
+    Worker function for rechunk_s0. Safe to run concurrently because each
+    call writes to a non-overlapping region of the destination array.
+
+    Parameters
+    ----------
+    src_path : str
+        Path to the source OME-ZARR store root.
+    dst_path : str
+        Path to the destination OME-ZARR store root.
+    z0, z1, y0, y1, x0, x1 : int
+        Slice bounds for the chunk to copy.
+
+    Returns
+    -------
+    dict with key 'elapsed_s'.
+    """
+    import os, time
+    import numpy as np
+    import zarr
+
+    t0 = time.time()
+    src = zarr.open(src_path, mode='r')['s0']
+    dst = zarr.open(dst_path, mode='r+')['s0']
+    dst[z0:z1, y0:y1, x0:x1] = src[z0:z1, y0:y1, x0:x1]
+    return {"elapsed_s": time.time() - t0}
+
+
+def rechunk_s0(
+    zarr_path: str,
+    chunk_z: int,
+    chunk_y: int,
+    chunk_x: int,
+    client=None,
+    DASK_client_retries: int = 3,
+):
+    """
+    Rechunk the s0 array inside an OME-ZARR store in-place.
+
+    Converts s0 from chunk_z=1 (used for safe concurrent writes during
+    mosaic assembly) to the target chunking (chunk_z, chunk_y, chunk_x)
+    via a temporary store, without ever loading the full volume into memory.
+
+    Each pass can be parallelised by a DASK client using the same
+    chunk-per-task pattern as finalize_pyramid.
+
+    Parameters
+    ----------
+    zarr_path : str
+        Path to the root of the OME-ZARR store. Must contain an 's0' array.
+    chunk_z : int
+        Target chunk size along Z.
+    chunk_y : int
+        Target chunk size along Y.
+    chunk_x : int
+        Target chunk size along X.
+    client : dask.distributed.Client or None
+        If provided, chunk copies are submitted as independent DASK tasks.
+        If None, copies run sequentially in the calling process.
+    DASK_client_retries : int
+        Number of automatic retries per failed task. Default is 3.
+
+    Notes
+    -----
+    Workflow:
+        Pass 1  main store (chunk_z=1)  →  temp store (chunk_z=target)
+        Delete s0 from main store, pre-allocate fresh s0 with target chunking.
+        Pass 2  temp store (chunk_z=target)  →  main store (chunk_z=target)
+        Delete temp store.
+
+    Peak extra disk usage : ~1× size of s0.
+    Peak memory per worker: one chunk  (chunk_z × chunk_y × chunk_x × itemsize).
+    """
+    zarr_tmp_path = zarr_path + '_tmp_rechunk'
+
+    # Read source metadata
+    src_arr = zarr.open(zarr_path, mode='r')['s0']
+    shape    = src_arr.shape
+    nz, ny, nx = shape
+    compressor = src_arr.compressor
+    dtype      = src_arr.dtype
+
+    cz = min(chunk_z, nz)
+    cy = min(chunk_y, ny)
+    cx = min(chunk_x, nx)
+
+    # Pre-allocate temp store with target chunking
+    tmp_root = zarr.open_group(zarr_tmp_path, mode='w')
+    tmp_root.require_dataset(
+        's0', shape=shape, chunks=(cz, cy, cx),
+        dtype=dtype, compressor=compressor, fill_value=0, overwrite=True,
+    )
+
+    # Build output chunk coordinate grid
+    chunk_coords = [
+        (z, min(z + cz, nz), y, min(y + cy, ny), x, min(x + cx, nx))
+        for z in range(0, nz, cz)
+        for y in range(0, ny, cy)
+        for x in range(0, nx, cx)
+    ]
+    n_chunks    = len(chunk_coords)
+    report_every = max(1, n_chunks // 20)
+
+    def _run_pass(src, dst, label):
+        t0 = time.time()
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') +
+              f'   Rechunk {label}: {n_chunks:,} chunks ...')
+        if client is not None:
+            futures = [
+                client.submit(
+                    _rechunk_chunk, src, dst,
+                    z0, z1, y0, y1, x0, x1,
+                    pure=False, retries=DASK_client_retries,
+                )
+                for z0, z1, y0, y1, x0, x1 in chunk_coords
+            ]
+            n_done = 0
+            for fut in as_completed(futures):
+                fut.result()
+                n_done += 1
+                if n_done % report_every == 0 or n_done == n_chunks:
+                    elapsed = time.time() - t0
+                    eta_s   = (elapsed / n_done) * (n_chunks - n_done)
+                    print(time.strftime('%Y/%m/%d  %H:%M:%S') +
+                          f'   Rechunk {label}: {n_done:,}/{n_chunks:,} chunks  '
+                          f'{elapsed:.1f}s elapsed  ETA {eta_s/60:.1f} min')
+        else:
+            for n_done, (z0, z1, y0, y1, x0, x1) in enumerate(chunk_coords, 1):
+                _rechunk_chunk(src, dst, z0, z1, y0, y1, x0, x1)
+                if n_done % report_every == 0 or n_done == n_chunks:
+                    print(time.strftime('%Y/%m/%d  %H:%M:%S') +
+                          f'   Rechunk {label}: {n_done:,}/{n_chunks:,} chunks done')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') +
+              f'   Rechunk {label} done in {time.time() - t0:.1f}s')
+
+    # Pass 1: main store (chunk_z=1) → temp store (chunk_z=target)
+    _run_pass(zarr_path, zarr_tmp_path, 'pass 1 (main → temp)')
+
+    # Delete original s0 and pre-allocate fresh one with target chunking
+    dst_root = zarr.open_group(zarr_path, mode='r+')
+    del dst_root['s0']
+    dst_root.require_dataset(
+        's0', shape=shape, chunks=(cz, cy, cx),
+        dtype=dtype, compressor=compressor, fill_value=0, overwrite=True,
+    )
+
+    # Pass 2: temp → main (chunks now align 1:1; fast copy)
+    _run_pass(zarr_tmp_path, zarr_path, 'pass 2 (temp → main)')
+
+    # Remove temp store
+    shutil.rmtree(zarr_tmp_path)
+    print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Rechunking complete.')
 
 
 # ---------------------------------------------------------------------------
