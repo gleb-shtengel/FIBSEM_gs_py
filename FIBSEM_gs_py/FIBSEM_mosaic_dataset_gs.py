@@ -418,7 +418,7 @@ def assemble_layer(params, deformation_field):
         left_crop : int 
             Cropping value for cropping the image from the left side (used along with deformation_field or on its own).
         save_mrc : bool
-            If True, the layer moosaic is output as an array for saving into mrc file by a caller
+            If True, the layer mosaic is output as an array for saving into mrc file by a caller
         save_tif : bool
             If True, the layer mosaic is saved into tif file
         tif_fname : str
@@ -3138,6 +3138,11 @@ class FIBSEM_mosaic_dataset:
         DASK_client = kwargs.get('DASK_client', '')
         fnm_mosaic_stack = kwargs.get('fnm_mosaic_stack', self.fnm_mosaic_stack)
         fnm_types = kwargs.get("fnm_types", ['mrc'])
+        allowed_fnm_types = {'mrc', 'tifs'}
+        invalid_fnm_types = set(fnm_types) - allowed_fnm_types
+        if invalid_fnm_types:
+            raise ValueError(f"save_stack: invalid fnm_types value(s): {sorted(invalid)}. "
+                f"Allowed values are: {sorted(allowed_fnm_types)}")
         tif_folder = kwargs.get('tif_folder', 'tif_stack')
         save_tif = False
         save_folder = ''
