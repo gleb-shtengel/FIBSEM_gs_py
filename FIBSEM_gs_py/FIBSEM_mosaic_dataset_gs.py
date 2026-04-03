@@ -10,15 +10,14 @@ import platform
 import pickle
 import re
 from pathlib import Path
-
-from scipy.sparse import csr_matrix
-from scipy.sparse.linalg import lsqr
+import zarr as _zarr
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.gridspec import GridSpec
 
 from scipy import sparse
+from scipy.sparse import csr_matrix
 from scipy.sparse.linalg import lsqr
 from skimage.transform import ProjectiveTransform, AffineTransform, EuclideanTransform, warp
 from struct import unpack, pack
@@ -63,6 +62,8 @@ from FIBSEM_gs_py.FIBSEM_help_functions_gs import (check_DASK,
                                                     read_kwargs_xlsx,
                                                     parse_metadata_file,
                                                     read_image_coordinates)
+
+from FIBSEM_gs_py.tif_stack_to_zarr import create_zarr_store, rechunk_s0, finalize_pyramid, _print_neuroglancer_info
 
 
 def build_weight_array(shape, **kwargs):
@@ -395,8 +396,9 @@ def assemble_layer(params, deformation_field):
     
     Parameters:
     ----------
-    params : list
-        params = [layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, Xsize, Ysize, left_crop, tile_I0s, tile_scales, save_mrc, save_tif, tif_fname, dtp, verbose]
+    params = [layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max,
+          fill_value, Xsize, Ysize, left_crop, tile_I0s, tile_scales,
+          save_mrc, save_tif, tif_fname, save_zarr, zarr_path, dtp, verbose]
         layer_id : int
             Layer ID should be a value bewteen -1 and self.nz_tiles-1. -1 means the last layer will be assembled.
         fls_layer : list
@@ -423,6 +425,13 @@ def assemble_layer(params, deformation_field):
             If True, the layer mosaic is saved into tif file
         tif_fname : str
             path for the TIF file
+        save_zarr : bool
+            If True, the assembled layer mosaic is written directly into the pre-allocated
+            ZARR store at path zarr_path. The store must already exist (pre-allocated by
+            save_stack). Writing is safe for concurrent DASK workers because the store is
+            pre-allocated with chunk_z=1.
+        zarr_path : str
+            Path to the ZARR store root directory.
         dtp : data type
         verbose : boolean
             Display intermediate results.
@@ -433,11 +442,12 @@ def assemble_layer(params, deformation_field):
     ----------
     layer_mosaic, layer_id
     '''
-    layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, Xsize, Ysize, left_crop, tile_I0s, tile_scales, save_mrc, save_tif, tif_fname, dtp, verbose = params
+    layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, \
+    Xsize, Ysize, left_crop, tile_I0s, tile_scales, save_mrc, save_tif, tif_fname, \
+    save_zarr, zarr_path, dtp, verbose = params
     layer_mosaic = np.zeros((Ysize, Xsize-left_crop), dtype=float)
     layer_mosaic_weights = np.zeros((Ysize, Xsize-left_crop), dtype=float)
     tile_params_mult = []
-    xy_limits = []
     for fl, (j, tr_matr_single) in zip(tqdm(fls_layer, desc = 'Building tile parameter sets', display = verbose), enumerate(tr_matr_layer)):
         #tile_params : list :  j, fl, image_name, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max, left_crop, I0, scale
         tile_params_mult.append([j, fl, image_name, tr_matr_single, Ysize, Xsize, weight_min, weight_max, left_crop, tile_I0s[j], tile_scales[j]])
@@ -447,7 +457,6 @@ def assemble_layer(params, deformation_field):
                 print('Performing transform_tile with the following parameters:')
                 print(tile_params)
             tile_out, weight_out, xi, xa, yi,  ya = transform_tile(tile_params, deformation_field)
-            xy_limits.append([xi, xa, yi, ya])
             if verbose:
                 print('Output is:')
                 print('tile_out.shape=', tile_out.shape, 'weight_out.shape=', weight_out.shape)
@@ -455,15 +464,15 @@ def assemble_layer(params, deformation_field):
             layer_mosaic[yi:ya, xi:xa] = layer_mosaic[yi:ya, xi:xa] + tile_out
             layer_mosaic_weights[yi:ya, xi:xa] = layer_mosaic_weights[yi:ya, xi:xa] + weight_out
         layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*len(fls_layer)) 
-        layer_mosaic = np.nan_to_num(layer_mosaic / layer_mosaic_weights, nan=-fill_value)
+        layer_mosaic = np.nan_to_num(layer_mosaic / layer_mosaic_weights, nan=fill_value)
         if save_tif:
             tiff.imwrite(tif_fname, layer_mosaic.astype(dtp))
-            if save_mrc:
-                return layer_mosaic, layer_id
-            else:
-                return np.zeros(1), layer_id
-        else:
+        if save_zarr:
+            _zarr.open(zarr_path, mode='r+')['s0'][layer_id, :, :] = layer_mosaic.astype(dtp)
+        if save_mrc:
             return layer_mosaic, layer_id
+        else:
+            return np.zeros(1), layer_id
 
 
 def generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs):
@@ -3101,8 +3110,39 @@ class FIBSEM_mosaic_dataset:
         fnm_mosaic_stack : string
             Filename to save the data. Default is object attribute self.fnm_mosaic_stack
         fnm_types : list of strings.
-            File type(s) for output data. Options are: ['mrc', 'tifs'].
-            Default is ['mrc']. If 'tifs' is selected, the data will be saved as individual tif files, one per layer. Use empty list if do not want to save the data.
+            File type(s) for output data. Options are: ['mrc', 'tifs', 'zarr'].
+            Default is ['mrc']. If 'tifs' is selected, data is saved as individual tif files,
+            one per layer. If 'zarr' is selected, data is saved as a rechunked OME-ZARR store
+            with pyramid levels. Use empty list if do not want to save the data.
+        zarr_chunk_z : int
+            ZARR chunk size in Z for the final store. Default is 64.
+        zarr_chunk_y : int
+            ZARR chunk size in Y. Default is 128.
+        zarr_chunk_x : int
+            ZARR chunk size in X. Default is 128.
+        n_pyramid_levels : int
+            Number of ZARR pyramid resolution levels including full resolution. Default is 4.
+        zarr_downsample_factor : int
+            Downsampling factor between pyramid levels. Default is 2 (each level
+            is 2× smaller in each spatial dimension than the previous).
+        zarr_compressor : str
+            ZARR compressor. Options are 'blosc' (default, fastest), 'gzip', or None.
+        zarr_compressor_level : int
+            Compressor level. 1 (fastest) to 9 (best ratio). Default is 1.
+        voxel_unit : str
+            Physical unit for ZARR metadata. Default is 'nanometer'.
+        zarr_origin_zyx : tuple of 3 floats
+            Physical origin (z, y, x) of the volume in voxel_unit. Default is (0.0, 0.0, 0.0).
+        zarr_dataset_name : str
+            Name of the dataset written into the OME-ZARR metadata. Default is 'volume'.
+        neuroglancer_serve_base_url : str
+            Base URL under which the ZARR store will be served.
+            Default is 'https://s3.janelia.org/hess-lab/FIBSEM'.
+        neuroglancer_viewer_url : str
+            Neuroglancer viewer URL. Default is 'https://neuroglancer-demo.appspot.com/'.
+        neuroglancer_display_axes_order : list
+            Axes order for Neuroglancer display e.g. ["x","y","z"].
+            Default is None (Z-Y-X, matching storage order).
         tif_folder : str
             sub-directory name (will be created inside data_dir). Default is 'tif_stack'
         voxel_size : rec array of 3 elements
@@ -3136,47 +3176,8 @@ class FIBSEM_mosaic_dataset:
         '''
         perform_intensity_normalization = kwargs.get('perform_intensity_normalization', False)
         DASK_client = kwargs.get('DASK_client', '')
-        fnm_mosaic_stack = kwargs.get('fnm_mosaic_stack', self.fnm_mosaic_stack)
-        fnm_types = kwargs.get("fnm_types", ['mrc'])
-        allowed_fnm_types = {'mrc', 'tifs'}
-        invalid_fnm_types = set(fnm_types) - allowed_fnm_types
-        if invalid_fnm_types:
-            raise ValueError(f"save_stack: invalid fnm_types value(s): {sorted(invalid)}. "
-                f"Allowed values are: {sorted(allowed_fnm_types)}")
-        tif_folder = kwargs.get('tif_folder', 'tif_stack')
-        save_tif = False
-        save_folder = ''
-        if 'tifs' in fnm_types:
-            save_tif = True
-            save_folder = os.path.join(os.path.split(fnm_mosaic_stack)[0], tif_folder)
-            os.makedirs(save_folder, exist_ok=True)
-        save_mrc = False
-        if 'mrc' in fnm_types:
-            save_mrc = True
-        image_name = kwargs.get('image_name', 'RawImageA')
-        if hasattr(self, 'voxel_size'):
-            voxel_size = kwargs.get("voxel_size", self.voxel_size)
-        else:
-            voxel_size_default = np.rec.array((8.0, 8.0, 8.0), dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4')])
-            voxel_size = kwargs.get("voxel_size", voxel_size_default)
-        voxel_size_angstr = voxel_size.copy()
-        voxel_size_angstr.x = voxel_size_angstr.x * 10.0
-        voxel_size_angstr.y = voxel_size_angstr.y * 10.0
-        voxel_size_angstr.z = voxel_size_angstr.z * 10.0
         dtp = kwargs.get("dtp", np.int16)
-        '''
-        mode 0 -> uint8
-        mode 1 -> int16
-        mode 6 -> uint16
-        '''
-        mrc_mode = 0
-        if dtp==np.int16:
-            mrc_mode = 1
-        if dtp==np.uint16:
-            mrc_mode = 6
-        if dtp==np.float16:
-            dtp=np.int16
-            mrc_mode = 1
+        image_name = kwargs.get('image_name', 'RawImageA')
         weight_min = kwargs.get('weight_min', 1.0)
         kwargs['weight_min'] = weight_min 
         weight_max = kwargs.get('weight_max', 2048.0)
@@ -3186,16 +3187,97 @@ class FIBSEM_mosaic_dataset:
         verbose = kwargs.get('verbose', False)
         use_DASK, status_update_address = check_DASK(DASK_client, verbose=True)
         deformation_field = kwargs.get('deformation_field', np.nan)
-        DF0 = convert_tr_matr_into_deformation_field(np.eye(3,3).astype(float), (self.YResolution, self.XResolution))
-        kwargs['deformation_field'] = deformation_field - DF0
+        #DF0 = convert_tr_matr_into_deformation_field(np.eye(3,3).astype(float), (self.YResolution, self.XResolution))
+        #kwargs['deformation_field'] = deformation_field - DF0
         left_crop = kwargs.get('left_crop', 0)
         kwargs['left_crop'] = left_crop
+        fnm_mosaic_stack = kwargs.get('fnm_mosaic_stack', self.fnm_mosaic_stack)
+        fnm_types = kwargs.get("fnm_types", ['mrc'])
+        allowed_fnm_types = {'mrc', 'tifs', 'zarr'}
+        invalid_fnm_types = set(fnm_types) - allowed_fnm_types
+        fnms_saved = []
+        if invalid_fnm_types:
+            raise ValueError(f"save_stack: invalid fnm_types value(s): {sorted(invalid_fnm_types)}. "
+                f"Allowed values are: {sorted(allowed_fnm_types)}")
+        tif_folder = kwargs.get('tif_folder', 'tif_stack')
+        
+        save_tif = False
+        save_folder = ''
+        if 'tifs' in fnm_types:
+            save_tif = True
+            save_folder = os.path.join(os.path.split(fnm_mosaic_stack)[0], tif_folder)
+            os.makedirs(save_folder, exist_ok=True)
+        
+        save_mrc = False
+        if 'mrc' in fnm_types:
+            save_mrc = True
+            '''
+            mode 0 -> uint8
+            mode 1 -> int16
+            mode 6 -> uint16
+            '''
+            mrc_mode = 0
+            if dtp==np.int16:
+                mrc_mode = 1
+            if dtp==np.uint16:
+                mrc_mode = 6
+            if dtp==np.float16:
+                dtp=np.int16
+                mrc_mode = 1
+        
+        if hasattr(self, 'voxel_size'):
+            voxel_size = kwargs.get("voxel_size", self.voxel_size)
+        else:
+            voxel_size_default = np.rec.array((8.0, 8.0, 8.0), dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4')])
+            voxel_size = kwargs.get("voxel_size", voxel_size_default)
+        voxel_size_angstr = voxel_size.copy()
+        voxel_size_angstr.x = voxel_size_angstr.x * 10.0
+        voxel_size_angstr.y = voxel_size_angstr.y * 10.0
+        voxel_size_angstr.z = voxel_size_angstr.z * 10.0
+
+        save_zarr = False
+        zarr_path = ''
+        if 'zarr' in fnm_types:
+            save_zarr = True
+            zarr_chunk_z          = kwargs.get('zarr_chunk_z', 64)
+            zarr_chunk_y          = kwargs.get('zarr_chunk_y', 128)
+            zarr_chunk_x          = kwargs.get('zarr_chunk_x', 128)
+            n_pyramid_levels      = kwargs.get('n_pyramid_levels', 4)
+            downsample_factor     = kwargs.get('zarr_downsample_factor', 2)
+            zarr_compressor       = kwargs.get('zarr_compressor', 'blosc')
+            zarr_compressor_level = kwargs.get('zarr_compressor_level', 1)
+            voxel_unit            = kwargs.get('voxel_unit', 'nanometer')
+            origin_zyx            = kwargs.get('zarr_origin_zyx', (0.0, 0.0, 0.0))
+            zarr_dataset_name     = kwargs.get('zarr_dataset_name', 'volume')
+            ng_serve_url          = kwargs.get('neuroglancer_serve_base_url', 'https://s3.janelia.org/hess-lab/FIBSEM')
+            ng_viewer_url         = kwargs.get('neuroglancer_viewer_url', 'https://neuroglancer-demo.appspot.com/')
+            ng_axes_order         = kwargs.get('neuroglancer_display_axes_order', None)
+            zarr_path             = os.path.splitext(fnm_mosaic_stack)[0] + '.zarr'
+            fnms_saved.append(zarr_path)
+            voxel_size_zyx        = (float(voxel_size.z), float(voxel_size.y), float(voxel_size.x))
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Pre-allocating ZARR store: ' + zarr_path)
+            # Pre-allocate with chunk_z=1 for safe concurrent DASK writes.
+            # s0 will be rechunked to zarr_chunk_z after all layers are written.
+            create_zarr_store(
+                output_zarr=zarr_path,
+                nz=self.nz_tiles, ny=self.Ysize, nx=self.Xsize - left_crop,
+                dtype=dtp,
+                chunk_z=1, chunk_y=zarr_chunk_y, chunk_x=zarr_chunk_x,
+                n_pyramid_levels=n_pyramid_levels,
+                downsample_factor=downsample_factor,
+                zarr_compressor=zarr_compressor,
+                zarr_compressor_level=zarr_compressor_level,
+                voxel_size_zyx=voxel_size_zyx,
+                origin_zyx=origin_zyx,
+                voxel_unit=voxel_unit,
+                dataset_name=zarr_dataset_name,
+                overwrite=True,
+            )
+        
         if hasattr(self, "DASK_client_retries"):
             DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
         else:
             DASK_client_retries = kwargs.get("DASK_client_retries", 3)
-
-        fnms_saved = []
 
         if fnm_types:            
             if save_mrc:
@@ -3210,7 +3292,6 @@ class FIBSEM_mosaic_dataset:
 
             layer_ids = np.arange(self.nz_tiles)
             params_mult = []
-            # params = [layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, Xsize, Ysize, left_crop, tile_I0s, tile_scales, verbose]
             for layer_id in layer_ids:
                 fls_layer = self.fls[layer_id].ravel()
                 tr_matr_layer = self.tr_matr[layer_id]
@@ -3218,11 +3299,16 @@ class FIBSEM_mosaic_dataset:
                 tif_fname = os.path.join(save_folder, os.path.splitext(os.path.split(fnm_mosaic_stack)[1])[0] + '_layer_{:d}.tif'.format(layer_id))
                 if save_tif:
                     fnms_saved.append(tif_fname)
-                #params = [layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, Xsize, Ysize, left_crop, tile_I0s, tile_scales, save_mrc, save_tif, tif_fname, dtp, verbose]
                 if hasattr(self, 'tile_scales') and perform_intensity_normalization:
-                    params_mult.append([layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, self.Xsize, self.Ysize, left_crop, self.tile_I0s[layer_id], self.tile_scales[layer_id], save_mrc, save_tif, tif_fname, dtp, verbose])
+                    params_mult.append([layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max,
+                                        fill_value, self.Xsize, self.Ysize, left_crop,
+                                        self.tile_I0s[layer_id], self.tile_scales[layer_id],
+                                        save_mrc, save_tif, tif_fname, save_zarr, zarr_path, dtp, verbose])
                 else:
-                    params_mult.append([layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, self.Xsize, self.Ysize, left_crop, np.zeros(len(fls_layer)), np.ones(len(fls_layer)), save_mrc, save_tif, tif_fname, dtp, verbose])
+                    params_mult.append([layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max,
+                                        fill_value, self.Xsize, self.Ysize, left_crop,
+                                        np.zeros(len(fls_layer)), np.ones(len(fls_layer)),
+                                        save_mrc, save_tif, tif_fname, save_zarr, zarr_path, dtp, verbose])
             if use_DASK:
                 shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)
                 futures = DASK_client.map(assemble_layer, params_mult, deformation_field = shared_data_future, retries = DASK_client_retries)
@@ -3232,12 +3318,42 @@ class FIBSEM_mosaic_dataset:
                         mrc_new.data[j, :, :] = mosaic_out.astype(dtp)
                     future.cancel()
             else:
-                for j, params in enumerate(tqdm(params_mult, desc = 'Saving the data stack into MRC file')):
+                for j, params in enumerate(tqdm(params_mult, desc = 'Assembling and saving mosaic layers')):
                     mosaic_out = assemble_layer(params, deformation_field)[0].astype(dtp)
                     if save_mrc:
                         mrc_new.data[j, :, :] = mosaic_out
             if save_mrc:
                 mrc_new.close()
+
+            if save_zarr:
+                # Rechunk s0 from chunk_z=1 to zarr_chunk_z (if > 1) before building pyramid
+                if zarr_chunk_z > 1:
+                    rechunk_s0(
+                        zarr_path,
+                        chunk_z=zarr_chunk_z, chunk_y=zarr_chunk_y, chunk_x=zarr_chunk_x,
+                        client=DASK_client if use_DASK else None,
+                        DASK_client_retries=DASK_client_retries,
+                    )
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Building ZARR pyramid levels ...')
+                finalize_pyramid(
+                    output_zarr=zarr_path,
+                    n_pyramid_levels=n_pyramid_levels,
+                    downsample_factor=downsample_factor,
+                    chunk_z=zarr_chunk_z, chunk_y=zarr_chunk_y, chunk_x=zarr_chunk_x,
+                    voxel_size_zyx=voxel_size_zyx,
+                    origin_zyx=origin_zyx,
+                    voxel_unit=voxel_unit,
+                    dataset_name=zarr_dataset_name,
+                    client=DASK_client if use_DASK else None,
+                    DASK_client_retries=DASK_client_retries,
+                )
+                _print_neuroglancer_info(
+                    zarr_path,
+                    serve_base_url=ng_serve_url,
+                    viewer_url=ng_viewer_url,
+                    display_axes_order=ng_axes_order,
+                    layer_name=zarr_dataset_name,
+                )
             
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Saving Finished')
         return fnms_saved
