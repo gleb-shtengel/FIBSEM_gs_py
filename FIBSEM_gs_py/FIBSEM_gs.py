@@ -3,7 +3,6 @@ import pandas as pd
 import os
 import socket
 import platform
-from pathlib import Path
 import time
 import glob
 import re
@@ -521,7 +520,7 @@ def find_autocorrelation_peak(ind_acr, mag_acr, **kwargs):
 
     kwargs:
     extrapolate_signal : str
-        extrapolate to find signal autocorrelationb to 0-point (without noise). 
+        extrapolate to find signal autocorrelation to 0-point (without noise). 
         Options are:
             'nearest'  - nearest point (1 pixel away from center, same as NN in [1]).
             'linear'   - linear interpolation of 2-points next to center (same as FO in [1]).
@@ -7440,7 +7439,7 @@ class FIBSEM_frame:
             it will be determined from the header data:
                 for RawImageA it is self.Scaling[1,0]
                 for RawImageB it is self.Scaling[1,1]
-        4. The liner equation is determined for a line that passes through the point:
+        4. The linear equation is determined for a line that passes through the point:
                 Intensity=DarkCount and Noise Variance = 0
                 and is a best fit for the [Mean Intensity, Noise Variance] points
                 determined for each ROI (Step 1 above).
@@ -7686,7 +7685,7 @@ class FIBSEM_frame:
                 'linear'   - linear interpolation of 2-points next to center
                 'parabolic' - parabolic interpolation of 2 points left and 2 points right 
                 'gaussian'  - gaussian interpolation with number of points = aperture
-                'LDR' - use Levinson-Durbin recusrsion (ACLDR in [1]).
+                'MYW' - use Modified Yule-Walker (noise-contaminated AR estimation) [2].
         nlags : int
             In case of 'LDR' (Levinson-Durbin recursion) nlags is the recursion order (a number of lags). Default is min(xsize/4, ysize/4).
         aperture : int
@@ -7714,6 +7713,7 @@ class FIBSEM_frame:
             Y-streaks in typical FIB-SEM data provide slow varying Y-component because streaks usually get increasingly worse with increasing Y.
             So for typical FIB-SEM data use ySNR or rSNR.   
             [1] J. T. L. Thong et al, Single-image signal-tonoise ratio estimation. Scanning, 328–336 (2001).
+            [2]. T. Söderström and P. Stoica, System Identification, Prentice Hall, 1989. (Chapter on bias-compensated AR estimation).
         '''
         image_name = kwargs.get("image_name", 'RawImageA')
         zero_mean = kwargs.get('zero_mean', True)
@@ -8699,7 +8699,7 @@ def extract_keypoints_descr_files(params, deformation_field):
         coords = np.flip(np.array([kp.pt for kp in kps]), axis=1)
         kpt_ints = extract_image_intensity(img[yi_eval:ya_eval, xi_eval:xa_eval], smoothing_kernel, coords, order=order) / 255.0 * (d2-d1) + d1
 
-        if xi_eval >0 or yi_eval>0:   # add shifts to ke-pint coordinates to convert them to full image coordinated
+        if xi_eval >0 or yi_eval>0:   # add shifts to key-pint coordinates to convert them to full image coordinated
             for j, kp in enumerate(kps):
                 kp.pt = kp.pt + np.array((xi_eval, yi_eval))
         #key_points = [KeyPoint(kp) for kp in kps]
@@ -8722,7 +8722,7 @@ def estimate_kpts_transform_error(src_pts, dst_pts, transform_matrix):
         A = [[a0  a1   a2]
              [b0   b1  b2]
              [0   0    1]]
-     Thransofrmation is supposed to be in a form:
+     Thransformation is supposed to be in a form:
      Xnew = a0 * Xoriginal + a1 * Yoriginal + a2
      Ynew = b0 * Xoriginal + b1 * Yoriginal + b2
      source and destination points are pairs of coordinates (2xN array)
@@ -8801,7 +8801,7 @@ def determine_transformation_matrix(src_pts, dst_pts, **kwargs):
             #s11 = np.sum(ydst)
             #sy = (n*np.dot(ysrc, ydst) - s10*s11)/(n*np.sum(ysrc*ysrc) - s10*s10)
             sy = 1.00 # force sy=1 if there are not enough keypoints points
-            # spread over wide range of y-range (and y-range is small) to determine y-scale accuartely
+            # spread over wide range of y-range (and y-range is small) to determine y-scale accurately
             tx = np.mean(xdst) - sx * np.mean(xsrc)
             ty = np.mean(ydst) - sy * np.mean(ysrc)
             transform_matrix = np.array([[sx, 0,  tx],
@@ -8867,12 +8867,12 @@ def determine_transformations_files(params_dsf):
     params_dsf = fnm_1, fnm_2, kwargs
     where 
     fnm_1 - keypoints for the first image (source)
-    fnm_2 - keypoints for the first image (destination)
+    fnm_2 - keypoints for the second image (destination)
     and kwargs must include:
     use_existing_data : boolean
         Default is False. If True and this had already been performed, use existing results.
     TransformType - transformation type to be used (ShiftTransform, XScaleShiftTransform, ScaleShiftTransform, AffineTransform, RegularizedAffineTransform)
-    BF_Matcher -  if True - use BF matcher, otherwise use FLANN matcher for keypoint matching
+    BFMatcher -  if True - use BF matcher, otherwise use FLANN matcher for keypoint matching
     solver - a string indicating which solver to use:
     'LinReg' will use Linear Regression with iterative "Throwing out the Worst Residual" Heuristic
     'RANSAC' will use RANSAC (Random Sample Consensus) algorithm.
@@ -8881,7 +8881,7 @@ def determine_transformations_files(params_dsf):
            - in the case of 'RANSAC' - Maximum distance for a data point to be classified as an inlier.
     max_iter - max number of iterations
     save_matches - if True - save the matched keypoints into a binary dump file
-    fnm_matches - fuilename to save the matches. Defaults is constructed as fnm_2.replace('_kpdes.bin', '_matches.bin')
+    fnm_matches - filename to save the matches. Defaults is constructed as fnm_2.replace('_kpdes.bin', '_matches.bin')
     start : string
         'edges' (default) or 'center'. Start of search (registration error histogram evaluation).
     estimation : string
@@ -8896,7 +8896,7 @@ def determine_transformations_files(params_dsf):
     image_shape : list of 2 ints:
         ysz, xsz
     Returns:
-    transform_matrix, fnm_matches, kpts, ints, error_abs_mean, error_FWHMx, error_FWHMy, iteration
+    transform_matrix, fnm_matches, kpts, kpt_ints, error_abs_mean, error_FWHMx, error_FWHMy, iteration
     '''
     fnm_1, fnm_2, kwargs = params_dsf
 
@@ -9010,7 +9010,7 @@ def determine_transformations_files(params_dsf):
             # If it is true, Matcher returns only those matches with value (i,j)
             # such that i-th descriptor in set A has j-th descriptor in set B as the best match and vice-versa.
             # That is, the two features in both sets should match each other.
-            # It provides consistant result, and is a good alternative to ratio test proposed by D.Lowe in SIFT paper.
+            # It provides consistent result, and is a good alternative to ratio test proposed by D.Lowe in SIFT paper.
             # http://amroamroamro.github.io/mexopencv/opencv_contrib/SURF_descriptor.html
             bf = cv2.BFMatcher()
             matches = bf.knnMatch(des1,des2,k=2)
@@ -9044,7 +9044,7 @@ def determine_transformations_files(params_dsf):
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Number of Matches after Low Ratio Test: ', len(src_pts))
         
         if solver == 'LinReg':
-            # Determine the transformation matrix via iterative liear regression
+            # Determine the transformation matrix via iterative lienar regression
             transform_matrix, kpts, error_abs_mean, error_FWHMx, error_FWHMy, iteration = determine_transformation_matrix(src_pts, dst_pts, **kwargs)
             n_kpts = len(kpts[0])
         else:  # the other option is solver = 'RANSAC'
@@ -9080,8 +9080,7 @@ def determine_transformations_files(params_dsf):
                 error_FWHMx = np.nan
                 error_FWHMy = np.nan
 
-        # find corresponding intensoties
-        
+        # find corresponding intensities
         src_pts_c = np.array(src_pts).view(dtype=np.complex64).reshape(-1)
         #src_pts_sorted_inds = np.argsort(src_pts_c)
         #src_pts_c = src_pts_c[src_pts_sorted_inds]
@@ -13218,7 +13217,7 @@ class FIBSEM_dataset:
                 'linear'   - linear interpolation of 2-points next to center (same as FO in [1]).
                 'parabolic' - parabolic interpolation of 2 point left and 2 points right (for 4-point interpolation this is the same as NN+FO in [1]).
                 'gaussian'  - gaussian interpolation with number of points = aperture
-                'LDR' - use Levinson-Durbin recusrsion (ACLDR in [1]).
+                'MYW' - use Modified Yule-Walker (noise-contaminated AR estimation) [2].
             Default is 'parabolic'.
         edge_fraction : float
             Fraction of the full auto-correlation  range used to calculate the "zero value" (default is 0.10).
@@ -13228,6 +13227,9 @@ class FIBSEM_dataset:
             Total number of points for gaussian interpolation. Default is 6.
         save_res_png  : boolean
             Save PNG images of the intermediate processing statistics and final registration quality check. Default is False.
+
+        [1]. K. s. Sim, M. s. Lim, Z. x. Yeap, Performance of signal-to-noise ratio estimation for scanning electron microscope using autocorrelation Levinson–Durbin recursion model. J. Microsc. 263, 64–77 (2016).
+        [2]. T. Söderström and P. Stoica, System Identification, Prentice Hall, 1989. (Chapter on bias-compensated AR estimation). 
 
         Returns:
         ----------
@@ -13496,7 +13498,7 @@ class FIBSEM_dataset:
                 'linear'   - linear interpolation of 2-points next to center (same as FO in [1]).
                 'parabolic' - parabolic interpolation of 2 point left and 2 points right (for 4-point interpolation this is the same as NN+FO in [1]).
                 'gaussian'  - gaussian interpolation with number of points = aperture
-                'LDR' - use Levinson-Durbin recusrsion (ACLDR in [1]).
+                'MYW' - use Modified Yule-Walker (noise-contaminated AR estimation) [2].
             Default is 'parabolic'.
         edge_fraction : float
             Fraction of the full auto-correlation  range used to calculate the "zero value" (default is 0.10).
@@ -13518,6 +13520,9 @@ class FIBSEM_dataset:
             If True, the frame will be padded to account for frame position and/or size changes. Default is object attribute.
         save_res_png  : boolean
             Save PNG images of the intermediate processing statistics and final registration quality check.
+
+        [1]. K. s. Sim, M. s. Lim, Z. x. Yeap, Performance of signal-to-noise ratio estimation for scanning electron microscope using autocorrelation Levinson–Durbin recursion model. J. Microsc. 263, 64–77 (2016).
+        [2]. T. Söderström and P. Stoica, System Identification, Prentice Hall, 1989. (Chapter on bias-compensated AR estimation). 
 
         Returns:
         ----------
