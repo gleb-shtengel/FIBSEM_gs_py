@@ -29,7 +29,7 @@ Each Z-slab (chunk_z consecutive slices) is one independent unit of work:
 
     write_slab_to_zarr(output_zarr, tif_files, z_start, z_end)
         1. Reads chunk_z TIF files in parallel (ThreadPoolExecutor)
-        2. Writes the slab to zarr['s0'][z_start:z_end, :, :]
+        2. Writes the slab to zarr[f's{level}']
            zarr handles XY chunking internally
 
 Each TIF is read exactly ONCE.  No Dask rechunking is involved.
@@ -51,7 +51,7 @@ output.zarr/
   ...
 
 Neuroglancer:
-  http://<host>:<port>/path/to/output.zarr/|zarr2:s0/
+  http://<host>:<port>/path/to/output.zarr/|zarr2:
 
 ©G.Shtengel 2026  gleb.shtengel@gmail.com
 """
@@ -193,7 +193,7 @@ def write_ome_zarr_metadata(
                 {"type": "scale", "scale": [1.0, 1.0, 1.0]},
             ],
             "datasets": datasets,
-            "type": "gaussian" if n_levels > 1 else "none",
+            "type": "mean" if n_levels > 1 else "none",
         }]
     })
 
@@ -488,6 +488,7 @@ def generate_neuroglancer_link(
     layer_name: str = None,
     viewer_url: str = "https://neuroglancer-demo.appspot.com/",
     serve_base_url: str = "https://s3.janelia.org/hess-lab/FIBSEM",
+    display_axes_order: list = None,   # e.g. ["x", "y", "z"]
 ) -> str:
     """
     Generate a Neuroglancer link for a local or remote OME-ZARR store.
@@ -500,6 +501,7 @@ def generate_neuroglancer_link(
     serve_base_url  : base URL under which the zarr file is served, e.g.
                       "https://s3.janelia.org/hess-lab/FIBSEM" (default) or
                       "http://localhost:9000" for local serving
+    display_axes_order : list with axes order, e.g. ["x", "y", "z"]. Default is None (Z-Y-X, matching storage order).
 
     Returns
     -------
@@ -525,6 +527,8 @@ def generate_neuroglancer_link(
         "selectedLayer": {"visible": True, "layer": layer_name},
         "layout": "4panel-alt",
     }
+    if display_axes_order is not None:
+        layer_config["displayDimensions"] = display_axes_order
     encoded = urllib.parse.quote(json.dumps(layer_config))
     return f"{viewer_url}#!{encoded}"
 
@@ -534,12 +538,14 @@ def _print_neuroglancer_info(
     serve_base_url: str = "https://s3.janelia.org/hess-lab/FIBSEM",
     layer_name: str = None,
     viewer_url: str = "https://neuroglancer-demo.appspot.com/",
+    display_axes_order: list = None,
 ):
     name   = os.path.basename(zarr_path.rstrip("/\\"))
     parent = os.path.dirname(os.path.abspath(zarr_path))
     link   = generate_neuroglancer_link(
         zarr_path, layer_name=layer_name,
         viewer_url=viewer_url, serve_base_url=serve_base_url,
+        display_axes_order=display_axes_order,
     )
     print("\n" + "=" * 60)
     print("Neuroglancer — how to view")
@@ -574,6 +580,7 @@ def tif_stack_to_zarr(
     DASK_client_retries: int = 3,
     neuroglancer_serve_base_url: str = "https://s3.janelia.org/hess-lab/FIBSEM",
     neuroglancer_viewer_url: str = "https://neuroglancer-demo.appspot.com/",
+    neuroglancer_display_axes_order: list = None,   # e.g. ["x","y","z"], default None = Z-Y-X
 ):
     """
     Convert a list of TIF files to OME-ZARR, parallelised via a Dask client.
@@ -607,6 +614,8 @@ def tif_stack_to_zarr(
                        which recovers from transient worker crashes or I/O errors.
     neuroglancer_serve_base_url : base URL used when printing the Neuroglancer link
     neuroglancer_viewer_url     : Neuroglancer viewer URL for link generation
+    neuroglancer_display_axes_order : list, axes order for Neuroglancer display e.g. ["x","y","z"].
+                                  Default is None (Z-Y-X, matching the OME-ZARR storage order).
 
     Returns
     -------
@@ -740,12 +749,14 @@ def tif_stack_to_zarr(
         layer_name=dataset_name,
         viewer_url=neuroglancer_viewer_url,
         serve_base_url=neuroglancer_serve_base_url,
+        display_axes_order = neuroglancer_display_axes_order,
     )
     _print_neuroglancer_info(
         output_zarr,
         serve_base_url=neuroglancer_serve_base_url,
         layer_name=dataset_name,
         viewer_url=neuroglancer_viewer_url,
+        display_axes_order = neuroglancer_display_axes_order,
     )
 
     return {
