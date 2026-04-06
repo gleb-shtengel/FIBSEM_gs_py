@@ -400,7 +400,7 @@ def assemble_layer(params, deformation_field):
           fill_value, Xsize, Ysize, left_crop, tile_I0s, tile_scales,
           save_mrc, save_tif, tif_fname, save_zarr, output_zarr_path, dtp, verbose]
         layer_id : int
-            Layer ID should be a value bewteen -1 and self.nz_tiles-1. -1 means the last layer will be assembled.
+            Layer ID should be a value between -1 and self.nz_tiles-1. -1 means the last layer will be assembled.
         fls_layer : list
             List of files for individual tiles.
         image_name : str

@@ -193,7 +193,7 @@ def ransac(
         (`True` or `None` for success, `False` for failure).
     min_samples : int in range (0, N)
         The minimum number of data points to fit a model to.
-    residual_threshold : float larger than 0
+    residual_threshold : np.float32 larger than 0
         Maximum distance for a data point to be classified as an inlier.
     is_data_valid : function, optional
         This function is called with the randomly selected data before the
@@ -208,7 +208,7 @@ def ransac(
     stop_residuals_sum : float, optional
         Stop iteration if sum of residuals is less than or equal to this
         threshold.
-    stop_probability : float in range [0, 1], optional
+    stop_probability : np.float32 in range [0, 1], optional
         RANSAC iteration stops if at least one outlier-free set of the
         training data is sampled with ``probability >= stop_probability``,
         depending on the current best model's inlier ratio and the number
@@ -442,7 +442,7 @@ def _solve_modified_yw(r, p):
     For k >= p+1: R_x(k) = -sum_{i=1}^p a_i * R_x(k-i)
     All k-i >= 1, so no lag-0 contamination.
     """
-    r = np.asarray(r, dtype=float)
+    r = np.asarray(r, dtype=np.float32)
     N = len(r)
     n_eqs = N - 1 - p
     if n_eqs < p:
@@ -485,7 +485,7 @@ def estimate_snr_modified_yw(r_acf, ar_order):
     -------
     snr_linear, r, signal_power, noise_power, ar_coeffs
     """
-    r = np.asarray(r_acf, dtype=float)
+    r = np.asarray(r_acf, dtype=np.float32)
     p = ar_order
     ar_coeffs = _solve_modified_yw(r, p)
 
@@ -827,7 +827,7 @@ def Single_Image_Noise_ROIs(img, Noise_ROIs, Hist_ROI, **kwargs):
     ----------
     DarkCount : float
         The value of the Intensity Data at 0.
-    kernel : 2D float array
+    kernel : 2D np.float32 array
         A kernel to perform 2D smoothing convolution. Default is normalized np.array([[st, 1.0, st],[1.0,1.0,1.0], [st, 1.0, st]]), where st = 1/np.sqrt(2).
     nbins_disp : int
         Number of histogram bins for building the PDF and CDF to determine the data range for data display. Default is 256.
@@ -858,7 +858,7 @@ def Single_Image_Noise_ROIs(img, Noise_ROIs, Hist_ROI, **kwargs):
         PSNR and DSNR are Peak and Dynamic SNR's (Step 6)
     '''
     st = 1.0/np.sqrt(2.0)
-    def_kernel = np.array([[st, 1.0, st],[1.0,1.0,1.0], [st, 1.0, st]]).astype(float)
+    def_kernel = np.array([[st, 1.0, st],[1.0,1.0,1.0], [st, 1.0, st]]).astype(np.float32)
     def_kernel = def_kernel/def_kernel.sum()
     kernel = kwargs.get("kernel", def_kernel)
     DarkCount = kwargs.get("DarkCount", 0)
@@ -1039,7 +1039,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         The value of the Intensity Data at 0.
     filter_array : 2d boolean array
         Array of the same dimensions as img. Only the pixel with corresponding filter_array values of True will be considered in the noise analysis.
-    kernel : 2D float array
+    kernel : 2D np.float32 array
         A kernel to perform 2D smoothing convolution. Default is normalized np.array([[st, 1.0, st],[1.0,1.0,1.0], [st, 1.0, st]]), where st = 1/np.sqrt(2).
     nbins_disp : int
         Number of histogram bins for building the PDF and CDF to determine the data range for data display. Default is 256.
@@ -1075,7 +1075,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         SNR0 and SNR1 are SNR's (Step 7 and 8 respectively)
     '''
     st = 1.0/np.sqrt(2.0)
-    def_kernel = np.array([[st, 1.0, st],[1.0,1.0,1.0], [st, 1.0, st]]).astype(float)
+    def_kernel = np.array([[st, 1.0, st],[1.0,1.0,1.0], [st, 1.0, st]]).astype(np.float32)
     evaluation_box = kwargs.get("evaluation_box", [0, 0, 0, 0])
     def_kernel = def_kernel/def_kernel.sum()
     kernel = kwargs.get("kernel", def_kernel)
@@ -1408,7 +1408,7 @@ def Perform_2D_fit(img, estimator, **kwargs):
     coeff_columns=', '.join(PolyFeats00.get_feature_names_out(data00.columns))
     # end of name generation
     
-    img_binned = img[0:ysz//bins*bins, 0:xsz//bins*bins].astype(float).reshape(ysz//bins, bins, xsz//bins, bins).sum(3).sum(1)/bins/bins
+    img_binned = img[0:ysz//bins*bins, 0:xsz//bins*bins].astype(np.float32).reshape(ysz//bins, bins, xsz//bins, bins).sum(3).sum(1)/bins/bins
     if len(Analysis_ROIs)>0:
             Analysis_ROIs_binned = [[ind//bins for ind in Analysis_ROI] for Analysis_ROI in Analysis_ROIs]
     else: 
@@ -1679,8 +1679,8 @@ def Two_Image_NCC_SNR(img1, img2, **kwargs):
     zero_mean = kwargs.get("zero_mean", True)
     
     # convert into floats
-    img1 = img1.astype(float)
-    img2 = img2.astype(float)
+    img1 = img1.astype(np.float32)
+    img2 = img2.astype(np.float32)
 
     if img1.shape==img2.shape:
         ysz, xsz = img1.shape
@@ -1753,12 +1753,12 @@ def Two_Image_FSC(img1, img2, **kwargs):
     Returns:
     ----------
     FSC_sp_frequencies, FSC_data, x2, T, FSC_bw
-        FSC_sp_frequencies : float array 
+        FSC_sp_frequencies : np.float32 array 
             Spatial Frequency (/Nyquist) - for FSC plot
-        FSC_data: float array
-        x2 : float array
+        FSC_data: np.float32 array
+        x2 : np.float32 array
             Spatial Frequency (/Nyquist) - for threshold line plot
-        T : float array
+        T : np.float32 array
             threshold line plot
         FSC_bw : float
             the value of FSC determined as an intersection of smoothed data threshold
@@ -1926,9 +1926,9 @@ def Two_Image_Analysis(params):
 
 
     I1 = tiff.imread(os.path.normpath(frame1_filename))
-    I1c = I1[yi_eval:ya_eval, xi_eval:xa_eval].astype(float)
+    I1c = I1[yi_eval:ya_eval, xi_eval:xa_eval].astype(np.float32)
     I2 = tiff.imread(os.path.normpath(frame2_filename))
-    I2c = I2[yi_eval:ya_eval, xi_eval:xa_eval].astype(float)
+    I2c = I2[yi_eval:ya_eval, xi_eval:xa_eval].astype(np.float32)
     fr_mean = np.abs(I1c/2.0 + I2c/2.0)
     dy, dx = np.shape(I2c)
 
@@ -2003,7 +2003,7 @@ def evaluate_registration_two_frames(params_mrc):
     3 transform : complex 16-bit integers
     4 transform : complex 32-bit reals
     6 16-bit unsigned integer
-    12 16-bit float (IEEE754)
+    12 16-bit np.float32 (IEEE754)
     101 4-bit data packed two per byte
     
     mode 0 -> uint8
@@ -2026,11 +2026,11 @@ def evaluate_registration_two_frames(params_mrc):
 
     xi_eval, xa_eval, yi_eval, ya_eval = evals
     if invert_data:
-        prev_frame = -1.0 * (((mrc_obj.data[fr-1, yi_eval:ya_eval, xi_eval:xa_eval]).astype(dt_mrc)).astype(float))
-        curr_frame = -1.0 * (((mrc_obj.data[fr, yi_eval:ya_eval, xi_eval:xa_eval]).astype(dt_mrc)).astype(float))
+        prev_frame = -1.0 * (((mrc_obj.data[fr-1, yi_eval:ya_eval, xi_eval:xa_eval]).astype(dt_mrc)).astype(np.float32))
+        curr_frame = -1.0 * (((mrc_obj.data[fr, yi_eval:ya_eval, xi_eval:xa_eval]).astype(dt_mrc)).astype(np.float32))
     else:
-        prev_frame = (mrc_obj.data[fr-1, yi_eval:ya_eval, xi_eval:xa_eval].astype(dt_mrc)).astype(float)
-        curr_frame = (mrc_obj.data[fr, yi_eval:ya_eval, xi_eval:xa_eval].astype(dt_mrc)).astype(float)
+        prev_frame = (mrc_obj.data[fr-1, yi_eval:ya_eval, xi_eval:xa_eval].astype(dt_mrc)).astype(np.float32)
+        curr_frame = (mrc_obj.data[fr, yi_eval:ya_eval, xi_eval:xa_eval].astype(dt_mrc)).astype(np.float32)
     fr_mean = np.abs(curr_frame/2.0 + prev_frame/2.0)
     image_nsad =  np.mean(np.abs(curr_frame-prev_frame))/(np.mean(fr_mean)-np.amin(fr_mean))
     #image_nsad =  np.mean(np.abs(curr_frame-prev_frame))/(np.mean(fr_mean))
@@ -2038,7 +2038,7 @@ def evaluate_registration_two_frames(params_mrc):
     image_mi = mutual_information_2d(prev_frame.ravel(), curr_frame.ravel(), sigma=1.0, bin=2048, normalized=True)
 
     if save_frame_png:
-        fr_img = (mrc_obj.data[fr, :, :].astype(dt_mrc)).astype(float)
+        fr_img = (mrc_obj.data[fr, :, :].astype(dt_mrc)).astype(np.float32)
         yshape, xshape = fr_img.shape
         fig, ax = plt.subplots(1,1, figsize=(3.0*xshape/yshape, 3))
         fig.subplots_adjust(left=0.0, bottom=0.00, right=1.0, top=1.0)
@@ -2140,7 +2140,7 @@ def analyze_mrc_stack_registration(mrc_filename, **kwargs):
     3 transform : complex 16-bit integers
     4 transform : complex 32-bit reals
     6 16-bit unsigned integer
-    12 16-bit float (IEEE754)
+    12 16-bit np.float32 (IEEE754)
     101 4-bit data packed two per byte
     
     mode 0 -> uint8
@@ -2228,9 +2228,9 @@ def analyze_mrc_stack_registration(mrc_filename, **kwargs):
         image_mi = np.array([res[2] for res in dask_results])
     else:
         print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Using Local Computation')
-        image_nsad = np.zeros(nf, dtype=float)
-        image_ncc = np.zeros(nf, dtype=float)
-        image_mi = np.zeros(nf, dtype=float)
+        image_nsad = np.zeros(nf, dtype=np.float32)
+        image_ncc = np.zeros(nf, dtype=np.float32)
+        image_mi = np.zeros(nf, dtype=np.float32)
         if sliding_evaluation_box:
             xi_eval = start_evaluation_box[2] + dx_eval*frame_inds[0]//nf
             yi_eval = start_evaluation_box[0] + dy_eval*frame_inds[0]//nf
@@ -2243,9 +2243,9 @@ def analyze_mrc_stack_registration(mrc_filename, **kwargs):
             else:
                 ya_eval = ny
         if invert_data:
-            prev_frame = -1.0 * ((mrc_obj.data[frame_inds[0]-1, yi_eval:ya_eval, xi_eval:xa_eval].astype(dt_mrc)).astype(float))
+            prev_frame = -1.0 * ((mrc_obj.data[frame_inds[0]-1, yi_eval:ya_eval, xi_eval:xa_eval].astype(dt_mrc)).astype(np.float32))
         else:
-            prev_frame =(mrc_obj.data[frame_inds[0]-1, yi_eval:ya_eval, xi_eval:xa_eval].astype(dt_mrc)).astype(float)
+            prev_frame =(mrc_obj.data[frame_inds[0]-1, yi_eval:ya_eval, xi_eval:xa_eval].astype(dt_mrc)).astype(np.float32)
         for j, frame_ind in enumerate(tqdm(frame_inds, desc='Evaluating frame registration: ')):
             if sliding_evaluation_box:
                 xi_eval = start_evaluation_box[2] + dx_eval*j//nf
@@ -2260,9 +2260,9 @@ def analyze_mrc_stack_registration(mrc_filename, **kwargs):
                     ya_eval = ny
             
             if invert_data:
-                curr_frame = -1.0 * ((mrc_obj.data[frame_ind, yi_eval:ya_eval, xi_eval:xa_eval].astype(dt_mrc)).astype(float))
+                curr_frame = -1.0 * ((mrc_obj.data[frame_ind, yi_eval:ya_eval, xi_eval:xa_eval].astype(dt_mrc)).astype(np.float32))
             else:
-                curr_frame = (mrc_obj.data[frame_ind, yi_eval:ya_eval, xi_eval:xa_eval].astype(dt_mrc)).astype(float)
+                curr_frame = (mrc_obj.data[frame_ind, yi_eval:ya_eval, xi_eval:xa_eval].astype(dt_mrc)).astype(np.float32)
 
             fr_mean = np.abs(curr_frame/2.0 + prev_frame/2.0)
 
@@ -2273,7 +2273,7 @@ def analyze_mrc_stack_registration(mrc_filename, **kwargs):
             prev_frame = curr_frame.copy()
             if (frame_ind in sample_frame_inds) and save_sample_frames_png:
                 filename_frame_png = os.path.splitext(save_filename)[0]+'_sample_image_frame{:d}.png'.format(j)
-                fr_img = (mrc_obj.data[frame_ind, :, :].astype(dt_mrc)).astype(float)
+                fr_img = (mrc_obj.data[frame_ind, :, :].astype(dt_mrc)).astype(np.float32)
                 yshape, xshape = fr_img.shape
                 fig, ax = plt.subplots(1,1, figsize=(3.0*xshape/yshape, 3))
                 fig.subplots_adjust(left=0.0, bottom=0.00, right=1.0, top=1.0)
@@ -2407,7 +2407,7 @@ def show_eval_box_mrc_stack(mrc_filename, **kwargs):
         dy_eval = 0
 
     for fr_ind in frame_inds: 
-        eval_frame = (mrc.data[fr_ind, :, :].astype(dt_mrc)).astype(float)
+        eval_frame = (mrc.data[fr_ind, :, :].astype(dt_mrc)).astype(np.float32)
 
         if sliding_evaluation_box:
             xi_eval = start_evaluation_box[2] + dx_eval*fr_ind//nz
@@ -2964,7 +2964,7 @@ def bin_crop_tiff_files(params):
     ny_binned = (ya-yi)//ybin_factor
     xa = xi + nx_binned * xbin_factor
     ya = yi + ny_binned * ybin_factor
-    frame = np.zeros((ny_binned, nx_binned), dtype=float)
+    frame = np.zeros((ny_binned, nx_binned), dtype=np.float32)
     for fl_tiff in fls_tiff:
         init_frame = tiff.imread(fl_tiff)[yi:ya, xi:xa]
         binned_frame = np.mean(np.mean(init_frame.reshape(ny_binned, ybin_factor, nx_binned, xbin_factor), axis=3), axis=1)
@@ -3202,7 +3202,7 @@ def destreak_single_frame_kernel_shared(destreak_kernel, params):
 
     padded_fr, clip_mask = clip_pad_image(read_fr, data_min, data_max)
     destreaked_fft = np.fft.fftshift(np.fft.fftn(np.fft.ifftshift(padded_fr))) * destreak_kernel
-    transformed_frame = np.real(np.fft.fftshift(np.fft.ifftn(np.fft.ifftshift(destreaked_fft)))).astype(float)
+    transformed_frame = np.real(np.fft.fftshift(np.fft.ifftn(np.fft.ifftshift(destreaked_fft)))).astype(np.float32)
     if partial_destreaking:
         transformed_frame = merge_images_with_transition(padded_fr, transformed_frame, transition_direction=transition_direction, flip_transitionX=flip_transitionX, flip_transitionY=flip_transitionY, xi=xi, xa=xa, yi=yi, ya=ya) * clip_mask
     else:
@@ -3447,7 +3447,7 @@ def smooth_single_frame_kernel_shared(smooth_kernel, params):
     read_fr = mrc_obj.data[source_frame_ID, :, :]
     mrc_obj.close()
     padded_fr, clip_mask = clip_pad_image(read_fr, data_min, data_max)
-    transformed_frame = convolve2d(padded_fr, smooth_kernel, mode='same').astype(float) * clip_mask
+    transformed_frame = convolve2d(padded_fr, smooth_kernel, mode='same').astype(np.float32) * clip_mask
     
     return target_frame_ID, transformed_frame
 
@@ -3658,9 +3658,9 @@ def destreak_smooth_mrc_stack_with_kernels(mrc_filename, destreak_kernel, smooth
         read_fr = mrc_obj.data[st_frame, :, :]
         padded_fr, clip_mask = clip_pad_image(read_fr, data_min, data_max)
         destreaked_fft = np.fft.fftshift(np.fft.fftn(np.fft.ifftshift(padded_fr))) * destreak_kernel
-        destreaked_data = np.real(np.fft.fftshift(np.fft.ifftn(np.fft.ifftshift(destreaked_fft)))).astype(float)
+        destreaked_data = np.real(np.fft.fftshift(np.fft.ifftn(np.fft.ifftshift(destreaked_fft)))).astype(np.float32)
         mrc_new_destreaked.data[j,:,:] = destreaked_data * clip_mask       
-        mrc_new_destreaked_smoothed.data[j,:,:] = convolve2d(destreaked_data, smooth_kernel, mode='same').astype(float) * clip_mask
+        mrc_new_destreaked_smoothed.data[j,:,:] = convolve2d(destreaked_data, smooth_kernel, mode='same').astype(np.float32) * clip_mask
         
     mrc_new_destreaked.close()
     mrc_new_destreaked_smoothed.close()
@@ -3857,7 +3857,7 @@ def mrc_stack_estimate_resolution_blobs_2D(mrc_filename, **kwargs):
 
     shape = np.shape(mrc_obj.data[frame_inds[nf//2], :, :])
 
-    vmin, vmax = get_min_max_thresholds((mrc_obj.data[frame_inds[nf//2], yi_eval:ya_eval, xi_eval:xa_eval].astype(dt_mrc)).astype(float), thr_min=0.2, disp_res=False, save_res=False)
+    vmin, vmax = get_min_max_thresholds((mrc_obj.data[frame_inds[nf//2], yi_eval:ya_eval, xi_eval:xa_eval].astype(dt_mrc)).astype(np.float32), thr_min=0.2, disp_res=False, save_res=False)
     threshold = kwargs.get('threshold', vmin/10.0)
     if verbose:
         print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Will use threshold : {:.4f}'.format(threshold))
@@ -4011,7 +4011,7 @@ def select_blobs_LoG_analyze_transitions_2D_mrc_stack(params):
         dt_mrc=np.uint16
     nx, ny, nz = np.int32(header['nx']), np.int32(header['ny']), np.int32(header['nz'])
     
-    frame = mrc_obj.data[frame_ind, :, :].astype(dt_mrc).astype(float)            
+    frame = mrc_obj.data[frame_ind, :, :].astype(dt_mrc).astype(np.float32)            
     shape = np.shape(frame)
 
     padx = 0
@@ -4027,15 +4027,15 @@ def select_blobs_LoG_analyze_transitions_2D_mrc_stack(params):
     ya = yi+shape[0]
     xi_eval, xa_eval, yi_eval, ya_eval = eval_bounds_single_frame
     
-    frame_img = np.zeros((ysz, xsz), dtype=float)
-    frame_eval = np.zeros(((ya_eval-yi_eval), (xa_eval-xi_eval)), dtype=float)
+    frame_img = np.zeros((ysz, xsz), dtype=np.float32)
+    frame_eval = np.zeros(((ya_eval-yi_eval), (xa_eval-xi_eval)), dtype=np.float32)
 
     if verbose:
         print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Will analyze a subset of ', mrc_filename)
 
     for j in np.arange(zbin_factor):
         if j>0:
-            frame = mrc_obj.data[frame_inds[frame_ind+j], :, :].astype(dt_mrc).astype(float)
+            frame = mrc_obj.data[frame_inds[frame_ind+j], :, :].astype(dt_mrc).astype(np.float32)
         if invert_data:
             if dt_mrc==np.uint8:
                 frame_img[yi:ya, xi:xa] = 255.0 - frame
@@ -4204,7 +4204,7 @@ def mrc_stack_plot_2D_blob_examples(results_xlsx, **kwargs):
         xi_eval = local_eval_bounds_info['xi_eval'].values[0]
         xa_eval = local_eval_bounds_info['xa_eval'].values[0]
 
-        frame = mrc_obj.data[Fs[j], :, :].astype(dt_mrc).astype(float)
+        frame = mrc_obj.data[Fs[j], :, :].astype(dt_mrc).astype(np.float32)
         shape = np.shape(frame)
         
         xi=0
@@ -4214,14 +4214,14 @@ def mrc_stack_plot_2D_blob_examples(results_xlsx, **kwargs):
         xa = xi+xsz
         ya = yi+ysz
   
-        frame_img = np.zeros((ysz, xsz), dtype=float)
-        frame_eval = np.zeros(((ya_eval-yi_eval), (xa_eval-xi_eval)), dtype=float)
+        frame_img = np.zeros((ysz, xsz), dtype=np.float32)
+        frame_eval = np.zeros(((ya_eval-yi_eval), (xa_eval-xi_eval)), dtype=np.float32)
 
         for jk in np.arange(zbin_factor):
             if jk>0:
                 local_ind = int(np.squeeze(np.argwhere(np.array(fls_info['Frame']) == Fs[j+jk])))
                 local_eval_bounds_info = eval_bounds_info[eval_bounds_info['Frame'] ==Fs[j+jk]]
-                frame = mrc_obj.data[Fs[j+jk], :, :].astype(dt_mrc).astype(float)
+                frame = mrc_obj.data[Fs[j+jk], :, :].astype(dt_mrc).astype(np.float32)
                 yi_eval = local_eval_bounds_info['yi_eval'].values[0]
                 ya_eval = local_eval_bounds_info['ya_eval'].values[0]
                 xi_eval = local_eval_bounds_info['xi_eval'].values[0]
@@ -4391,8 +4391,8 @@ def show_eval_box_tif_stack(tif_filename, **kwargs):
         dy_eval = 0
 
     for fr_ind in frame_inds: 
-        #eval_frame = (tif.data[fr_ind, :, :].astype(dt)).astype(float)
-        eval_frame = tiff.imread(tif_filename, key=fr_ind).astype(float)
+        #eval_frame = (tif.data[fr_ind, :, :].astype(dt)).astype(np.float32)
+        eval_frame = tiff.imread(tif_filename, key=fr_ind).astype(np.float32)
 
         if sliding_evaluation_box:
             xi_eval = start_evaluation_box[2] + dx_eval*fr_ind//nz
@@ -4448,8 +4448,8 @@ def evaluate_registration_two_frames_tif(params_tif):
     filename_frame_png = os.path.normpath(filename_frame_png)
     xi_eval, xa_eval, yi_eval, ya_eval = evals
     
-    frame0 = tiff.imread(tif_filename, key=int(fr-1)).astype(float)
-    frame1 = tiff.imread(tif_filename, key=int(fr)).astype(float)
+    frame0 = tiff.imread(tif_filename, key=int(fr-1)).astype(np.float32)
+    frame1 = tiff.imread(tif_filename, key=int(fr)).astype(np.float32)
     
     if invert_data:
         prev_frame = -1.0 * frame0[yi_eval:ya_eval, xi_eval:xa_eval]
@@ -4644,9 +4644,9 @@ def analyze_tif_stack_registration(tif_filename, **kwargs):
         image_mi = np.array([res[2] for res in dask_results])
     else:
         print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Using Local Computation')
-        image_nsad = np.zeros((nf), dtype=float)
-        image_ncc = np.zeros((nf), dtype=float)
-        image_mi = np.zeros((nf), dtype=float)
+        image_nsad = np.zeros((nf), dtype=np.float32)
+        image_ncc = np.zeros((nf), dtype=np.float32)
+        image_mi = np.zeros((nf), dtype=np.float32)
         results = []
         for params_tif_mult_pair in tqdm(params_tif_mult, desc='Evaluating frame registration: '):
             results.append(evaluate_registration_two_frames_tif(params_tif_mult_pair))
@@ -4747,7 +4747,7 @@ def analyze_transformation_matrix(transformation_matrix, xf_filename):
     #print('Recalculating Shifts')
     s00_cum_orig = tr_matr_cum[:, 0, 0]
     s11_cum_orig = tr_matr_cum[:, 1, 1]
-    fr = np.arange(0, len(s00_cum_orig), dtype=float)
+    fr = np.arange(0, len(s00_cum_orig), dtype=np.float32)
     s00_slp = -1.0 * (np.sum(fr)-np.dot(s00_cum_orig,fr))/np.dot(fr,fr) # find the slope of a linear fit with fiorced first scale=1
     s00_fit = 1.0 + s00_slp * fr
     s00_cum_new = s00_cum_orig + 1.0 - s00_fit
@@ -5795,7 +5795,7 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
                     # those are calculated below base on the amount of padding calculated above
                     shift_matrix = np.array([[1.0, 0.0, xi],
                                              [0.0, 1.0, yi],
-                                             [0.0, 0.0, 1.0]]).astype(float)
+                                             [0.0, 0.0, 1.0]]).astype(np.float32)
                     inv_shift_matrix = np.linalg.inv(shift_matrix)
                 else:
                     xsz = XResolution
@@ -5830,7 +5830,7 @@ def generate_report_from_xls_registration_summary(file_xlsx, **kwargs):
             if sample_data_available:
                 if stack_exists:
                     if Path(stack_filename).suffix == '.mrc':
-                        frame_img = (mrc_obj.data[frames[eval_ind], :, :].astype(dt_mrc)).astype(float)
+                        frame_img = (mrc_obj.data[frames[eval_ind], :, :].astype(dt_mrc)).astype(np.float32)
                     if Path(stack_filename).suffix == '.tif':
                         frame_img = tiff.imread(stack_filename, key=eval_ind)
                 else:
@@ -7466,7 +7466,7 @@ class FIBSEM_frame:
             The name of the image to perform this operations (default is 'RawImageA').
         DarkCount : float
             The value of the Intensity Data at 0.
-        kernel : 2D float array
+        kernel : 2D np.float32 array
             A kernel to perform 2D smoothing convolution. Default is normalized np.array([[st, 1.0, st],[1.0,1.0,1.0], [st, 1.0, st]]), where st = 1/np.sqrt(2).
         nbins_disp : int
             Number of histogram bins for building the PDF and CDF to determine the data range for data display. Default is 256.
@@ -7497,15 +7497,15 @@ class FIBSEM_frame:
         save_res_png = kwargs.get('save_res_png', True)
 
         if image_name == 'RawImageA':
-            ImgEM = self.RawImageA.astype(float)
+            ImgEM = self.RawImageA.astype(np.float32)
             DarkCount = self.Scaling[1,0]
         if image_name == 'RawImageB' and self.DetB != 'None':
-            ImgEM = self.RawImageB.astype(float)
+            ImgEM = self.RawImageB.astype(np.float32)
             DarkCount = self.Scaling[1,1]
 
         if (image_name == 'RawImageA') or (image_name == 'RawImageB' and self.DetB != 'None'):
             st = 1.0/np.sqrt(2.0)
-            def_kernel = np.array([[st, 1.0, st],[1.0,1.0,1.0], [st, 1.0, st]]).astype(float)
+            def_kernel = np.array([[st, 1.0, st],[1.0,1.0,1.0], [st, 1.0, st]]).astype(np.float32)
             def_kernel = def_kernel/def_kernel.sum()
             kernel = kwargs.get("kernel", def_kernel)
             DarkCount = kwargs.get("DarkCount", DarkCount)
@@ -7565,7 +7565,7 @@ class FIBSEM_frame:
             The value of the Intensity Data at 0.
         filter_array : 2d boolean array
             Array of the same dimensions as image. Only the pixel with corresponding filter_array values of True will be considered in the noise analysis.
-        kernel : 2D float array
+        kernel : 2D np.float32 array
             A kernel to perform 2D smoothing convolution. Default is normalized np.array([[st, 1.0, st],[1.0,1.0,1.0], [st, 1.0, st]]), where st = 1/np.sqrt(2).
         nbins_disp : int
             Number of histogram bins for building the PDF and CDF to determine the data range for data display. Default is 256.
@@ -7604,16 +7604,16 @@ class FIBSEM_frame:
         res_fname = kwargs.get("res_fname", res_fname_default)
 
         if image_name == 'RawImageA':
-            ImgEM = self.RawImageA.astype(float)
+            ImgEM = self.RawImageA.astype(np.float32)
             DarkCount = self.Scaling[1,0]
         if image_name == 'RawImageB' and self.DetB != 'None':
-            ImgEM = self.RawImageB.astype(float)
+            ImgEM = self.RawImageB.astype(np.float32)
             DarkCount = self.Scaling[1,1]
 
         if (image_name == 'RawImageA') or (image_name == 'RawImageB' and self.DetB != 'None'):
             st = 1.0/np.sqrt(2.0)
             evaluation_box = kwargs.get("evaluation_box", [0, 0, 0, 0])
-            def_kernel = np.array([[st, 1.0, st],[1.0,1.0,1.0], [st, 1.0, st]]).astype(float)
+            def_kernel = np.array([[st, 1.0, st],[1.0,1.0,1.0], [st, 1.0, st]]).astype(np.float32)
             def_kernel = def_kernel/def_kernel.sum()
             kernel = kwargs.get("kernel", def_kernel)
             filter_array = kwargs.get('filter_array', (ImgEM*0+1)>0)
@@ -8357,19 +8357,19 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
         FIBSEM_Data_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding, mill_rate_WD, mill_rate_MV, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolutions, YResolutions, SEMStiX, SEMStiY, SEMAlnX, SEMAlnY, errors_s2
             FIBSEM_Data_xlsx : str
                 path to Excel file with the FIBSEM data
-            data_min_glob : float   
+            data_min_glob : np.float32   
                 min data value for I8 conversion (open CV SIFT requires I8)
-            data_man_glob : float   
+            data_man_glob : np.float32   
                 max data value for I8 conversion (open CV SIFT requires I8)
-            center_x : float array
+            center_x : np.float32 array
                 FOV Center X-coordinate extracted from the header data
-            center_y : float array
+            center_y : np.float32 array
                 FOV Center Y-coordinate extracted from the header data
-            ScanRate : float array
+            ScanRate : np.float32 array
                 SEM Scan Rate (Hz)
-            EHT : float array
+            EHT : np.float32 array
                 SEM EHT voltage (kV)
-            SEMSpecimenI : float array
+            SEMSpecimenI : np.float32 array
                 SEM Specimen current (nA)
             XResolutions : int array
                 X-frame sizes
@@ -8452,15 +8452,15 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
             data_max_sliding = np.full(nfrs, np.uint8(255), dtype=np.uint8)
             data_minmax_glob = np.zeros((nfrs, 2), dtype=np.uint8)
             data_minmax_glob[1, :] = np.uint8(255)
-            mill_rate_WD = np.zeros(nfrs, dtype=float)
-            mill_rate_MV = np.zeros(nfrs, dtype=float)
+            mill_rate_WD = np.zeros(nfrs, dtype=np.float32)
+            mill_rate_MV = np.zeros(nfrs, dtype=np.float32)
             center_x = np.full(nfrs, frame.XResolution//2)
             center_y =  np.full(nfrs, frame.YResolution//2)
             XResolutions = np.full(nfrs, frame.XResolution)
             YResolutions = np.full(nfrs, frame.YResolution)
-            ScanRate = np.zeros(nfrs, dtype=float)
-            EHT = np.zeros(nfrs, dtype=float)
-            SEMSpecimenI = np.zeros(nfrs, dtype=float)
+            ScanRate = np.zeros(nfrs, dtype=np.float32)
+            EHT = np.zeros(nfrs, dtype=np.float32)
+            SEMSpecimenI = np.zeros(nfrs, dtype=np.float32)
             errors_s2 = np.zeros(nfrs, dtype=int)
 
         else:
@@ -8582,9 +8582,9 @@ def extract_keypoints_descr_files(params, deformation_field):
     params = fl, dmin, dmax, kwargs
         fl : str
             image filename (full path)
-        dmin : float   
+        dmin : np.float32   
             min data value for I8 conversion (open CV SIFT requires I8)
-        dmax : float   
+        dmax : np.float32   
             max data value for I8 conversion (open CV SIFT requires I8)
         kwargs:
         -------
@@ -8785,14 +8785,14 @@ def determine_transformation_matrix(src_pts, dst_pts, **kwargs):
     while iteration <= max_iter and max_error > drmax:
         # determine the new transformation matrix     
         if TransformType == ShiftTransform:
-            transform_matrix[0:2, 2] = np.mean(np.array(dst_pts.astype(float) - src_pts.astype(float)), axis=0)
+            transform_matrix[0:2, 2] = np.mean(np.array(dst_pts.astype(np.float32) - src_pts.astype(np.float32)), axis=0)
             
         if TransformType == XScaleShiftTransform:
             n, d = src_pts.shape
-            xsrc = np.array(src_pts)[:,0].astype(float)
-            ysrc = np.array(src_pts)[:,1].astype(float)
-            xdst = np.array(dst_pts)[:,0].astype(float)
-            ydst = np.array(dst_pts)[:,1].astype(float)
+            xsrc = np.array(src_pts)[:,0].astype(np.float32)
+            ysrc = np.array(src_pts)[:,1].astype(np.float32)
+            xdst = np.array(dst_pts)[:,0].astype(np.float32)
+            ydst = np.array(dst_pts)[:,1].astype(np.float32)
             s00 = np.sum(xsrc)
             s01 = np.sum(xdst)
             sx = (n*np.dot(xsrc, xdst) - s00*s01)/(n*np.sum(xsrc*xsrc) - s00*s00)
@@ -8810,10 +8810,10 @@ def determine_transformation_matrix(src_pts, dst_pts, **kwargs):
             
         if TransformType == ScaleShiftTransform:
             n, d = src_pts.shape
-            xsrc = np.array(src_pts)[:,0].astype(float)
-            ysrc = np.array(src_pts)[:,1].astype(float)
-            xdst = np.array(dst_pts)[:,0].astype(float)
-            ydst = np.array(dst_pts)[:,1].astype(float)
+            xsrc = np.array(src_pts)[:,0].astype(np.float32)
+            ysrc = np.array(src_pts)[:,1].astype(np.float32)
+            xdst = np.array(dst_pts)[:,0].astype(np.float32)
+            ydst = np.array(dst_pts)[:,1].astype(np.float32)
             s00 = np.sum(xsrc)
             s01 = np.sum(xdst)
             sx = (n*np.dot(xsrc, xdst) - s00*s01)/(n*np.sum(xsrc*xsrc) - s00*s00)
@@ -9273,8 +9273,8 @@ def process_transformation_matrix_dataset(transformation_matrix, FOVtrend_x, FOV
         columns_shifts_add=['s00_fit', 's11_fit', 's01_fit', 's10_fit']
         shifts_dt_add = pd.DataFrame(np.vstack((s00_fit, s11_fit, s01_fit, s10_fit)).T, columns = columns_shifts_add, index = None)
         shifts_dt = pd.concat([shifts_dt, shifts_dt_add], axis=1)
-        txs = np.zeros(len(tr_matr_cum), dtype=float)
-        tys = np.zeros(len(tr_matr_cum), dtype=float)
+        txs = np.zeros(len(tr_matr_cum), dtype=np.float32)
+        tys = np.zeros(len(tr_matr_cum), dtype=np.float32)
         
         failed_to_open_matches = 0
         failed_to_open_fnms = []
@@ -9442,7 +9442,7 @@ def calculate_residual_deformation_fields_dataset(tr_matr_cum, image_shape, fnms
         We will need nfrs+1 deformation fields - same number as number of transformation matrices.
         But the deformation_fields[0] is a field of zeros, at least for now.
         '''
-        deformation_fields = np.zeros((nfrs+1, image_shape[0]), dtype=float)
+        deformation_fields = np.zeros((nfrs+1, image_shape[0]), dtype=np.float32)
         for j, fnm_matches in enumerate(tqdm(fnms_matches, desc='Calculating the residual deformation fields for post_1DY deformation')):
             try:
                 if verbose:
@@ -9512,9 +9512,9 @@ def SIFT_evaluation_dataset(fs, **kwargs):
             ScaleShiftTransform - x-scale, y-scale, x-shift, y-shift
             AffineTransform -  full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift)
             RegularizedAffineTransform - full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift) with regularization on deviation from ShiftTransform
-    l2_matrix : 2D float array
+    l2_matrix : 2D np.float32 array
         matrix of regularization (shrinkage) parameters
-    targ_vector = 1D float array
+    targ_vector = 1D np.float32 array
         target vector for regularization
     solver : str
         Solver used for SIFT ('RANSAC' or 'LinReg')
@@ -9985,9 +9985,9 @@ def check_registration(img0, img1, **kwargs):
             ScaleShiftTransform - x-scale, y-scale, x-shift, y-shift
             AffineTransform -  full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift)
             RegularizedAffineTransform - full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift) with regularization on deviation from ShiftTransform
-    l2_matrix : 2D float array
+    l2_matrix : 2D np.float32 array
         matrix of regularization (shrinkage) parameters
-    targ_vector = 1D float array
+    targ_vector = 1D np.float32 array
         target vector for regularization
     solver : str
         Solver used for SIFT ('RANSAC' or 'LinReg')
@@ -10290,31 +10290,31 @@ def transform_chunk_of_frames(frame_filenames, xsz, ysz, ftype,
     transformed_img
 
     '''
-    transformed_img = np.zeros((ysz, xsz), dtype=float)
+    transformed_img = np.zeros((ysz, xsz), dtype=np.float32)
     num_frames = len(frame_filenames)
 
     for frame_filename, tr_matrix in zip(frame_filenames, tr_matrices):
-        #frame_img = np.zeros((ysz, xsz), dtype=float) + fill_value
-        frame_img = np.full((ysz, xsz), fill_value, dtype=float)
+        #frame_img = np.zeros((ysz, xsz), dtype=np.float32) + fill_value
+        frame_img = np.full((ysz, xsz), fill_value, dtype=np.float32)
         frame = FIBSEM_frame(frame_filename, ftype=ftype, calculate_scaled_images=False)
 
         if ImgB_fraction < 1e-5:
-            #image = frame.RawImageA.astype(float)
+            #image = frame.RawImageA.astype(np.float32)
             if flatten_image:
-                image = (frame.flatten_image(image_correction_file = image_correction_file)[0]).astype(float)
+                image = (frame.flatten_image(image_correction_file = image_correction_file)[0]).astype(np.float32)
             else:
-                image = frame.RawImageA.astype(float)
+                image = frame.RawImageA.astype(np.float32)
         else:
             if flatten_image:
                 flattened_images = frame.flatten_image(image_correction_file = image_correction_file)
-                flattened_RawImageA = flattened_images[0].astype(float)
+                flattened_RawImageA = flattened_images[0].astype(np.float32)
                 if len(flattened_images)>1:
-                    flattened_RawImageB = flattened_images[1].astype(float)
+                    flattened_RawImageB = flattened_images[1].astype(np.float32)
                 else:
-                    flattened_RawImageB = frame.RawImageB.astype(float)
+                    flattened_RawImageB = frame.RawImageB.astype(np.float32)
                 image = flattened_RawImageA* (1.0 - ImgB_fraction) + flattened_RawImageB * ImgB_fraction
             else:
-                image = frame.RawImageA.astype(float) * (1.0 - ImgB_fraction) + frame.RawImageB.astype(float) * ImgB_fraction
+                image = frame.RawImageA.astype(np.float32) * (1.0 - ImgB_fraction) + frame.RawImageB.astype(np.float32) * ImgB_fraction
 
         if invert_data:
             frame_img[yi:ya, xi:xa] = np.negative(image)
@@ -10428,32 +10428,32 @@ def transform_and_save_chunk_of_frames(chunk_of_frame_parametrs):
     #ImgB_fraction, xsz, ysz, xi, xa, yi, ya, int_order, invert_data, flipY, flatten_image, image_correction_file, perform_transformation, shift_matrix, inv_shift_matrix, ftype, dtp, fill_value = tr_args
     ImgB_fraction, xsz, ysz, xi, xa, yi, ya, int_order, invert_data, flipY, flatten_image, image_correction_file, perform_transformation, shift_matrix, inv_shift_matrix, perform_deformation, deformation_type, ftype, dtp, fill_value = tr_args
     num_frames = len(frame_filenames)
-    transformed_img = np.zeros((ysz, xsz), dtype=float)
+    transformed_img = np.zeros((ysz, xsz), dtype=np.float32)
     verbose = False
     save_debug_data = False
     
     for frame_filename, tr_matrix, deformation_field, image_scale, image_offset in zip(frame_filenames, tr_matrices, deformation_fields, image_scales, image_offsets):
-        #frame_img = np.zeros((ysz, xsz), dtype=float) + fill_value
-        frame_img = np.full((ysz, xsz), fill_value, dtype=float)
+        #frame_img = np.zeros((ysz, xsz), dtype=np.float32) + fill_value
+        frame_img = np.full((ysz, xsz), fill_value, dtype=np.float32)
         frame = FIBSEM_frame(frame_filename, ftype=ftype, calculate_scaled_images=False)
 
         if ImgB_fraction < 1e-5:
-            #image = frame.RawImageA.astype(float)
+            #image = frame.RawImageA.astype(np.float32)
             if flatten_image:
-                image = (frame.flatten_image(image_correction_file = image_correction_file)[0]).astype(float)
+                image = (frame.flatten_image(image_correction_file = image_correction_file)[0]).astype(np.float32)
             else:
-                image = frame.RawImageA.astype(float)
+                image = frame.RawImageA.astype(np.float32)
         else:
             if flatten_image:
                 flattened_images = frame.flatten_image(image_correction_file = image_correction_file)
-                flattened_RawImageA = flattened_images[0].astype(float)
+                flattened_RawImageA = flattened_images[0].astype(np.float32)
                 if len(flattened_images)>1:
-                    flattened_RawImageB = flattened_images[1].astype(float)
+                    flattened_RawImageB = flattened_images[1].astype(np.float32)
                 else:
-                    flattened_RawImageB = frame.RawImageB.astype(float)
+                    flattened_RawImageB = frame.RawImageB.astype(np.float32)
                 image = flattened_RawImageA* (1.0 - ImgB_fraction) + flattened_RawImageB * ImgB_fraction
             else:
-                image = frame.RawImageA.astype(float) * (1.0 - ImgB_fraction) + frame.RawImageB.astype(float) * ImgB_fraction
+                image = frame.RawImageA.astype(np.float32) * (1.0 - ImgB_fraction) + frame.RawImageB.astype(np.float32) * ImgB_fraction
         image = (image - image_offset) * image_scale + image_offset
 
         if invert_data:
@@ -10630,7 +10630,7 @@ def analyze_registration_frames(DASK_client, frame_filenames, **kwargs):
     else:   # if DASK is not used - perform local computations
         if disp_res:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Analyzing Frame Registration: Will perform local computations')
-        image_metrics = np.zeros((nfrs-1, len(eval_metrics)), dtype=float)
+        image_metrics = np.zeros((nfrs-1, len(eval_metrics)), dtype=np.float32)
         for j, params_frame in enumerate(tqdm(params_frames, desc = 'Analyzing frame pairs', display = disp_res)):
             image_metrics[j, :] = Two_Image_Analysis(params_frame)
         results_til = []
@@ -10639,7 +10639,7 @@ def analyze_registration_frames(DASK_client, frame_filenames, **kwargs):
     if save_sample_frames_png:
         for frame_ind in sample_frame_inds:
             filename_frame_png = os.path.splitext(fpath_reg)[0]+'_sample_image_frame{:d}.png'.format(frame_ind)
-            fr_img = tiff.imread(frame_filenames[frame_ind]).astype(float)
+            fr_img = tiff.imread(frame_filenames[frame_ind]).astype(np.float32)
             yshape, xshape = fr_img.shape
             fig, ax = plt.subplots(1,1, figsize=(3.0*xshape/yshape, 3))
             fig.subplots_adjust(left=0.0, bottom=0.00, right=1.0, top=1.0)
@@ -10753,7 +10753,7 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
             'prior_1DX' - Deformation is performed PRIOR to the matrix transformation using 1D deformation field with only X-coordinate components (all pixels along Y-axis are deformed the same way).
             'post_2D'   - Deformation is performed AFTER the matrix transformation using 2D deformation field.
             'prior_2D'  - Deformation is performed PRIOR to the matrix transformation using 2D deformation field.
-    deformation_fields : float array
+    deformation_fields : np.float32 array
     dtp  : dtype
         Python data type for saving. Default is int16.
     fill_value : float
@@ -10803,7 +10803,7 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
     st_frames = np.arange(frame_inds[0], end_frame, zbin_factor)             # starting frame for each z-bin
     nfrs_zbinned = len(st_frames)                                            # number of frames after z-ninning
     frames_new = np.arange(nfrs_zbinned-1)
-    deformation_fields = kwargs.get('deformation_fields', np.zeros((nfrs, test_frame.YResolution), dtype=float))
+    deformation_fields = kwargs.get('deformation_fields', np.zeros((nfrs, test_frame.YResolution), dtype=np.float32))
     shape = [np.max(YResolutions), np.max(XResolutions)]
     shapes = [YResolutions, XResolutions]
     
@@ -10819,11 +10819,11 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
         if invert_shifts:
             shift_matrix = np.array([[1.0, 0.0, -xi],
                                  [0.0, 1.0, -yi],
-                                 [0.0, 0.0, 1.0]]).astype(float)
+                                 [0.0, 0.0, 1.0]]).astype(np.float32)
         else:
             shift_matrix = np.array([[1.0, 0.0, xi],
                                  [0.0, 1.0, yi],
-                                 [0.0, 0.0, 1.0]]).astype(float)
+                                 [0.0, 0.0, 1.0]]).astype(np.float32)
         inv_shift_matrix = np.linalg.inv(shift_matrix)
     else:
         xi = 0
@@ -10848,7 +10848,7 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
         if perform_deformation:
             chunk_of_frame_parametrs_dataset.append([save_filename, np.array(fls)[process_frames], np.array(tr_matr_cum_residual)[process_frames], np.array(deformation_fields)[process_frames], np.array(image_scales)[process_frames], np.array(image_offsets)[process_frames], tr_args])
         else:
-            chunk_of_frame_parametrs_dataset.append([save_filename, np.array(fls)[process_frames], np.array(tr_matr_cum_residual)[process_frames], np.zeros((len(process_frames), YResolutions[st_frame]), dtype=float), np.array(image_scales)[process_frames], np.array(image_offsets)[process_frames], tr_args])
+            chunk_of_frame_parametrs_dataset.append([save_filename, np.array(fls)[process_frames], np.array(tr_matr_cum_residual)[process_frames], np.zeros((len(process_frames), YResolutions[st_frame]), dtype=np.float32), np.array(image_scales)[process_frames], np.array(image_offsets)[process_frames], tr_args])
     
     if use_DASK:
         if disp_res:
@@ -11108,7 +11108,7 @@ def select_blobs_LoG_analyze_transitions_2D_dataset(params):
         xi, yi, xsz, ysz = offsets_sizes
         shift_matrix = np.array([[1.0, 0.0, xi],
                                  [0.0, 1.0, yi],
-                                 [0.0, 0.0, 1.0]]).astype(float)
+                                 [0.0, 0.0, 1.0]]).astype(np.float32)
         inv_shift_matrix = np.linalg.inv(shift_matrix)
     else:
         xsz = shape[1]
@@ -11120,8 +11120,8 @@ def select_blobs_LoG_analyze_transitions_2D_dataset(params):
 
     xi_eval, xa_eval, yi_eval, ya_eval = eval_bounds_single_frame
     
-    frame_img = np.zeros((ysz, xsz), dtype=float)
-    frame_eval = np.zeros(((ya_eval-yi_eval), (xa_eval-xi_eval)), dtype=float)
+    frame_img = np.zeros((ysz, xsz), dtype=np.float32)
+    frame_eval = np.zeros(((ya_eval-yi_eval), (xa_eval-xi_eval)), dtype=np.float32)
 
     if verbose:
         print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Will analyze a subset of ', image_name)
@@ -11134,23 +11134,23 @@ def select_blobs_LoG_analyze_transitions_2D_dataset(params):
         if invert_data:
             if frame.DetB != 'None':
                 if image_name == 'RawImageB':
-                    frame_img[yi:ya, xi:xa] = np.negative(frame.RawImageB.astype(float))
+                    frame_img[yi:ya, xi:xa] = np.negative(frame.RawImageB.astype(np.float32))
                 if image_name == 'ImageB':
-                    frame_img[yi:ya, xi:xa] = np.negative(frame.ImageB.astype(float))
+                    frame_img[yi:ya, xi:xa] = np.negative(frame.ImageB.astype(np.float32))
             if image_name == 'RawImageA':
-                frame_img[yi:ya, xi:xa] = np.negative(frame.RawImageA.astype(float))
+                frame_img[yi:ya, xi:xa] = np.negative(frame.RawImageA.astype(np.float32))
             else:
-                frame_img[yi:ya, xi:xa] = np.negative(frame.ImageA.astype(float))
+                frame_img[yi:ya, xi:xa] = np.negative(frame.ImageA.astype(np.float32))
         else:
             if frame.DetB != 'None':
                 if image_name == 'RawImageB':
-                    frame_img[yi:ya, xi:xa]  = frame.RawImageB.astype(float)
+                    frame_img[yi:ya, xi:xa]  = frame.RawImageB.astype(np.float32)
                 if image_name == 'ImageB':
-                    frame_img[yi:ya, xi:xa]  = frame.ImageB.astype(float)
+                    frame_img[yi:ya, xi:xa]  = frame.ImageB.astype(np.float32)
             if image_name == 'RawImageA':
-                frame_img[yi:ya, xi:xa]  = frame.RawImageA.astype(float)
+                frame_img[yi:ya, xi:xa]  = frame.RawImageA.astype(np.float32)
             else:
-                frame_img[yi:ya, xi:xa]  = frame.ImageA.astype(float)
+                frame_img[yi:ya, xi:xa]  = frame.ImageA.astype(np.float32)
 
         if perform_transformation:
             transf = ProjectiveTransform(matrix = shift_matrix @ (tr_matr_cum_residual @ inv_shift_matrix))
@@ -11252,9 +11252,9 @@ class FIBSEM_dataset:
             ScaleShiftTransform - x-scale, y-scale, x-shift, y-shift
             AffineTransform -  full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift)
             RegularizedAffineTransform - full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift) with regularization on deviation from ShiftTransform
-    l2_matrix : 2D float array
+    l2_matrix : 2D np.float32 array
         matrix of regularization (shrinkage) parameters
-    targ_vector = 1D float array
+    targ_vector = 1D np.float32 array
         target vector for regularization
     solver : str
         Solver used for SIFT ('RANSAC' or 'LinReg')
@@ -11458,9 +11458,9 @@ class FIBSEM_dataset:
                 ScaleShiftTransform - x-scale, y-scale, x-shift, y-shift
                 AffineTransform -  full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift)
                 RegularizedAffineTransform - full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift) with regularization on deviation from ShiftTransform
-        l2_matrix : 2D float array
+        l2_matrix : 2D np.float32 array
             Matrix of regularization (shrinkage) parameters (applicable only if RegularizedAffineTransform is used). Default is 1e-5.
-        targ_vector = 1D float array
+        targ_vector = 1D np.float32 array
             Target vector for regularization (applicable only if RegularizedAffineTransform is used). Default is [1, 0, 0, 0, 1, 0] for a target transformation that is shift only: Sxx=Syy=1, Sxy=Syx=0.
         solver : str
             Solver used for SIFT ('RANSAC' or 'LinReg'). Default is 'RANSAC'.
@@ -11691,9 +11691,9 @@ class FIBSEM_dataset:
                 ScaleShiftTransform - x-scale, y-scale, x-shift, y-shift
                 AffineTransform -  full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift)
                 RegularizedAffineTransform - full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift) with regularization on deviation from ShiftTransform
-        l2_matrix : 2D float array
+        l2_matrix : 2D np.float32 array
            Matrix of regularization (shrinkage) parameters (applicable only if RegularizedAffineTransform is used). Default is object attribute.
-        targ_vector = 1D float array
+        targ_vector = 1D np.float32 array
             Target vector for regularization (applicable only if RegularizedAffineTransform is used). Default is object attribute.
         solver : str
             Solver used for SIFT ('RANSAC' or 'LinReg'). Default is object attribute.
@@ -11887,27 +11887,27 @@ class FIBSEM_dataset:
             FIBSEM_Data_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding, mill_rate_WD, mill_rate_MV, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolutions, YResolutions, SEMStiX, SEMStiY, SEMAlnX, SEMAlnY, errors_s2
                 FIBSEM_Data_xlsx : str
                     path to Excel file with the FIBSEM data
-                data_min_glob : float   
+                data_min_glob : np.float32   
                     min data value for I8 conversion (open CV SIFT requires I8)
-                data_man_glob : float   
+                data_man_glob : np.float32   
                     max data value for I8 conversion (open CV SIFT requires I8)
-                data_min_sliding : float array
+                data_min_sliding : np.float32 array
                     min data values (one per file) for I8 conversion
-                data_max_sliding : float array
+                data_max_sliding : np.float32 array
                     max data values (one per file) for I8 conversion
-                mill_rate_WD : float array
+                mill_rate_WD : np.float32 array
                     Milling rate calculated based on Working Distance (WD)
-                mill_rate_MV : float array
+                mill_rate_MV : np.float32 array
                     Milling rate calculated based on Milling Y Voltage (MV)
-                center_x : float array
+                center_x : np.float32 array
                     FOV Center X-coordinate extracted from the header data
-                center_y : float array
+                center_y : np.float32 array
                     FOV Center Y-coordinate extracted from the header data
-                ScanRate : float array
+                ScanRate : np.float32 array
                     SEM Scan Rate (Hz)
-                EHT : float array
+                EHT : np.float32 array
                     SEM EHT voltage (kV)
-                SEMSpecimenI : float array
+                SEMSpecimenI : np.float32 array
                     SEM Specimen current (nA)
                 XResolutions : int array
                     X-frame sizes
@@ -12023,13 +12023,13 @@ class FIBSEM_dataset:
         data_minmax : list of 5 parameters
             minmax_xlsx : str
                 path to Excel file with Min/Max data.
-            data_min_glob : float   
+            data_min_glob : np.float32   
                 min data value for I8 conversion (open CV SIFT requires I8).
-            data_min_sliding : float array
+            data_min_sliding : np.float32 array
                 min data values (one per file) for I8 conversion.
-            data_max_sliding : float array
+            data_max_sliding : np.float32 array
                 max data values (one per file) for I8 conversion.
-            data_minmax_glob : 2D float array
+            data_minmax_glob : 2D np.float32 array
                 min and max data values without sliding averaging.
         SIFT_nfeatures : int
             The number of best features to retain. Default is object attribute. SIFT library default is 0 (all features retained).
@@ -12160,9 +12160,9 @@ class FIBSEM_dataset:
                 ScaleShiftTransform - x-scale, y-scale, x-shift, y-shift
                 AffineTransform -  full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift)
                 RegularizedAffineTransform - full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift) with regularization on deviation from ShiftTransform
-        l2_matrix : 2D float array
+        l2_matrix : 2D np.float32 array
            Matrix of regularization (shrinkage) parameters (applicable only if RegularizedAffineTransform is used). Default is object attribute.
-        targ_vector = 1D float array
+        targ_vector = 1D np.float32 array
             Target vector for regularization (applicable only if RegularizedAffineTransform is used). Default is object attribute.
         solver : str
             Solver used for SIFT ('RANSAC' or 'LinReg'). Default is object attribute.
@@ -12193,7 +12193,7 @@ class FIBSEM_dataset:
         ----------
         results_s4 : array of lists containing the results:
             [transformation_matrix, fnm_matches, npt, error_abs_mean, error_FWHMx, error_FWHMy, iteration]
-            transformation_matrix : 2D float array
+            transformation_matrix : 2D np.float32 array
                 Transformation matrix for each sequential frame pair.
             fnm_matches : str
                 Filename containing the matches used to determine the transformation for the pair of frames.
@@ -12289,9 +12289,9 @@ class FIBSEM_dataset:
                 ScaleShiftTransform - x-scale, y-scale, x-shift, y-shift
                 AffineTransform -  full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift)
                 RegularizedAffineTransform - full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift) with regularization on deviation from ShiftTransform
-        l2_matrix : 2D float array
+        l2_matrix : 2D np.float32 array
            Matrix of regularization (shrinkage) parameters (applicable only if RegularizedAffineTransform is used). Default is object attribute.
-        targ_vector = 1D float array
+        targ_vector = 1D np.float32 array
             Target vector for regularization (applicable only if RegularizedAffineTransform is used). Default is object attribute.
         solver : str
             Solver used for SIFT ('RANSAC' or 'LinReg'). Default is object attribute.
@@ -12328,7 +12328,7 @@ class FIBSEM_dataset:
 
         Returns:
         ----------
-        tr_matr_cum_residual, tr_matr_cum_xlsx_file : list of 2D arrays of float and the filename of the XLSX file with the transf matrix results
+        tr_matr_cum_residual, tr_matr_cum_xlsx_file : list of 2D arrays of np.float32 and the filename of the XLSX file with the transf matrix results
             Cumulative transformation matrices
         '''
         if len(self.transformation_matrix) == 0:
@@ -12520,9 +12520,9 @@ class FIBSEM_dataset:
                 ScaleShiftTransform - x-scale, y-scale, x-shift, y-shift
                 AffineTransform -  full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift)
                 RegularizedAffineTransform - full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift) with regularization on deviation from ShiftTransform
-        l2_matrix : 2D float array
+        l2_matrix : 2D np.float32 array
            Matrix of regularization (shrinkage) parameters (applicable only if RegularizedAffineTransform is used). Default is object attribute.
-        targ_vector = 1D float array
+        targ_vector = 1D np.float32 array
             Target vector for regularization (applicable only if RegularizedAffineTransform is used). Default is object attribute.
         solver : str
             Solver used for SIFT ('RANSAC' or 'LinReg'). Default is object attribute.
@@ -12688,7 +12688,7 @@ class FIBSEM_dataset:
                 'prior_1DX' - Deformation is performed PRIOR to the matrix transformation using 1D deformation field with only X-coordinate components (all pixels along Y-axis are deformed the same way).
                 'post_2D'   - Deformation is performed AFTER the matrix transformation using 2D deformation field.
                 'prior_2D'  - Deformation is performed PRIOR to the matrix transformation using 2D deformation field.
-        deformation_fields : float array
+        deformation_fields : np.float32 array
             Deformation Field Array (for deformation set above).
         flatten_image : boolean
             Perform image flattening. Default is object attribute.
@@ -12839,7 +12839,7 @@ class FIBSEM_dataset:
         if hasattr(self, 'deformation_fields'):
             deformation_fields = kwargs.get("deformation_fields", self.deformation_fields)
         else:
-            deformation_fields = kwargs.get("deformation_fields", np.zeros((len(self.fls), self.YResolution), dtype=float))
+            deformation_fields = kwargs.get("deformation_fields", np.zeros((len(self.fls), self.YResolution), dtype=np.float32))
         if hasattr(self, 'pad_edges'):
             pad_edges = kwargs.get("pad_edges", self.pad_edges)
         else:
@@ -12922,11 +12922,11 @@ class FIBSEM_dataset:
             if invert_shifts:
                 shift_matrix = np.array([[1.0, 0.0, -xi],
                                      [0.0, 1.0, -yi],
-                                     [0.0, 0.0, 1.0]]).astype(float)
+                                     [0.0, 0.0, 1.0]]).astype(np.float32)
             else:
                 shift_matrix = np.array([[1.0, 0.0, xi],
                                      [0.0, 1.0, yi],
-                                     [0.0, 0.0, 1.0]]).astype(float)
+                                     [0.0, 0.0, 1.0]]).astype(np.float32)
             inv_shift_matrix = np.linalg.inv(shift_matrix)
         else:
             xi = 0
@@ -13081,7 +13081,7 @@ class FIBSEM_dataset:
             # those are calculated below base on the amount of padding calculated above
             shift_matrix = np.array([[1.0, 0.0, xi],
                                      [0.0, 1.0, yi],
-                                     [0.0, 0.0, 1.0]]).astype(float)
+                                     [0.0, 0.0, 1.0]]).astype(np.float32)
             inv_shift_matrix = np.linalg.inv(shift_matrix)
         else:
             xi = 0
@@ -13127,9 +13127,9 @@ class FIBSEM_dataset:
                 print('Will NOT perform transformation')
         for j,fr_ind in enumerate(frame_inds):
             frame = FIBSEM_frame(fls[fr_ind], ftype=ftype, calculate_scaled_images=False)
-            #frame_img = np.zeros((ysz, xsz), dtype=float) + fill_value
-            frame_img = np.full((ysz, xsz), fill_value, dtype=float)
-            frame_img[yi:yi+frame.YResolution, xi:xi+frame.XResolution]  = frame.RawImageA.astype(float)
+            #frame_img = np.zeros((ysz, xsz), dtype=np.float32) + fill_value
+            frame_img = np.full((ysz, xsz), fill_value, dtype=np.float32)
+            frame_img[yi:yi+frame.YResolution, xi:xi+frame.XResolution]  = frame.RawImageA.astype(np.float32)
 
             if perform_transformation:
                 transf = ProjectiveTransform(matrix = shift_matrix @ (self.tr_matr_cum_residual[fr_ind] @ inv_shift_matrix))
@@ -13275,7 +13275,7 @@ class FIBSEM_dataset:
             # those are calculated below base on the amount of padding calculated above
             shift_matrix = np.array([[1.0, 0.0, xi],
                                      [0.0, 1.0, yi],
-                                     [0.0, 0.0, 1.0]]).astype(float)
+                                     [0.0, 0.0, 1.0]]).astype(np.float32)
             inv_shift_matrix = np.linalg.inv(shift_matrix)
         else:
             xi = 0
@@ -13308,18 +13308,18 @@ class FIBSEM_dataset:
             ya = yi+frame.YResolution
             xi_eval, xa_eval, yi_eval, ya_eval = eval_bounds[j, :]
 
-            frame_imgA = np.zeros((ysz, xsz), dtype=float)
+            frame_imgA = np.zeros((ysz, xsz), dtype=np.float32)
             if self.DetB != 'None':
-                frame_imgB = np.zeros((ysz, xsz), dtype=float)
+                frame_imgB = np.zeros((ysz, xsz), dtype=np.float32)
 
             if invert_data:
-                frame_imgA[yi:ya, xi:xa] = np.negative(frame.RawImageA.astype(float))
+                frame_imgA[yi:ya, xi:xa] = np.negative(frame.RawImageA.astype(np.float32))
                 if self.DetB != 'None':
-                    frame_imgB[yi:ya, xi:xa] = np.negative(frame.RawImageB.astype(float))
+                    frame_imgB[yi:ya, xi:xa] = np.negative(frame.RawImageB.astype(np.float32))
             else:
-                frame_imgA[yi:ya, xi:xa]  = frame.RawImageA.astype(float)
+                frame_imgA[yi:ya, xi:xa]  = frame.RawImageA.astype(np.float32)
                 if self.DetB != 'None':
-                    frame_imgB[yi:ya, xi:xa]  = frame.RawImageB.astype(float)
+                    frame_imgB[yi:ya, xi:xa]  = frame.RawImageB.astype(np.float32)
 
             if perform_transformation:
                 transf = ProjectiveTransform(matrix = shift_matrix @ (self.tr_matr_cum_residual[frame_ind] @ inv_shift_matrix))
@@ -13401,18 +13401,18 @@ class FIBSEM_dataset:
                 xa = xi+frame.XResolution
                 ya = yi+frame.YResolution
 
-                frame_imgA = np.zeros((ysz, xsz), dtype=float)
+                frame_imgA = np.zeros((ysz, xsz), dtype=np.float32)
                 if self.DetB != 'None':
-                    frame_imgB = np.zeros((ysz, xsz), dtype=float)
+                    frame_imgB = np.zeros((ysz, xsz), dtype=np.float32)
 
                 if invert_data:
-                    frame_imgA[yi:ya, xi:xa] = np.negative(frame.RawImageA.astype(float))
+                    frame_imgA[yi:ya, xi:xa] = np.negative(frame.RawImageA.astype(np.float32))
                     if self.DetB != 'None':
-                        frame_imgB[yi:ya, xi:xa] = np.negative(frame.RawImageB.astype(float))
+                        frame_imgB[yi:ya, xi:xa] = np.negative(frame.RawImageB.astype(np.float32))
                 else:
-                    frame_imgA[yi:ya, xi:xa]  = frame.RawImageA.astype(float)
+                    frame_imgA[yi:ya, xi:xa]  = frame.RawImageA.astype(np.float32)
                     if self.DetB != 'None':
-                        frame_imgB[yi:ya, xi:xa]  = frame.RawImageB.astype(float)
+                        frame_imgB[yi:ya, xi:xa]  = frame.RawImageB.astype(np.float32)
 
                 if perform_transformation:
                     transf = ProjectiveTransform(matrix = shift_matrix @ (self.tr_matr_cum_residual[frame_ind] @ inv_shift_matrix))
@@ -13945,7 +13945,7 @@ class FIBSEM_dataset:
             #xi, yi, padx, pady = determine_pad_offsets(shape, self.tr_matr_cum_residual)
             shift_matrix = np.array([[1.0, 0.0, xi],
                                  [0.0, 1.0, yi],
-                                 [0.0, 0.0, 1.0]]).astype(float)
+                                 [0.0, 0.0, 1.0]]).astype(np.float32)
             inv_shift_matrix = np.linalg.inv(shift_matrix)
         else:
             xi = 0
@@ -14273,7 +14273,7 @@ def plot_2D_blob_examples(results_xlsx, **kwargs):
             xi, yi, padx, pady = offsets_sizes
             shift_matrix = np.array([[1.0, 0.0, xi],
                                      [0.0, 1.0, yi],
-                                     [0.0, 0.0, 1.0]]).astype(float)
+                                     [0.0, 0.0, 1.0]]).astype(np.float32)
             inv_shift_matrix = np.linalg.inv(shift_matrix)
         else:
             padx = 0
@@ -14287,8 +14287,8 @@ def plot_2D_blob_examples(results_xlsx, **kwargs):
         xa = xi+frame.XResolution
         ya = yi+frame.YResolution
   
-        frame_img = np.zeros((ysz, xsz), dtype=float)
-        frame_eval = np.zeros(((ya_eval-yi_eval), (xa_eval-xi_eval)), dtype=float)
+        frame_img = np.zeros((ysz, xsz), dtype=np.float32)
+        frame_eval = np.zeros(((ya_eval-yi_eval), (xa_eval-xi_eval)), dtype=np.float32)
 
         for jk in np.arange(zbin_factor):
             if jk>0:
@@ -14303,23 +14303,23 @@ def plot_2D_blob_examples(results_xlsx, **kwargs):
             if invert_data:
                 if frame.DetB != 'None':
                     if image_name == 'RawImageB':
-                        frame_img[yi:ya, xi:xa] = np.negative(frame.RawImageB.astype(float))
+                        frame_img[yi:ya, xi:xa] = np.negative(frame.RawImageB.astype(np.float32))
                     if image_name == 'ImageB':
-                        frame_img[yi:ya, xi:xa] = np.negative(frame.ImageB.astype(float))
+                        frame_img[yi:ya, xi:xa] = np.negative(frame.ImageB.astype(np.float32))
                 if image_name == 'RawImageA':
-                    frame_img[yi:ya, xi:xa] = np.negative(frame.RawImageA.astype(float))
+                    frame_img[yi:ya, xi:xa] = np.negative(frame.RawImageA.astype(np.float32))
                 else:
-                    frame_img[yi:ya, xi:xa] = np.negative(frame.ImageA.astype(float))
+                    frame_img[yi:ya, xi:xa] = np.negative(frame.ImageA.astype(np.float32))
             else:
                 if frame.DetB != 'None':
                     if image_name == 'RawImageB':
-                        frame_img[yi:ya, xi:xa]  = frame.RawImageB.astype(float)
+                        frame_img[yi:ya, xi:xa]  = frame.RawImageB.astype(np.float32)
                     if image_name == 'ImageB':
-                        frame_img[yi:ya, xi:xa]  = frame.ImageB.astype(float)
+                        frame_img[yi:ya, xi:xa]  = frame.ImageB.astype(np.float32)
                 if image_name == 'RawImageA':
-                    frame_img[yi:ya, xi:xa]  = frame.RawImageA.astype(float)
+                    frame_img[yi:ya, xi:xa]  = frame.RawImageA.astype(np.float32)
                 else:
-                    frame_img[yi:ya, xi:xa]  = frame.ImageA.astype(float)
+                    frame_img[yi:ya, xi:xa]  = frame.ImageA.astype(np.float32)
             if perform_transformation:
                 transf = ProjectiveTransform(matrix = shift_matrix @ (transformation_matrix[local_ind] @ inv_shift_matrix))
                 frame_img_reg = warp(frame_img, transf, order = int_order, preserve_range=True)
@@ -14456,7 +14456,7 @@ def plot_2D_blob_examples_single(img, results_xlsx, **kwargs):
         y = Ys[j]
         xx = int(x)
         yy = int(y)
-        subset = img[yy-dx2:yy+dx2, xx-dx2:xx+dx2].astype(float)
+        subset = img[yy-dx2:yy+dx2, xx-dx2:xx+dx2].astype(np.float32)
         ax_maps[j].imshow(subset, cmap='Greys')#, vmin=0, vmax=160)
         ax_maps[j].grid(False)
         ax_maps[j].axis(False)
