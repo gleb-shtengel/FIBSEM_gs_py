@@ -13,7 +13,7 @@ USAGE
 
     tif_stack_to_zarr(
         tif_files  = sorted_list_of_tif_paths,
-        output_zarr= "/data/out.zarr",
+        output_zarr_path= "/data/out.zarr",
         client     = client,
         chunk_z=64, chunk_y=128, chunk_x=128,
         voxel_size_zyx=(8., 8., 8.),
@@ -27,7 +27,7 @@ ARCHITECTURE
 ------------
 Each Z-slab (chunk_z consecutive slices) is one independent unit of work:
 
-    write_slab_to_zarr(output_zarr, tif_files, z_start, z_end)
+    write_slab_to_zarr(output_zarr_path, tif_files, z_start, z_end)
         1. Reads chunk_z TIF files in parallel (ThreadPoolExecutor)
         2. Writes the slab to zarr[f's{level}']
            zarr handles XY chunking internally
@@ -192,7 +192,7 @@ def write_ome_zarr_metadata(
 # ---------------------------------------------------------------------------
 
 def create_zarr_store(
-    output_zarr: str,
+    output_zarr_path: str,
     nz: int, ny: int, nx: int,
     dtype,
     chunk_z: int = 64, chunk_y: int = 128, chunk_x: int = 128,
@@ -213,7 +213,7 @@ def create_zarr_store(
     Returns the root zarr.Group.
     """
     compressor = _make_compressor(zarr_compressor, zarr_compressor_level)
-    root = zarr.open_group(output_zarr, mode="w" if overwrite else "w-")
+    root = zarr.open_group(output_zarr_path, mode="w" if overwrite else "w-")
 
     cur_nz, cur_ny, cur_nx = nz, ny, nx
     for level in range(n_pyramid_levels):
@@ -246,7 +246,7 @@ def create_zarr_store(
 # ---------------------------------------------------------------------------
 
 def write_slab_to_zarr(
-    output_zarr: str,
+    output_zarr_path: str,
     tif_files: list,
     z_start: int,
     z_end: int,
@@ -262,7 +262,7 @@ def write_slab_to_zarr(
 
     Parameters
     ----------
-    output_zarr    : path to existing .zarr store
+    output_zarr_path    : path to existing .zarr store
     tif_files      : full ordered list of TIF paths for the entire volume
     z_start, z_end : half-open Z-slice range for this slab
     n_read_threads : threads for parallel TIF reading within this worker
@@ -299,7 +299,7 @@ def write_slab_to_zarr(
             results[futs[fut]] = fut.result()
     slab = np.stack(results, axis=0)
 
-    zarr.open(output_zarr, mode="r+")[f"s{level}"][z_start:z_end, :, :] = slab
+    zarr.open(output_zarr_path, mode="r+")[f"s{level}"][z_start:z_end, :, :] = slab
 
     elapsed = time.time() - t0
     mb = slab.nbytes / 1e6
@@ -312,7 +312,7 @@ def write_slab_to_zarr(
 # ---------------------------------------------------------------------------
 
 def _write_pyramid_chunk(
-    output_zarr: str,
+    output_zarr_path: str,
     src_level: int,
     dst_level: int,
     out_z: tuple,
@@ -337,7 +337,7 @@ def _write_pyramid_chunk(
     t0 = time.time()
     f = downsample_factor
 
-    root = zarr.open_group(output_zarr, mode="r+")
+    root = zarr.open_group(output_zarr_path, mode="r+")
     src = root[f"s{src_level}"]
     dst = root[f"s{dst_level}"]
 
@@ -539,7 +539,7 @@ def rechunk_s0(
 # ---------------------------------------------------------------------------
 
 def finalize_pyramid(
-    output_zarr: str,
+    output_zarr_path: str,
     n_pyramid_levels: int = 4,
     downsample_factor: int = 2,
     chunk_z: int = 64, chunk_y: int = 128, chunk_x: int = 128,
@@ -558,7 +558,7 @@ def finalize_pyramid(
     No dask.array graph is constructed, so the scheduler never receives a
     large serialised graph — eliminating the 'Sending large graph' warning.
     """
-    root = zarr.open_group(output_zarr, mode="a")
+    root = zarr.open_group(output_zarr_path, mode="a")
 
     for level in range(1, n_pyramid_levels):
         src_arr = root[f"s{level - 1}"]
@@ -591,7 +591,7 @@ def finalize_pyramid(
             futures = [
                 client.submit(
                     _write_pyramid_chunk,
-                    output_zarr, level - 1, level,
+                    output_zarr_path, level - 1, level,
                     out_z, out_y, out_x, f,
                     pure=False,
                     retries=DASK_client_retries,
@@ -611,7 +611,7 @@ def finalize_pyramid(
         else:
             for n_done, (out_z, out_y, out_x) in enumerate(chunk_coords, 1):
                 _write_pyramid_chunk(
-                    output_zarr, level - 1, level,
+                    output_zarr_path, level - 1, level,
                     out_z, out_y, out_x, f,
                 )
                 if n_done % report_every == 0 or n_done == n_chunks:
@@ -713,7 +713,7 @@ def _print_neuroglancer_info(
 
 def tif_stack_to_zarr(
     tif_files: list,
-    output_zarr: str,
+    output_zarr_path: str,
     client=None,
     chunk_z: int = 64,
     chunk_y: int = 128,
@@ -743,7 +743,7 @@ def tif_stack_to_zarr(
     Parameters
     ----------
     tif_files        : ordered list of TIF file paths (index = Z position)
-    output_zarr      : output .zarr path
+    output_zarr_path      : output .zarr path
     client           : dask.distributed.Client, or None for sequential execution.
                        Create however you like — LocalCluster, LSFCluster, SSH, …
     chunk_z/y/x      : zarr chunk dimensions (Z, Y, X)
@@ -770,7 +770,7 @@ def tif_stack_to_zarr(
 
     Returns
     -------
-    dict  {output_zarr, shape, dtype, chunks, n_levels, elapsed_s, neuroglancer_link}
+    dict  {output_zarr_path, shape, dtype, chunks, n_levels, elapsed_s, neuroglancer_link}
 
     Examples
     --------
@@ -816,9 +816,9 @@ def tif_stack_to_zarr(
         print(f"Dask retries      : {DASK_client_retries}")
 
     # Create zarr store
-    print(f"\nCreating zarr store: {output_zarr}")
+    print(f"\nCreating zarr store: {output_zarr_path}")
     create_zarr_store(
-        output_zarr=output_zarr, nz=nz, ny=ny, nx=nx, dtype=dtype,
+        output_zarr_path=output_zarr_path, nz=nz, ny=ny, nx=nx, dtype=dtype,
         chunk_z=chunk_z, chunk_y=chunk_y, chunk_x=chunk_x,
         n_pyramid_levels=n_pyramid_levels, downsample_factor=downsample_factor,
         zarr_compressor=zarr_compressor, zarr_compressor_level=zarr_compressor_level,
@@ -845,7 +845,7 @@ def tif_stack_to_zarr(
         futures = [
             client.submit(
                 write_slab_to_zarr,
-                output_zarr, tif_files, z_start, z_end,
+                output_zarr_path, tif_files, z_start, z_end,
                 n_read_threads, 0,
                 pure=False,
                 retries=DASK_client_retries,
@@ -867,7 +867,7 @@ def tif_stack_to_zarr(
         # Sequential fallback
         for i, (z_start, z_end) in enumerate(slabs):
             result = write_slab_to_zarr(
-                output_zarr, tif_files, z_start, z_end, n_read_threads, 0
+                output_zarr_path, tif_files, z_start, z_end, n_read_threads, 0
             )
             speeds.append(result["mb_s"])
             elapsed = time.time() - t0
@@ -881,7 +881,7 @@ def tif_stack_to_zarr(
         print()
         print(time.strftime('%Y/%m/%d  %H:%M:%S') + '     Building downsampled pyramid levels …')
         finalize_pyramid(
-            output_zarr=output_zarr, n_pyramid_levels=n_pyramid_levels,
+            output_zarr_path=output_zarr_path, n_pyramid_levels=n_pyramid_levels,
             downsample_factor=downsample_factor,
             chunk_z=chunk_z, chunk_y=chunk_y, chunk_x=chunk_x,
             voxel_size_zyx=voxel_size_zyx, origin_zyx=origin_zyx,
@@ -896,14 +896,14 @@ def tif_stack_to_zarr(
     print(time.strftime('%Y/%m/%d  %H:%M:%S') + f'     Done.  {elapsed/60:.1f} min total  avg {avg_speed:.0f} MB/s')
 
     ng_link = generate_neuroglancer_link(
-        output_zarr,
+        output_zarr_path,
         layer_name=dataset_name,
         viewer_url=neuroglancer_viewer_url,
         serve_base_url=neuroglancer_serve_base_url,
         display_axes_order = neuroglancer_display_axes_order,
     )
     _print_neuroglancer_info(
-        output_zarr,
+        output_zarr_path,
         serve_base_url=neuroglancer_serve_base_url,
         layer_name=dataset_name,
         viewer_url=neuroglancer_viewer_url,
@@ -911,7 +911,7 @@ def tif_stack_to_zarr(
     )
 
     return {
-        "output_zarr": output_zarr,
+        "output_zarr_path": output_zarr_path,
         "shape": (nz, ny, nx),
         "dtype": str(dtype),
         "chunks": (chunk_z, chunk_y, chunk_x),
