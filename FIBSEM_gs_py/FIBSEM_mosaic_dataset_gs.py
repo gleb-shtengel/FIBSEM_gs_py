@@ -76,9 +76,9 @@ def build_weight_array(shape, **kwargs):
     
     kwargs:
     ----------
-    weight_min : float
+    weight_min : np.float32
         weight_min for weight. Default is 1
-    weight_max : float
+    weight_max : np.float32
         weight_max for weight. Default is 512
 
     Returns:
@@ -87,7 +87,7 @@ def build_weight_array(shape, **kwargs):
     '''
     weight_min = kwargs.get('weight_min', 1.0)
     weight_max = kwargs.get('weight_max', 512.0)
-    indy, indx = np.indices(shape).astype(float)
+    indy, indx = np.indices(shape).astype(np.float32)
     indx_r = np.flip(indx)
     indy_r = np.flip(indy)
     weights = np.clip((np.min(np.array([indx, indx_r, indy, indy_r]), axis=0) + weight_min), weight_min, weight_max)
@@ -107,11 +107,11 @@ def transform_tile(tile_params, deformation_field):
         tr_matr_single : 3x3 array : transformation matrix
         montage_xsz : int : montage x-size in pixels
         montage_ysz : int : montage y-size in pixels
-        weight_min : float :  weight_min for weight
-        weight_max : float :  weight_max for weight
+        weight_min : np.float32 :  weight_min for weight
+        weight_max : np.float32 :  weight_max for weight
         left_crop : int
-        I0 : float : offset
-        scale : float : scale
+        I0 : np.float32 : offset
+        scale : np.float32 : scale
 
     deformation_field : 3D array
         Deformation field for distortion corrections to be executed before ECC. Default is np.nan - no distortion correction
@@ -124,9 +124,9 @@ def transform_tile(tile_params, deformation_field):
     j, fl, image_name, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max, left_crop, I0, scale = tile_params
     fr = FIBSEM_frame(fl)
     if image_name == 'RawImageB':
-        tile_initial = fr.RawImageB.astype(float)
+        tile_initial = fr.RawImageB.astype(np.float32)
     else:
-        tile_initial = fr.RawImageA.astype(float)
+        tile_initial = fr.RawImageA.astype(np.float32)
     tile_initial_rescaled = (tile_initial - I0) * scale + I0
     perform_deformation = not np.all(np.isnan(deformation_field))
     if perform_deformation:
@@ -167,7 +167,7 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
     -----------
     linestyle : string
         Matplotlib linestyle. Default is 'dashed'.
-    linewidth : float
+    linewidth : np.float32
         Matplotlib linewidth. Default is 1.0.
     color : string
         Matplotlib color. Default 'cyan'.
@@ -376,8 +376,8 @@ def find_Transform_ECC_DASK(params, deformation_field):
     if perform_deformation:
         if verbose:
             print('find_Transform_ECC_DASK: performing deformation and cropping, left_crop={:d}'.format(left_crop))
-        img1 = cv2.remap(FIBSEM_frame(fname1, ftype=ftype).RawImageA_8bit_thresholds()[0].astype(float), deformation_field[:, :, 0].astype(np.float32), deformation_field[:, :, 1].astype(np.float32), interpolation=interpolation, borderValue=fill_value)[:, left_crop:].astype(np.uint8)
-        img2 = cv2.remap(FIBSEM_frame(fname2, ftype=ftype).RawImageA_8bit_thresholds()[0].astype(float), deformation_field[:, :, 0].astype(np.float32), deformation_field[:, :, 1].astype(np.float32), interpolation=interpolation, borderValue=fill_value)[:, left_crop:].astype(np.uint8)
+        img1 = cv2.remap(FIBSEM_frame(fname1, ftype=ftype).RawImageA_8bit_thresholds()[0].astype(np.float32), deformation_field[:, :, 0].astype(np.float32), deformation_field[:, :, 1].astype(np.float32), interpolation=interpolation, borderValue=fill_value)[:, left_crop:].astype(np.uint8)
+        img2 = cv2.remap(FIBSEM_frame(fname2, ftype=ftype).RawImageA_8bit_thresholds()[0].astype(np.float32), deformation_field[:, :, 0].astype(np.float32), deformation_field[:, :, 1].astype(np.float32), interpolation=interpolation, borderValue=fill_value)[:, left_crop:].astype(np.uint8)
     else:
         if verbose:
             print('find_Transform_ECC_DASK: no deformation, left_crop={:d}'.format(left_crop))
@@ -407,9 +407,9 @@ def assemble_layer(params, deformation_field):
             Image name ('RawImageA' or 'RawImageB').
         tr_matr_layer : list
             List of transformation matrices for individual tiles.
-        weight_min : float
+        weight_min : np.float32
             vmin for weight.
-        weight_max : float
+        weight_max : np.float32
             vmax for weight.
         fill_value : int
             The value to assign to pixels outside the transformed image bounds.
@@ -445,8 +445,8 @@ def assemble_layer(params, deformation_field):
     layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, \
     Xsize, Ysize, left_crop, tile_I0s, tile_scales, save_mrc, save_tif, tif_fname, \
     save_zarr, output_zarr_path, dtp, verbose = params
-    layer_mosaic = np.zeros((Ysize, Xsize-left_crop), dtype=float)
-    layer_mosaic_weights = np.zeros((Ysize, Xsize-left_crop), dtype=float)
+    layer_mosaic = np.zeros((Ysize, Xsize-left_crop), dtype=np.float32)
+    layer_mosaic_weights = np.zeros((Ysize, Xsize-left_crop), dtype=np.float32)
     tile_params_mult = []
     for fl, (j, tr_matr_single) in zip(tqdm(fls_layer, desc = 'Building tile parameter sets', display = verbose), enumerate(tr_matr_layer)):
         #tile_params : list :  j, fl, image_name, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max, left_crop, I0, scale
@@ -468,7 +468,7 @@ def assemble_layer(params, deformation_field):
         if save_tif:
             tiff.imwrite(tif_fname, layer_mosaic.astype(dtp))
         if save_zarr:
-            _zarr.open(output_zarr_path, mode='r+')['s0'][layer_id, :, :] = layer_mosaic.astype(dtp)
+            _zarr.open(output_zarr_path, mode='r+')['s0'][layer_id, :, :] = layer_mosaic
         if save_mrc:
             return layer_mosaic, layer_id
         else:
@@ -486,7 +486,7 @@ def generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs):
     
     kwargs:
     ----------
-    Mill_Volt_Rate_um_per_V : float
+    Mill_Volt_Rate_um_per_V : np.float32
         Milling Voltage to Z conversion (µm/V). Default is 31.235258870176065.
     mosaic_shape : tuple or list of 2 ints
         Mosaic shape (ny_tiles, nx_tiles). Default is (1,1).
@@ -948,9 +948,9 @@ class FIBSEM_mosaic_dataset:
             Sample ID
     ftype : int
         file type (0 - Shan Xu's .dat, 1 - tif)
-    PixelSize : float
+    PixelSize : np.float32
         pixel size in nm. This is inherited from FIBSEM_frame object. Default is 8.0
-    voxel_size : rec.array(( float,  float,  float), dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4')])
+    voxel_size : rec.array(( np.float32,  np.float32,  np.float32), dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4')])
         voxel size in nm. Default is isotropic (PixelSize, PixelSize, PixelSize)
     Scaling : 2D array of floats
         scaling parameters allowing to convert I16 data into actual electron counts 
@@ -958,9 +958,9 @@ class FIBSEM_mosaic_dataset:
         filename for the final registered dataset
     use_DASK : boolean
         use python DASK package to parallelize the computation or not (False is used mostly for debug purposes).
-    thr_min : float
+    thr_min : np.float32
         CDF threshold for determining the minimum data value
-    thr_max : float
+    thr_max : np.float32
         CDF threshold for determining the maximum data value
     nbins : int
         number of histogram bins for building the PDF and CDF
@@ -975,9 +975,9 @@ class FIBSEM_mosaic_dataset:
             ScaleShiftTransform - x-scale, y-scale, x-shift, y-shift
             AffineTransform -  full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift)
             RegularizedAffineTransform - full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift) with regularization on deviation from ShiftTransform
-    l2_matrix : 2D float array
+    l2_matrix : 2D np.float32 array
         matrix of regularization (shrinkage) parameters
-    targ_vector : 1D float array
+    targ_vector : 1D np.float32 array
         target vector for regularization
     solver : str
         Solver used for SIFT ('RANSAC' or 'LinReg')
@@ -1130,13 +1130,13 @@ class FIBSEM_mosaic_dataset:
             Filename (full path) to a binary dump file with saved dataset attributes. If dump_filename points to a valid binary file the data set saved in that file will be recalled. Default is empty string ''.
         memory_profiling : boolean
             Perform memory profiling during the data load and output it. Default is False.
-        intralayer_weight : float, default 1.0
+        intralayer_weight : np.float32, default 1.0
             Weight for pairwise constraints within a single Z-layer.
-        interlayer_weight : float, default 100.0
+        interlayer_weight : np.float32, default 100.0
             Weight for pairwise constraints for tiles between adjacent Z-layers.(100–10000 typical).
         add_reverse_edges : bool, default False
             If True, adds both (i->j) and (j->i) with same weight (increases robustness).
-        diagonal_exclusion_threshold : float
+        diagonal_exclusion_threshold : np.float32
             A criteria for exclusion of "diagonal" neighbours if the sum of margins in X- and Y- directions is larger than a sum of X- and Y- tiles times this number, the pair is NOT considered.
         shape : tuple of two int (self.ny_tiles, self.nx_tiles)
             The program will try to auto-determine the shape, but it can be set explicitly.
@@ -1150,13 +1150,13 @@ class FIBSEM_mosaic_dataset:
             Number of allowed automatic retries if a task fails. Default is 3.
         Sample_ID : str
             Sample ID.
-        PixelSize : float
+        PixelSize : np.float32
             Pixel size in nm. Default is determined from the frame metadata. If that is not available, default is 8.0.
         Scaling : 2D array of floats
             Scaling parameters allowing to convert I16 data into actual electron counts.
-        thr_min : float
+        thr_min : np.float32
             CDF threshold for determining the minimum data value. Default is 1e-3.
-        thr_max : float
+        thr_max : np.float32
             CDF threshold for determining the maximum data value. Default is 1e-3.
         nbins : int
             Number of histogram bins for building the PDF and CDF. Default is 256.
@@ -1200,9 +1200,9 @@ class FIBSEM_mosaic_dataset:
                 ScaleShiftTransform - x-scale, y-scale, x-shift, y-shift
                 AffineTransform -  full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift)
                 RegularizedAffineTransform - full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift) with regularization on deviation from ShiftTransform
-        l2_matrix : 2D float array
+        l2_matrix : 2D np.float32 array
             Matrix of regularization (shrinkage) parameters (applicable only if RegularizedAffineTransform is used). Default is 1e-5.
-        targ_vector : 1D float array
+        targ_vector : 1D np.float32 array
             Target vector for regularization (applicable only if RegularizedAffineTransform is used). Default is [1, 0, 0, 0, 1, 0] for a target transformation that is shift only: Sxx=Syy=1, Sxy=Syx=0.
         solver : str
             Solver used for SIFT ('RANSAC' or 'LinReg'). Default is 'RANSAC'.
@@ -1638,19 +1638,19 @@ class FIBSEM_mosaic_dataset:
             FIBSEM_Data_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding, mill_rate_WD, mill_rate_MV, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolutions, YResolutions, SEMStiX, SEMStiY, SEMAlnX, SEMAlnY, errors_s2
                 FIBSEM_Data_xlsx : str
                     path to Excel file with the FIBSEM data
-                data_min_glob : float   
+                data_min_glob : np.float32   
                     min data value for I8 conversion (open CV SIFT requires I8)
-                data_max_glob : float   
+                data_max_glob : np.float32   
                     max data value for I8 conversion (open CV SIFT requires I8)
-                center_x : float array
+                center_x : np.float32 array
                     FOV Center X-coordinate extracted from the header data
-                center_y : float array
+                center_y : np.float32 array
                     FOV Center Y-coordinate extracted from the header data
-                ScanRate : float array
+                ScanRate : np.float32 array
                     SEM Scan Rate (Hz)
-                EHT : float array
+                EHT : np.float32 array
                     SEM EHT voltage (kV)
-                SEMSpecimenI : float array
+                SEMSpecimenI : np.float32 array
                     SEM Specimen current (nA)
                 XResolutions : int array
                     X-frame sizes
@@ -1772,13 +1772,13 @@ class FIBSEM_mosaic_dataset:
         data_minmax : list of 5 parameters
             minmax_xlsx : str
                 path to Excel file with Min/Max data.
-            data_min_glob : float   
+            data_min_glob : np.float32   
                 min data value for I8 conversion (open CV SIFT requires I8).
-            data_min_sliding : float array
+            data_min_sliding : np.float32 array
                 min data values (one per file) for I8 conversion.
-            data_max_sliding : float array
+            data_max_sliding : np.float32 array
                 max data values (one per file) for I8 conversion.
-            data_minmax_glob : 2D float array
+            data_minmax_glob : 2D np.float32 array
                 min and max data values without sliding averaging.
         SIFT_nfeatures : int
             The number of best features to retain. Default is object attribute. SIFT library default is 0 (all features retained).
@@ -1903,9 +1903,9 @@ class FIBSEM_mosaic_dataset:
                 ScaleShiftTransform - x-scale, y-scale, x-shift, y-shift
                 AffineTransform -  full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift)
                 RegularizedAffineTransform - full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift) with regularization on deviation from ShiftTransform
-        l2_matrix : 2D float array
+        l2_matrix : 2D np.float32 array
            Matrix of regularization (shrinkage) parameters (applicable only if RegularizedAffineTransform is used). Default is object attribute.
-        targ_vector : 1D float array
+        targ_vector : 1D np.float32 array
             Target vector for regularization (applicable only if RegularizedAffineTransform is used). Default is object attribute.
         solver : str
             Solver used for SIFT ('RANSAC' or 'LinReg'). Default is object attribute.
@@ -1940,7 +1940,7 @@ class FIBSEM_mosaic_dataset:
         ----------
         transformations_results_3D : array of lists containing the results:
             [transformation_matrix, fnm_matches, npt, kpt_ints, error_abs_mean, error_FWHMx, error_FWHMy, iteration]
-            transformation_matrix : 2D float array
+            transformation_matrix : 2D np.float32 array
                 Transformation matrix for each sequential frame pair.
             fnm_matches : str
                 Filename containing the matches used to determine the transformation for the pair of frames.
@@ -2086,13 +2086,13 @@ class FIBSEM_mosaic_dataset:
         data_minmax : list of 5 parameters
             minmax_xlsx : str
                 path to Excel file with Min/Max data.
-            data_min_glob : float   
+            data_min_glob : np.float32   
                 min data value for I8 conversion (open CV SIFT requires I8).
-            data_min_sliding : float array
+            data_min_sliding : np.float32 array
                 min data values (one per file) for I8 conversion.
-            data_max_sliding : float array
+            data_max_sliding : np.float32 array
                 max data values (one per file) for I8 conversion.
-            data_minmax_glob : 2D float array
+            data_minmax_glob : 2D np.float32 array
                 min and max data values without sliding averaging.
         I0 : float
             Dark Count used for Intensity calculation. Default is self.Scaling[1,0].
@@ -2440,7 +2440,7 @@ class FIBSEM_mosaic_dataset:
         ----------
         transformations_results_3D : array of lists containing the results:
             [transformation_matrix, error_code]
-            transformation_matrix : 2D float array
+            transformation_matrix : 2D np.float32 array
                 Transformation matrix for each sequential frame pair.
             error_code : int
                 CV2 error code.
@@ -2647,7 +2647,7 @@ class FIBSEM_mosaic_dataset:
 
         Returns:
         ----------
-        tile_scales : 2D float array, shape (nz_tiles, n_tiles_per_layer)
+        tile_scales : 2D np.float32 array, shape (nz_tiles, n_tiles_per_layer)
           Multiplicative scale factor to apply to each tile before assembling the mosaic.
           Stored as self.tile_scales.
         '''
@@ -2873,9 +2873,9 @@ class FIBSEM_mosaic_dataset:
             DASK_client_retries = kwargs.get("DASK_client_retries", 3) 
 
         layer_mosaics = []
-        layer_mosaic_weights = np.zeros((self.Ysize, self.Xsize-left_crop), dtype=float)
+        layer_mosaic_weights = np.zeros((self.Ysize, self.Xsize-left_crop), dtype=np.float32)
         for image_name in image_names:
-            layer_mosaic = np.zeros((self.Ysize, self.Xsize-left_crop), dtype=float)
+            layer_mosaic = np.zeros((self.Ysize, self.Xsize-left_crop), dtype=np.float32)
             tile_params_mult = []
             xy_limits = []
             for fl, (j, tr_matr_single) in zip(tqdm(self.fls[layer_id].ravel(), desc = 'Building tile parameter sets', display = verbose), enumerate(self.tr_matr[layer_id])):
@@ -3189,7 +3189,7 @@ class FIBSEM_mosaic_dataset:
         verbose = kwargs.get('verbose', False)
         use_DASK, status_update_address = check_DASK(DASK_client, verbose=True)
         deformation_field = kwargs.get('deformation_field', np.nan)
-        #DF0 = convert_tr_matr_into_deformation_field(np.eye(3,3).astype(float), (self.YResolution, self.XResolution))
+        #DF0 = convert_tr_matr_into_deformation_field(np.eye(3,3).astype(np.float32), (self.YResolution, self.XResolution))
         #kwargs['deformation_field'] = deformation_field - DF0
         left_crop = kwargs.get('left_crop', 0)
         kwargs['left_crop'] = left_crop
@@ -3256,7 +3256,7 @@ class FIBSEM_mosaic_dataset:
             ng_viewer_url         = kwargs.get('neuroglancer_viewer_url', 'https://neuroglancer-demo.appspot.com/')
             ng_axes_order         = kwargs.get('neuroglancer_display_axes_order', None)
             fnms_saved.append(output_zarr_path)
-            voxel_size_zyx        = (float(voxel_size.z), float(voxel_size.y), float(voxel_size.x))
+            voxel_size_zyx        = (np.float32(voxel_size.z), np.float32(voxel_size.y), np.float32(voxel_size.x))
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Pre-allocating ZARR store: ' + output_zarr_path)
             # Pre-allocate with chunk_z=1 for safe concurrent DASK writes.
             # s0 will be rechunked to zarr_chunk_z after all layers are written.
@@ -3317,11 +3317,11 @@ class FIBSEM_mosaic_dataset:
                 for future in as_completed(futures):
                     mosaic_out, j = future.result()
                     if save_mrc:
-                        mrc_new.data[j, :, :] = mosaic_out.astype(dtp)
+                        mrc_new.data[j, :, :] = mosaic_out
                     future.cancel()
             else:
                 for j, params in enumerate(tqdm(params_mult, desc = 'Assembling and saving mosaic layers')):
-                    mosaic_out = assemble_layer(params, deformation_field)[0].astype(dtp)
+                    mosaic_out = assemble_layer(params, deformation_field)[0]
                     if save_mrc:
                         mrc_new.data[j, :, :] = mosaic_out
             if save_mrc:
