@@ -3314,7 +3314,7 @@ class FIBSEM_mosaic_dataset:
             if use_DASK:
                 shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)
                 futures = DASK_client.map(assemble_layer, params_mult, deformation_field = shared_data_future, retries = DASK_client_retries)
-                for future in as_completed(futures):
+                for future in tqdm(as_completed(futures), total=len(futures), desc='Assembling and saving mosaic layers'):
                     mosaic_out, j = future.result()
                     if save_mrc:
                         mrc_new.data[j, :, :] = mosaic_out
