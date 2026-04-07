@@ -2525,7 +2525,13 @@ class FIBSEM_mosaic_dataset:
             Display intermediate results. Default is False.
         method : string
             Options are: ['SIFT-ECC', 'SIFT', 'ECC']. Default is 'ECC'.  'SIFT-ECC' means - try SIFT first, and for the tiles that SIFT failed, try ECC.
-
+        subtract_linear_fit : [boolean, boolean]
+            List of two Boolean values for two directions: X- and Y-. Default is [True, True].
+            If True, the linear slopes along X- and Y- directions (respectively)
+            will be subtracted from the cumulative shifts.
+        subtract_FOVtrend_from_fit : [boolean, boolean]
+            If True, FOV trends (image shifts performed during imaging) will be subtracted first, so they do not bias the linear trends in the line above.
+            Default is [True, True].
         Returns:
         ----------
         tile_positions : ndarray, shape (nz_tiles, n_tiles_per_layer, 2)
@@ -2537,6 +2543,8 @@ class FIBSEM_mosaic_dataset:
         verbose = kwargs.get('verbose', False)
         method = kwargs.get('method', 'ECC')
         valid_methods = ['SIFT-ECC', 'SIFT', 'ECC']
+        subtract_linear_fit =  kwargs.get("subtract_linear_fit", [True, True])   # If True, the linear slope will be subtracted from the cumulative shifts.
+        subtract_FOVtrend_from_fit = kwargs.get("subtract_FOVtrend_from_fit", [True, True])
 
         w_sqrt_intra = np.sqrt(self.intralayer_weight)  # because LSQR minimizes ||W^{1/2} (Ax - b)||
         w_sqrt_inter = np.sqrt(self.interlayer_weight)
@@ -2605,6 +2613,20 @@ class FIBSEM_mosaic_dataset:
 
         self.tr_matr[valid_z, valid_t, 0, 2] = positions_3d[valid_z, valid_t, 0] + dx 
         self.tr_matr[valid_z, valid_t, 1, 2] = positions_3d[valid_z, valid_t, 1] + dy
+
+        if subtract_linear_fit[0]:
+            Xshift_mean = np.mean((self.tr_matr[:, :, 0, 2] - self.tr_matr[0, :, 0, 2]), axis=1)
+            fr = np.arange(0, len(Xshift_mean))
+            pX = np.polyfit(fr, Xshift_mean, 1)
+            Xfit = np.polyval(pX, fr)
+            self.tr_matr[:, :, 0, 2] -= Xfit[:, np.newaxis]
+
+        if subtract_linear_fit[1]:
+            Yshift_mean = np.mean((self.tr_matr[:, :, 1, 2] - self.tr_matr[0, :, 1, 2]), axis=1)
+            fr = np.arange(0, len(Yshift_mean))
+            pY = np.polyfit(fr, Yshift_mean, 1)
+            Yfit = np.polyval(pY, fr)
+            self.tr_matr[:, :, 1, 2] -= Yfit[:, np.newaxis]
 
         if verbose:
             n_total = self.nz_tiles * self.n_tiles_per_layer
