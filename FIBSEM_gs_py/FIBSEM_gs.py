@@ -8946,9 +8946,21 @@ def determine_transformations_files(params_dsf):
             def estimate(self, src, dst):
                 self.params = determine_regularized_affine_transform(src, dst, l2_matrix, targ_vector)
             RegularizedAffineTransform.estimate = estimate
-
-        kpp1s, des1s, kpt_ints1s = pickle.load(open(fnm_1, 'rb'))
-        kpp2s, des2s, kpt_ints2s = pickle.load(open(fnm_2, 'rb'))
+        try:
+            kpp1s, des1s, kpt_ints1s = pickle.load(open(fnm_1, 'rb'))
+            kpp2s, des2s, kpt_ints2s = pickle.load(open(fnm_2, 'rb'))
+        except FileNotFoundError as e:
+            print(f'Error opening BIN files → {e}')
+            print(fnm_1)
+            print(fnm_2)
+        except (pickle.UnpicklingError, EOFError) as e:
+            print(f'Error loading BIN files (corrupt or truncated) → {e}')
+            print(fnm_1)
+            print(fnm_2)
+        except OSError as e:
+            print(f'OS error reading BIN files → {e}')
+            print(fnm_1)
+            print(fnm_2)
         if verbose:
             print('')
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   File 1: ', fnm_1)
