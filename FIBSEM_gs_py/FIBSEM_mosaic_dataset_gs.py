@@ -94,7 +94,7 @@ def build_weight_array(shape, **kwargs):
     return weights
 
 
-def transform_tile(tile_params, deformation_field):
+def transform_tile(tile_params, deformation_field, **kwargs):
     '''
     Transforms individual tile to add to the montage. gleb.shtengel@gmail.com 11.2025
     
@@ -116,12 +116,20 @@ def transform_tile(tile_params, deformation_field):
     deformation_field : 3D array
         Deformation field for distortion corrections to be executed before ECC. Default is np.nan - no distortion correction
 
+    kwargs:
+    -----------
+    n_cv2_threads : int
+        Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
+        or 1 if not running under LSF. Set to match the cores allocated per worker.
+
     Returns:
     ----------
     tile_out, weight_out, xi, xa-left_crop-x0, yi,  ya-y0
     
     '''
     j, fl, image_name, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max, left_crop, I0, scale = tile_params
+    n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
+    cv2.setNumThreads(n_cv2_threads)
     fr = FIBSEM_frame(fl)
     if image_name == 'RawImageB':
         tile_initial = fr.RawImageB.astype(np.float32)
@@ -358,7 +366,10 @@ def find_Transform_ECC_DASK(params, deformation_field):
     repeats : int
         repeat internally this many times. Default is 2.
     verbose : boolean
-            Display intermediate results. Default is False.
+        Display intermediate results. Default is False.
+    n_cv2_threads : int
+        Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
+        or 1 if not running under LSF. Set to match the cores allocated per worker.
             
     Returns:
     ----------
@@ -367,6 +378,8 @@ def find_Transform_ECC_DASK(params, deformation_field):
         error_code : CV2.error code. 0 if no error.
     '''
     fname1, fname2, kwargs = params
+    n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
+    cv2.setNumThreads(n_cv2_threads)
     ftype = kwargs.get('ftype', 0)
     perform_deformation = not np.all(np.isnan(deformation_field))
     interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
@@ -390,7 +403,7 @@ def find_Transform_ECC_DASK(params, deformation_field):
     return warp_matrix, error_code
 
 
-def assemble_layer(params, deformation_field):
+def assemble_layer(params, deformation_field, **kwargs):
     '''
     Assembles layer. Worker function called by assemble_layer_mosaic and save_stack. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
     
@@ -435,6 +448,12 @@ def assemble_layer(params, deformation_field):
         dtp : data type
         verbose : boolean
             Display intermediate results.
+    
+    kwargs:
+        n_cv2_threads : int
+            Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
+            or 1 if not running under LSF. Set to match the cores allocated per worker.
+
     deformation_field : 2D array
         Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
 
@@ -448,6 +467,8 @@ def assemble_layer(params, deformation_field):
     layer_mosaic = np.zeros((Ysize, Xsize-left_crop), dtype=np.float32)
     layer_mosaic_weights = np.zeros((Ysize, Xsize-left_crop), dtype=np.float32)
     tile_params_mult = []
+    n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
+    kwargs_tt = {'n_cv2_threads ' : n_cv2_threads}
     for fl, (j, tr_matr_single) in zip(tqdm(fls_layer, desc = 'Building tile parameter sets', display = verbose), enumerate(tr_matr_layer)):
         #tile_params : list :  j, fl, image_name, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max, left_crop, I0, scale
         tile_params_mult.append([j, fl, image_name, tr_matr_single, Ysize, Xsize, weight_min, weight_max, left_crop, tile_I0s[j], tile_scales[j]])
@@ -456,7 +477,7 @@ def assemble_layer(params, deformation_field):
             if verbose:
                 print('Performing transform_tile with the following parameters:')
                 print(tile_params)
-            tile_out, weight_out, xi, xa, yi,  ya = transform_tile(tile_params, deformation_field)
+            tile_out, weight_out, xi, xa, yi,  ya = transform_tile(tile_params, deformation_field, **kwargs)
             if verbose:
                 print('Output is:')
                 print('tile_out.shape=', tile_out.shape, 'weight_out.shape=', weight_out.shape)
@@ -2450,6 +2471,9 @@ class FIBSEM_mosaic_dataset:
             Default is False. If True and this had already been performed, use existing results.
         verbose : boolean
             Display intermediate results. Default is True.
+        n_cv2_threads : int
+            Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
+            or 1 if not running under LSF. Set to match the cores allocated per worker.
         
         Returns:
         ----------
@@ -2486,6 +2510,7 @@ class FIBSEM_mosaic_dataset:
         else:
             DASK_client_retries = kwargs.get("DASK_client_retries", 3)
         use_existing_data = kwargs.get('use_existing_data', False)
+        n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
         params_ECC = []
         fls = self.fls.ravel()
 
@@ -2494,7 +2519,8 @@ class FIBSEM_mosaic_dataset:
                      'motion' : motion,
                      'criteria' : criteria,
                      'use_existing_data' : use_existing_data,
-                     'verbose' : verbose}
+                     'verbose' : verbose,
+                     'n_cv2_threads' : n_cv2_threads}
             fname1 = fls[index_pair[0]]
             fname2 = fls[index_pair[1]]
             index_loc0, index_loc1 = np.mod(index_pair, self.n_tiles_per_layer)
@@ -2862,6 +2888,9 @@ class FIBSEM_mosaic_dataset:
             The name of the image to perform these operations (default is self.fls[layer_id].ravel()[0].replace('0-0-0.dat', 'layer_mosaic.jpg')).
         verbose : boolean
             Display intermediate results. Default is False.
+        n_cv2_threads : int
+            Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
+            or 1 if not running under LSF. Set to match the cores allocated per worker.
 
         Returns:
         ----------
@@ -2886,6 +2915,7 @@ class FIBSEM_mosaic_dataset:
         weight_max = kwargs.get('weight_max', 512.0)
         fill_value = kwargs.get('fill_value', -10000) 
         perform_intensity_normalization = kwargs.get('perform_intensity_normalization', False)
+        n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
         verbose = kwargs.get('verbose', False)
         data_dir = kwargs.get('data_dir', self.data_dir)
         save_snapshot = kwargs.get('save_snapshot', False)
@@ -2903,6 +2933,8 @@ class FIBSEM_mosaic_dataset:
         fontsize = kwargs.get('fontsize', 6)
         color = kwargs.get('color', 'cyan')
         dpi = kwargs.get('dpi', 300)
+
+        kwargs_tt = {'n_cv2_threads' : n_cv2_threads}
 
         if hasattr(self, "DASK_client_retries"):
             DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
@@ -2926,7 +2958,7 @@ class FIBSEM_mosaic_dataset:
                     if verbose:
                         print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Started DASK Computation')
                     shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)
-                    futures = DASK_client.map(transform_tile, tile_params_mult, deformation_field=shared_data_future)
+                    futures = DASK_client.map(transform_tile, tile_params_mult, deformation_field=shared_data_future, **kwargs_tt)
                     for future in as_completed(futures):
                         tile_out, weight_out, xi, xa, yi, ya = future.result()
                         xy_limits.append([xi, xa, yi, ya])
@@ -2940,7 +2972,7 @@ class FIBSEM_mosaic_dataset:
                         if verbose:
                             print('Performing transform_tile with the following parameters:')
                             print(tile_params)
-                        tile_out, weight_out, xi, xa, yi,  ya = transform_tile(tile_params, deformation_field)
+                        tile_out, weight_out, xi, xa, yi,  ya = transform_tile(tile_params, deformation_field, **kwargs_tt)
                         xy_limits.append([xi, xa, yi, ya])
                         if verbose:
                             print('Output is:')

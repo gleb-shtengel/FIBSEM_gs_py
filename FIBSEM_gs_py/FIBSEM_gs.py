@@ -10381,7 +10381,7 @@ def transform_chunk_of_frames(frame_filenames, xsz, ysz, ftype,
     return transformed_img
     
 
-def transform_and_save_chunk_of_frames(chunk_of_frame_parametrs):
+def transform_and_save_chunk_of_frames(chunk_of_frame_parametrs, **kwargs):
     '''
     Transform Chunk of Frames and save into a single transformed frame. ©G.Shtengel 09/2022 gleb.shtengel@gmail.com
 
@@ -10453,6 +10453,12 @@ def transform_and_save_chunk_of_frames(chunk_of_frame_parametrs):
                     Python data type for saving. Default is int16, the other option currently is uint8.
                 fill_value
 
+    kwargs:
+    ----------
+    n_cv2_threads : int
+        Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
+        or 1 if not running under LSF. Set to match the cores allocated per worker.
+
     Returns:
     ----------
     save_filename
@@ -10462,6 +10468,8 @@ def transform_and_save_chunk_of_frames(chunk_of_frame_parametrs):
     #ImgB_fraction, xsz, ysz, xi, xa, yi, ya, int_order, invert_data, flipY, flatten_image, image_correction_file, perform_transformation, shift_matrix, inv_shift_matrix, ftype, dtp, fill_value = tr_args
     ImgB_fraction, xsz, ysz, xi, xa, yi, ya, int_order, invert_data, flipY, flatten_image, image_correction_file, perform_transformation, shift_matrix, inv_shift_matrix, perform_deformation, deformation_type, ftype, dtp, fill_value = tr_args
     num_frames = len(frame_filenames)
+    n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
+    cv2.setNumThreads(n_cv2_threads)
     transformed_img = np.zeros((ysz, xsz), dtype=np.float32)
     verbose = False
     save_debug_data = False
@@ -10794,6 +10802,10 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
         Fill value for padding. Default is zero.
     disp_res : boolean
         Default is False.
+    n_cv2_threads : int
+        Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
+        or 1 if not running under LSF. Set to match the cores allocated per worker.
+
 
     Returns:
     ----------
@@ -10807,6 +10819,7 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
     save_transformed_dataset = kwargs.get("save_transformed_dataset", True)
     use_DASK = kwargs.get("use_DASK", False)  # do not use DASK the data is to be saved
     DASK_client_retries = kwargs.get("DASK_client_retries", 3)
+    n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
     data_dir = kwargs.get("data_dir", '')
     fnm_reg = kwargs.get("fnm_reg", 'Registration_file.mrc')
     dump_filename = kwargs.get('dump_filename', '')
@@ -10841,6 +10854,8 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
     shape = [np.max(YResolutions), np.max(XResolutions)]
     shapes = [YResolutions, XResolutions]
     
+    kwargs_tt = {'n_cv2_threads' : n_cv2_threads}
+
     if pad_edges and perform_transformation:
         #Determining padding offsets
         xi, yi, xsz, ysz = determine_sizes_and_offsets(shapes, tr_matr_cum_residual)
@@ -10887,7 +10902,7 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
     if use_DASK:
         if disp_res:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Transform and Save Chunks of Frames: Starting DASK jobs')
-        futures_td = DASK_client.map(transform_and_save_chunk_of_frames, chunk_of_frame_parametrs_dataset, retries = DASK_client_retries)
+        futures_td = DASK_client.map(transform_and_save_chunk_of_frames, chunk_of_frame_parametrs_dataset, retries = DASK_client_retries, **kwargs_tt)
         registered_filenames = np.array(DASK_client.gather(futures_td))
         if disp_res:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Finished DASK jobs')
@@ -10896,7 +10911,7 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Transform and Save Chunks of Frames: Will perform local computations')
         registered_filenames = []
         for chunk_of_frame_parametrs in tqdm(chunk_of_frame_parametrs_dataset, desc = 'Transforming and saving frame chunks', display = disp_res):
-            registered_filenames.append(transform_and_save_chunk_of_frames(chunk_of_frame_parametrs))
+            registered_filenames.append(transform_and_save_chunk_of_frames(chunk_of_frame_parametrs, **kwargs_tt))
 
     return registered_filenames
 
@@ -12787,6 +12802,10 @@ class FIBSEM_dataset:
             if True, the MRC stack is written in chunks, otherwise (False, Default) frame-by-frame.
         chunk_length : int
             length of MRC write chunk. Default is 32.
+        n_cv2_threads : int
+            Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
+            or 1 if not running under LSF. Set to match the cores allocated per worker.
+
         
         Returns:
         ----------
@@ -12798,6 +12817,7 @@ class FIBSEM_dataset:
 
         DASK_client = kwargs.get('DASK_client', '')
         use_DASK, status_update_address = check_DASK(DASK_client)
+        n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
 
         save_transformed_dataset = kwargs.get('save_transformed_dataset', True)
         save_registration_summary = kwargs.get('save_registration_summary', True)
@@ -12946,7 +12966,8 @@ class FIBSEM_dataset:
                         'save_registration_summary' : save_registration_summary,
                         'chunked_mrc_write' : chunked_mrc_write,
                         'chunk_length' : chunk_length,
-                        'verbose' : verbose}
+                        'verbose' : verbose,
+                        'n_cv2_threads' : n_cv2_threads}
 
         # first, transform, bin and save frame chunks into individual tif files
         if verbose:
