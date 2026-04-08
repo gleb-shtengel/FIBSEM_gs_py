@@ -11,6 +11,11 @@ import pickle
 import re
 from pathlib import Path
 import zarr as _zarr
+try:                   # Ensure Blosc uses only LSF-allocated cores, not machine total
+    import numcodecs as _nc
+    _nc.blosc.set_nthreads(int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
+except Exception:
+    pass
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -25,6 +30,7 @@ from tqdm.notebook import tqdm
 from collections import defaultdict
 import mrcfile
 import cv2
+cv2.setNumThreads(int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
 try:
     import skimage.external.tifffile as tiff
 except:
@@ -129,7 +135,7 @@ def transform_tile(tile_params, deformation_field, **kwargs):
     '''
     j, fl, image_name, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max, left_crop, I0, scale = tile_params
     n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
-    cv2.setNumThreads(n_cv2_threads)
+    #cv2.setNumThreads(n_cv2_threads)
     fr = FIBSEM_frame(fl)
     if image_name == 'RawImageB':
         tile_initial = fr.RawImageB.astype(np.float32)
@@ -379,7 +385,7 @@ def find_Transform_ECC_DASK(params, deformation_field):
     '''
     fname1, fname2, kwargs = params
     n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
-    cv2.setNumThreads(n_cv2_threads)
+    #cv2.setNumThreads(n_cv2_threads)
     ftype = kwargs.get('ftype', 0)
     perform_deformation = not np.all(np.isnan(deformation_field))
     interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)

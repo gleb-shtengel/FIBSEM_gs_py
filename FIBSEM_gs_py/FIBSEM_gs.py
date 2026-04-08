@@ -9,6 +9,7 @@ import re
 import gc
 from copy import deepcopy
 import cv2
+cv2.setNumThreads(int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
 import itertools
 from pathlib import Path
 
@@ -8666,7 +8667,7 @@ def extract_keypoints_descr_files(params, deformation_field):
         pass
     else:
         n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
-        cv2.setNumThreads(n_cv2_threads)  # set number of threads used by CV2 to avoid context switching in DASK jobs
+        #cv2.setNumThreads(n_cv2_threads)  # set number of threads used by CV2 to avoid context switching in DASK jobs
         SIFT_nfeatures = kwargs.get("SIFT_nfeatures", 0)
         SIFT_nOctaveLayers = kwargs.get("SIFT_nOctaveLayers", 3)
         SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", 0.025)
@@ -8907,7 +8908,7 @@ def determine_transformations_files(params_dsf):
     '''
     fnm_1, fnm_2, kwargs = params_dsf
     n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
-    cv2.setNumThreads(n_cv2_threads)
+    #cv2.setNumThreads(n_cv2_threads)
 
     use_existing_data = kwargs.get('use_existing_data', False)
     ftype = kwargs.get("ftype", 0)
@@ -10469,7 +10470,7 @@ def transform_and_save_chunk_of_frames(chunk_of_frame_parametrs, **kwargs):
     ImgB_fraction, xsz, ysz, xi, xa, yi, ya, int_order, invert_data, flipY, flatten_image, image_correction_file, perform_transformation, shift_matrix, inv_shift_matrix, perform_deformation, deformation_type, ftype, dtp, fill_value = tr_args
     num_frames = len(frame_filenames)
     n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
-    cv2.setNumThreads(n_cv2_threads)
+    #cv2.setNumThreads(n_cv2_threads)
     transformed_img = np.zeros((ysz, xsz), dtype=np.float32)
     verbose = False
     save_debug_data = False

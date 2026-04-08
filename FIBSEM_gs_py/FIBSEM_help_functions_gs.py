@@ -26,7 +26,6 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.gridspec import GridSpec
 from IPython.core.pylabtools import figsize, getfigs
-import cv2
 
 from astropy.convolution import Gaussian1DKernel
 from astropy.convolution import convolve as astro_convolve
