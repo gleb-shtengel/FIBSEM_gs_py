@@ -25,15 +25,27 @@ testing or when a single node is fast enough).
 
 ARCHITECTURE
 ------------
-Each Z-slab (chunk_z consecutive slices) is one independent unit of work:
+Two modes are available, selected by the strip_y parameter in tif_stack_to_zarr():
 
-    write_slab_to_zarr(output_zarr_path, tif_files, z_start, z_end)
-        1. Reads chunk_z TIF files in parallel (ThreadPoolExecutor)
-        2. Writes the slab to zarr[f's{level}']
-           zarr handles XY chunking internally
+MODE 1 — Full-slab (default, strip_y=None):
+    Each Z-slab (chunk_z consecutive slices) is one independent unit of work:
+        write_slab_to_zarr(output_zarr_path, tif_files, z_start, z_end)
+            1. Reads chunk_z TIF files in parallel (ThreadPoolExecutor)
+            2. Writes the slab to zarr[f's{level}']
+    RAM per worker: chunk_z × ny × nx × itemsize  (e.g. ~55 GB for 4 GB TIF files)
+
+MODE 2 — Y-strip / memmap (strip_y=<int>):
+    Each (Z-slab, Y-strip) pair is one independent unit of work:
+        write_strip_to_zarr(output_zarr_path, tif_files, z_start, z_end, y_start, y_end)
+            1. Opens each TIF via tifffile.memmap (zero-copy file mapping)
+            2. Reads ONLY rows [y_start, y_end) from each file into RAM
+            3. Writes the sub-block to zarr[z_start:z_end, y_start:y_end, :]
+    RAM per worker: chunk_z × strip_y × nx × itemsize  (e.g. ~1 GB for strip_y=1024)
+    Requires uncompressed TIF files. Automatically falls back to Mode 1 if memmap
+    is not supported by the file format.
 
 Multiple workers can write to the same zarr store simultaneously because
-zarr chunks are independent files and each job writes a non-overlapping Z range.
+zarr chunks are independent files and each job writes a non-overlapping region.
 
 After all slabs are written, pyramid levels (s1, s2, …) are computed from s0
 by submitting one client.submit() per output zarr chunk (_write_pyramid_chunk),
@@ -305,6 +317,87 @@ def write_slab_to_zarr(
     mb = slab.nbytes / 1e6
     del slab
     return {"z_start": z_start, "z_end": z_end, "elapsed_s": elapsed, "mb_s": mb / elapsed}
+
+
+# ---------------------------------------------------------------------------
+# Strip writer  — memory-efficient alternative using tifffile.memmap
+# ---------------------------------------------------------------------------
+
+def write_strip_to_zarr(
+    output_zarr_path: str,
+    tif_files: list,
+    z_start: int,
+    z_end: int,
+    y_start: int,
+    y_end: int,
+    n_read_threads: int = 8,
+    level: int = 0,
+) -> dict:
+    """
+    Read a Y-strip from TIF files [z_start, z_end) using tifffile.memmap and
+    write the resulting sub-block into zarr level `level`.
+
+    Unlike write_slab_to_zarr, only rows [y_start, y_end) are loaded from each
+    TIF file, so per-worker RAM is:
+        (z_end - z_start) × (y_end - y_start) × nx × itemsize
+
+    Requires uncompressed (or single-strip) TIF files so that tifffile.memmap
+    can return a numpy.memmap backed directly by the file bytes.
+
+    Parameters
+    ----------
+    output_zarr_path : path to existing .zarr store
+    tif_files        : full ordered list of TIF paths for the entire volume
+    z_start, z_end   : half-open Z-slice range for this task
+    y_start, y_end   : half-open Y-strip range for this task
+    n_read_threads   : threads for parallel strip reading within this worker
+    level            : pyramid level to write into (0 = full resolution)
+
+    Returns
+    -------
+    dict  {z_start, z_end, y_start, y_end, elapsed_s, mb_s}
+    """
+    import os, time
+    import numpy as np
+    import zarr
+    from concurrent.futures import ThreadPoolExecutor, as_completed as _as_completed
+
+    try:
+        import tifffile as _tiff
+    except ImportError:
+        raise ImportError("tifffile is required for memmap mode: pip install tifffile")
+
+    t0 = time.time()
+    slab_files = tif_files[z_start:z_end]
+    if not slab_files:
+        return {"z_start": z_start, "z_end": z_end,
+                "y_start": y_start, "y_end": y_end,
+                "elapsed_s": 0.0, "mb_s": 0.0}
+
+    def _read_strip(path):
+        mm = _tiff.memmap(os.path.normpath(path))   # zero-copy file mapping
+        strip = np.array(mm[y_start:y_end, :])      # copy only the strip into RAM
+        del mm                                       # release the file mapping
+        if strip.ndim == 3:
+            strip = strip[..., 0]                   # RGB → first channel
+        return strip
+
+    n = len(slab_files)
+    results = [None] * n
+    with ThreadPoolExecutor(max_workers=min(n_read_threads, n)) as pool:
+        futs = {pool.submit(_read_strip, f): i for i, f in enumerate(slab_files)}
+        for fut in _as_completed(futs):
+            results[futs[fut]] = fut.result()
+
+    strip_slab = np.stack(results, axis=0)  # (z_end-z_start, y_end-y_start, nx)
+    zarr.open(output_zarr_path, mode="r+")[f"s{level}"][z_start:z_end, y_start:y_end, :] = strip_slab
+
+    elapsed = time.time() - t0
+    mb = strip_slab.nbytes / 1e6
+    del strip_slab
+    return {"z_start": z_start, "z_end": z_end,
+            "y_start": y_start, "y_end": y_end,
+            "elapsed_s": elapsed, "mb_s": mb / elapsed}
 
 
 # ---------------------------------------------------------------------------
@@ -726,6 +819,7 @@ def tif_stack_to_zarr(
     zarr_compressor: str = "blosc",
     zarr_compressor_level: int = 1,
     n_read_threads: int = 8,
+    strip_y: int = None,
     dataset_name: str = "volume",
     overwrite: bool = True,
     DASK_client_retries: int = 3,
@@ -756,6 +850,15 @@ def tif_stack_to_zarr(
     zarr_compressor_level : 1 (fastest) … 9 (best ratio)
     n_read_threads   : threads per Dask worker for parallel TIF reading;
                        rule of thumb: min(n_cores_per_worker, worker_RAM_GB // 10)
+    strip_y          : Y-strip height in pixels for memory-efficient memmap mode.
+                       If None (default), the existing full-slab path is used
+                       (write_slab_to_zarr — reads entire TIF files, high RAM).
+                       If set to an integer (e.g. 1024), write_strip_to_zarr is used
+                       instead: each worker reads only strip_y rows from each TIF via
+                       tifffile.memmap, reducing RAM by a factor of ny / strip_y.
+                       Requires uncompressed TIF files. Falls back to full-slab mode
+                       automatically if memmap is not supported.
+                       Rule of thumb: strip_y = worker_RAM_GB * 1e9 // (chunk_z * nx * itemsize)
     dataset_name     : cosmetic name in OME metadata
     overwrite        : overwrite existing store
     DASK_client_retries : number of times a failed slab or pyramid-level task is
@@ -801,6 +904,21 @@ def tif_stack_to_zarr(
     n_slabs = math.ceil(nz / chunk_z)
     slab_gb = chunk_z * ny * nx * dtype.itemsize / 1e9
 
+    # Probe memmap support if strip_y is requested
+    use_memmap = False
+    if strip_y is not None:
+        try:
+            _mm = tiff.memmap(tif_files[0])
+            if _mm is not None:
+                use_memmap = True
+                del _mm
+            else:
+                print("Warning: tifffile.memmap returned None for the first TIF "
+                      "— falling back to full-slab reads.")
+        except Exception as _e:
+            print(f"Warning: tifffile.memmap not supported ({_e}) "
+                  "— falling back to full-slab reads.")
+
     print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Starting tif_stack_to_zarr')
     print(f"Volume (Z, Y, X)  : ({nz}, {ny}, {nx})")
     print(f"dtype             : {dtype}")
@@ -808,7 +926,18 @@ def tif_stack_to_zarr(
     print(f"Raw size          : {nz*ny*nx*dtype.itemsize/1e12:.2f} TB")
     print(f"Voxel size (Z,Y,X): {voxel_size_zyx}  [{voxel_unit}]")
     print(f"Origin     (Z,Y,X): {origin_zyx}  [{voxel_unit}]")
-    print(f"Slabs             : {n_slabs}  ({slab_gb:.1f} GB RAM each)")
+    if use_memmap:
+        sy = min(strip_y, ny)
+        n_strips_per_slab = math.ceil(ny / sy)
+        n_tasks = n_slabs * n_strips_per_slab
+        strip_gb = chunk_z * sy * nx * dtype.itemsize / 1e9
+        print(f"Mode              : memmap strip  (strip_y={sy})")
+        print(f"Slabs             : {n_slabs}")
+        print(f"Strips per slab   : {n_strips_per_slab}  ({n_tasks} tasks total)")
+        print(f"RAM per task      : {strip_gb:.2f} GB")
+    else:
+        print(f"Mode              : full-slab")
+        print(f"Slabs             : {n_slabs}  ({slab_gb:.1f} GB RAM each)")
     if client is not None:
         info = client.scheduler_info()
         n_workers = len(info.get("workers", {}))
@@ -827,14 +956,31 @@ def tif_stack_to_zarr(
         dataset_name=dataset_name, overwrite=overwrite,
     )
 
-    # Build slab parameter list
+    # Build slab list (used by both modes)
     slabs = [
         (slab_idx * chunk_z, min((slab_idx + 1) * chunk_z, nz))
         for slab_idx in range(n_slabs)
     ]
 
-    print()
-    print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Writing {:d} slabs to level s0 …'.format(n_slabs))
+    # Build task list and choose worker function
+    if use_memmap:
+        sy = min(strip_y, ny)
+        tasks = [
+            (z_start, z_end, y_start, min(y_start + sy, ny))
+            for (z_start, z_end) in slabs
+            for y_start in range(0, ny, sy)
+        ]
+        n_tasks = len(tasks)
+        print()
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') +
+              f'   Writing {n_tasks:,} strips to level s0 '
+              f'({n_slabs} Z-slabs × {math.ceil(ny / sy)} Y-strips) …')
+    else:
+        n_tasks = n_slabs
+        print()
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') +
+              f'   Writing {n_slabs:,} slabs to level s0 …')
+
     speeds = []
 
     if client is not None:
@@ -842,39 +988,74 @@ def tif_stack_to_zarr(
         # re-run a task up to N times if it raises an exception, potentially
         # on a different worker each time.  Worker death is handled separately
         # and automatically by the scheduler regardless of this setting.
-        futures = [
-            client.submit(
-                write_slab_to_zarr,
-                output_zarr_path, tif_files, z_start, z_end,
-                n_read_threads, 0,
-                pure=False,
-                retries=DASK_client_retries,
-            )
-            for z_start, z_end in slabs
-        ]
+        if use_memmap:
+            futures = [
+                client.submit(
+                    write_strip_to_zarr,
+                    output_zarr_path, tif_files, z_start, z_end, y_start, y_end,
+                    n_read_threads, 0,
+                    pure=False,
+                    retries=DASK_client_retries,
+                )
+                for z_start, z_end, y_start, y_end in tasks
+            ]
+        else:
+            futures = [
+                client.submit(
+                    write_slab_to_zarr,
+                    output_zarr_path, tif_files, z_start, z_end,
+                    n_read_threads, 0,
+                    pure=False,
+                    retries=DASK_client_retries,
+                )
+                for z_start, z_end in slabs
+            ]
         n_done = 0
         for fut in as_completed(futures):
             result = fut.result()   # raises only after all retries are exhausted
             speeds.append(result["mb_s"])
             n_done += 1
             elapsed = time.time() - t0
-            eta_s = (elapsed / n_done) * (n_slabs - n_done) if n_done else 0
-            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '     [{:d}/{:d}]  '.format(n_done, n_slabs),
-                  f"z={result['z_start']}–{result['z_end']-1}  "
-                  f"{result['elapsed_s']:.1f}s  {result['mb_s']:.0f} MB/s  "
-                  f"ETA {eta_s/60:.1f} min")
+            eta_s = (elapsed / n_done) * (n_tasks - n_done) if n_done else 0
+            if use_memmap:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') +
+                      f'     [{n_done:d}/{n_tasks:d}]  '
+                      f"z={result['z_start']}–{result['z_end']-1}  "
+                      f"y={result['y_start']}–{result['y_end']-1}  "
+                      f"{result['elapsed_s']:.1f}s  {result['mb_s']:.0f} MB/s  "
+                      f"ETA {eta_s/60:.1f} min")
+            else:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') +
+                      f'     [{n_done:d}/{n_tasks:d}]  '
+                      f"z={result['z_start']}–{result['z_end']-1}  "
+                      f"{result['elapsed_s']:.1f}s  {result['mb_s']:.0f} MB/s  "
+                      f"ETA {eta_s/60:.1f} min")
     else:
         # Sequential fallback
-        for i, (z_start, z_end) in enumerate(slabs):
-            result = write_slab_to_zarr(
-                output_zarr_path, tif_files, z_start, z_end, n_read_threads, 0
-            )
-            speeds.append(result["mb_s"])
-            elapsed = time.time() - t0
-            eta_s = (elapsed / (i + 1)) * (n_slabs - i - 1)
-            print(f"  [{i+1}/{n_slabs}]  z={z_start}–{z_end-1}  "
-                  f"{result['elapsed_s']:.1f}s  {result['mb_s']:.0f} MB/s  "
-                  f"ETA {eta_s/60:.1f} min")
+        if use_memmap:
+            for i, (z_start, z_end, y_start, y_end) in enumerate(tasks):
+                result = write_strip_to_zarr(
+                    output_zarr_path, tif_files, z_start, z_end,
+                    y_start, y_end, n_read_threads, 0,
+                )
+                speeds.append(result["mb_s"])
+                elapsed = time.time() - t0
+                eta_s = (elapsed / (i + 1)) * (n_tasks - i - 1)
+                print(f"  [{i+1}/{n_tasks}]  "
+                      f"z={z_start}–{z_end-1}  y={y_start}–{y_end-1}  "
+                      f"{result['elapsed_s']:.1f}s  {result['mb_s']:.0f} MB/s  "
+                      f"ETA {eta_s/60:.1f} min")
+        else:
+            for i, (z_start, z_end) in enumerate(slabs):
+                result = write_slab_to_zarr(
+                    output_zarr_path, tif_files, z_start, z_end, n_read_threads, 0,
+                )
+                speeds.append(result["mb_s"])
+                elapsed = time.time() - t0
+                eta_s = (elapsed / (i + 1)) * (n_slabs - i - 1)
+                print(f"  [{i+1}/{n_slabs}]  z={z_start}–{z_end-1}  "
+                      f"{result['elapsed_s']:.1f}s  {result['mb_s']:.0f} MB/s  "
+                      f"ETA {eta_s/60:.1f} min")
 
     # Build pyramid from level s0
     if n_pyramid_levels > 1:
