@@ -1840,6 +1840,7 @@ class FIBSEM_mosaic_dataset:
         interpolation = kwargs.get('interpolation', self.interpolation)
         fill_value = kwargs.get('fill_value', 0)
         use_existing_data = kwargs.get('use_existing_data', False)
+        n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
         
         kpt_kwargs = {'ftype' : ftype,
                     'thr_min' : thr_min,
@@ -1852,7 +1853,8 @@ class FIBSEM_mosaic_dataset:
                     'SIFT_sigma' : SIFT_sigma,
                     'use_existing_data' : use_existing_data,
                     'interpolation' : interpolation,
-                    'fill_value' : fill_value}
+                    'fill_value' : fill_value,
+                    'n_cv2_threads' : n_cv2_threads}
 
         if U8_conversion == 'sliding':
             params_s3 = []
@@ -1933,6 +1935,9 @@ class FIBSEM_mosaic_dataset:
             Returns a width of interval determined using search direction from above or total number of bins above half max. Options are 'interval' (default) or 'count'.
         use_existing_data : boolean
             Default is False. If True and this had already been performed, use existing results.
+        n_cv2_threads : int
+            Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
+            or 1 if not running under LSF. Set to match the cores allocated per worker.
         verbose : boolean
             Display intermediate results. Default is True.
     
@@ -1987,6 +1992,7 @@ class FIBSEM_mosaic_dataset:
             start = kwargs.get('start', 'edges')
             estimation = kwargs.get('estimation', 'interval')
             use_existing_data = kwargs.get('use_existing_data', False)
+            n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
 
             params_SIFT = []
             fnms_kpts = self.fnms_kpts.ravel()
@@ -2006,7 +2012,8 @@ class FIBSEM_mosaic_dataset:
                         'start' : start,
                         'estimation' : estimation,
                         'use_existing_data' : use_existing_data,
-                        'verbose' : verbose}
+                        'verbose' : verbose,
+                        'n_cv2_threads' : n_cv2_threads}
 
                 fname1 = fnms_kpts[index_pair[0]]
                 fname2 = fnms_kpts[index_pair[1]]
@@ -2131,6 +2138,9 @@ class FIBSEM_mosaic_dataset:
             If True (Default), the results are saved into a PNG file.
         save_filename : str
             A path for saving PNG data. Default is auto-generated as os.path.join(self.data_dir, os.path.split(fnm_matches)[1].replace('_matches.bin') + '_SIFT_test.png').
+        n_cv2_threads : int
+            Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
+            or 1 if not running under LSF. Set to match the cores allocated per worker.
         Returns:
         ----------
         fnm_deformed1, fnm_deformed2, transformations_result, int_results
@@ -2154,6 +2164,7 @@ class FIBSEM_mosaic_dataset:
         SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", self.SIFT_contrastThreshold)
         SIFT_edgeThreshold = kwargs.get("SIFT_edgeThreshold", self.SIFT_edgeThreshold)
         SIFT_sigma = kwargs.get("SIFT_sigma", self.SIFT_sigma)
+        n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
         TransformType = kwargs.get("TransformType", self.TransformType)
         l2_matrix = kwargs.get("l2_matrix", self.l2_matrix)
         targ_vector = kwargs.get("targ_vector", self.targ_vector)
@@ -2208,7 +2219,8 @@ class FIBSEM_mosaic_dataset:
                     'save_deformed_image' : True,
                     'interpolation' : interpolation,
                     'fill_value' : fill_value,
-                    'verbose' : verbose}
+                    'verbose' : verbose,
+                    'n_cv2_threads' : n_cv2_threads}
         if verbose:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Will perform SIFT evaluation using following parameters (kpt_kwargs):')
             print(kpt_kwargs)
@@ -2217,9 +2229,11 @@ class FIBSEM_mosaic_dataset:
         fnms_kpts = []
         for j, param_s3 in enumerate(tqdm(params_s3, desc='Extracting Key Points and Descriptors: ', display=verbose)):
             fnms_kpts.append(extract_keypoints_descr_files(param_s3, deformation_field))
-        kpp1s, des1, kpt_int1 = pickle.load(open(fnms_kpts[0], 'rb'))
+        with open(fnms_kpts[0], 'rb') as f:
+            kpp1s, des1, kpt_int1 = pickle.load(f)
         n_kpts1 = len(kpp1s)
-        kpp2s, des2, kpt_int2 = pickle.load(open(fnms_kpts[1], 'rb'))
+        with open(fnms_kpts[1], 'rb') as f:
+            kpp2s, des2, kpt_int2 = pickle.load(f)
         n_kpts2 = len(kpp2s)
 
         params_SIFT = []
@@ -2237,7 +2251,8 @@ class FIBSEM_mosaic_dataset:
                 'start' : start,
                 'estimation' : estimation,
                 'use_existing_data' : False,
-                'verbose' : verbose}
+                'verbose' : verbose,
+                'n_cv2_threads' : n_cv2_threads}
 
         fname1 = fnms_kpts[0]
         fname2 = fnms_kpts[1]

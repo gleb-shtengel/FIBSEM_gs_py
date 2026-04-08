@@ -8652,7 +8652,7 @@ def extract_keypoints_descr_files(params, deformation_field):
     evaluation_box = kwargs.get("evaluation_box", [0, 0, 0, 0])
     use_existing_data = kwargs.get('use_existing_data', False)
     fnm = os.path.splitext(fl)[0] + '_kpdes.bin'
-    perform_deformation = np.any(np.invert(np.isnan(deformation_field)))
+    perform_deformation = not np.all(np.isnan(deformation_field))
     smoothing_kernel = kwargs.get('smoothing_kernel', np.nan)
     order = kwargs.get('order', 1)
     left_crop = kwargs.get('left_crop', 0)
@@ -8665,6 +8665,8 @@ def extract_keypoints_descr_files(params, deformation_field):
     if use_existing_data and os.path.exists(fnm):
         pass
     else:
+        n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
+        cv2.setNumThreads(n_cv2_threads)  # set number of threads used by CV2 to avoid context switching in DASK jobs
         SIFT_nfeatures = kwargs.get("SIFT_nfeatures", 0)
         SIFT_nOctaveLayers = kwargs.get("SIFT_nOctaveLayers", 3)
         SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", 0.025)
@@ -8708,8 +8710,10 @@ def extract_keypoints_descr_files(params, deformation_field):
         key_points = [kp_to_list(kp) for kp in kps]
         kpd = [key_points, dess, kpt_ints]
         
-        pickle.dump(kpd, open(fnm, 'wb')) # converts array to binary and writes to output
-        #pickle.dump(dess, open(fnm, 'wb')) # converts array to binary and writes to output
+        #pickle.dump(kpd, open(fnm, 'wb')) # converts array to binary and writes to output
+        with open(fnm, 'wb') as f:
+            pickle.dump(kpd, f)
+
     return fnm
 
 
@@ -8871,6 +8875,9 @@ def determine_transformations_files(params_dsf):
     and kwargs must include:
     use_existing_data : boolean
         Default is False. If True and this had already been performed, use existing results.
+    n_cv2_threads : int
+        Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
+        or 1 if not running under LSF. Set to match the cores allocated per worker.
     TransformType - transformation type to be used (ShiftTransform, XScaleShiftTransform, ScaleShiftTransform, AffineTransform, RegularizedAffineTransform)
     BFMatcher -  if True - use BF matcher, otherwise use FLANN matcher for keypoint matching
     solver - a string indicating which solver to use:
@@ -8899,6 +8906,8 @@ def determine_transformations_files(params_dsf):
     transform_matrix, fnm_matches, kpts, kpt_ints, error_abs_mean, error_FWHMx, error_FWHMy, iteration
     '''
     fnm_1, fnm_2, kwargs = params_dsf
+    n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
+    cv2.setNumThreads(n_cv2_threads)
 
     use_existing_data = kwargs.get('use_existing_data', False)
     ftype = kwargs.get("ftype", 0)
@@ -8933,12 +8942,14 @@ def determine_transformations_files(params_dsf):
 
     if try_existing:
         try:
-            transform_matrix, fnm_matches_loc, kpts, kpt_ints, error_abs_mean_loc, error_FWHMx_loc, error_FWHMy_loc, iteration_loc = pickle.load(open(fnm_matches, 'rb'))
+            #transform_matrix, fnm_matches_loc, kpts, kpt_ints, error_abs_mean_loc, error_FWHMx_loc, error_FWHMy_loc, iteration_loc = pickle.load(open(fnm_matches, 'rb'))
+            with open(fnm_matches, 'rb') as f:
+                transform_matrix, fnm_matches_loc, kpts, kpt_ints, error_abs_mean_loc, error_FWHMx_loc, error_FWHMy_loc, iteration_loc = pickle.load(f)
             error_abs_mean = error_abs_mean_loc
             error_FWHMx = error_FWHMx_loc
             error_FWHMy = error_FWHMy_loc
             iteration = iteration_loc
-        except:
+        except Exception:
             try_existing = False
 
     if not try_existing:
@@ -8947,20 +8958,26 @@ def determine_transformations_files(params_dsf):
                 self.params = determine_regularized_affine_transform(src, dst, l2_matrix, targ_vector)
             RegularizedAffineTransform.estimate = estimate
         try:
-            kpp1s, des1s, kpt_ints1s = pickle.load(open(fnm_1, 'rb'))
-            kpp2s, des2s, kpt_ints2s = pickle.load(open(fnm_2, 'rb'))
+            with open(fnm_1, 'rb') as f:
+                kpp1s, des1s, kpt_ints1s = pickle.load(f)
+            with open(fnm_2, 'rb') as f:
+                kpp2s, des2s, kpt_ints2s = pickle.load(f)
         except FileNotFoundError as e:
             print(f'Error opening BIN files → {e}')
             print(fnm_1)
             print(fnm_2)
+            return None, fnm_matches, [], [], np.nan, np.nan, np.nan, 0
         except (pickle.UnpicklingError, EOFError) as e:
             print(f'Error loading BIN files (corrupt or truncated) → {e}')
             print(fnm_1)
             print(fnm_2)
+            return None, fnm_matches, [], [], np.nan, np.nan, np.nan, 0
         except OSError as e:
             print(f'OS error reading BIN files → {e}')
             print(fnm_1)
             print(fnm_2)
+            return None, fnm_matches, [], [], np.nan, np.nan, np.nan, 0
+
         if verbose:
             print('')
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   File 1: ', fnm_1)
@@ -9084,7 +9101,7 @@ def determine_transformations_files(params_dsf):
                 error_FWHMx, indxi, indxa, mxx, mxx_ind = find_FWHM(xbins, xcounts[:-1], verbose=False, estimation=estimation, start=start)
                 ycounts, ybins = np.histogram(yshifts, bins=64)
                 error_FWHMy, indyi, indya, mxy, mxy_ind = find_FWHM(ybins, ycounts[:-1], verbose=False, estimation=estimation, start=start)
-            except:
+            except Exception:
                 transform_matrix = np.eye(3)
                 kpts = [[], []]
                 error_abs_mean = np.nan
@@ -9113,7 +9130,9 @@ def determine_transformations_files(params_dsf):
             print('error_abs_mean={:.3f}, error_FWHMx={:.3f}, error_FWHMy={:.3f}'.format(error_abs_mean, error_FWHMx, error_FWHMy))
         if save_matches:
             int_results = [transform_matrix, fnm_matches, kpts, kpt_ints, error_abs_mean, error_FWHMx, error_FWHMy, iteration, ]
-            pickle.dump(int_results, open(fnm_matches, 'wb'))
+            #pickle.dump(int_results, open(fnm_matches, 'wb'))
+            with open(fnm_matches, 'wb') as f:
+                pickle.dump(int_results, f)
     return transform_matrix, fnm_matches, kpts, kpt_ints, error_abs_mean, error_FWHMx, error_FWHMy, iteration
 
 
@@ -9580,6 +9599,9 @@ def SIFT_evaluation_dataset(fs, **kwargs):
         If True will perform memory profiling. Default is False.
     use_existing_data : boolean
         Default is False. If True and this had already been performed, use existing results
+    n_cv2_threads : int
+        Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
+        or 1 if not running under LSF. Set to match the cores allocated per worker.
 
     Returns:
     ----------
@@ -9628,7 +9650,7 @@ def SIFT_evaluation_dataset(fs, **kwargs):
     start = kwargs.get('start', 'edges')
     estimation = kwargs.get('estimation', 'interval')
     deformation_field = kwargs.get('deformation_field', np.nan)
-    perform_deformation = np.any(np.invert(np.isnan(deformation_field)))
+    perform_deformation = not np.all(np.isnan(deformation_field))
     interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
     fill_value = kwargs.get('fill_value', 0)
     use_existing_data = kwargs.get('use_existing_data', False)
@@ -10999,6 +11021,11 @@ def check_for_nomatch_frames_dataset(fls, fnms, fnms_matches,
                                      FOVtrend_x, FOVtrend_y,
                                      FIBSEM_Data,
                                      thr_npt, **kwargs):
+    '''
+    n_cv2_threads : int
+        Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
+        or 1 if not running under LSF. Set to match the cores allocated per worker.
+    '''
     data_dir = kwargs.get("data_dir", '')
     ftype = kwargs.get("ftype", 0)
     fnm_reg = kwargs.get("fnm_reg", 'Registration_file.mrc')
@@ -12071,6 +12098,9 @@ class FIBSEM_dataset:
             Fill value for outside pixeld in cv2.remap. Default is 0.
         use_existing_data : boolean
             Default is False. If True and this had already been performed, use existing results.
+        n_cv2_threads : int
+            Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
+            or 1 if not running under LSF. Set to match the cores allocated per worker.
     
         Returns:
         ----------
@@ -12104,10 +12134,11 @@ class FIBSEM_dataset:
             SIFT_edgeThreshold = kwargs.get("SIFT_edgeThreshold", self.SIFT_edgeThreshold)
             SIFT_sigma = kwargs.get("SIFT_sigma", self.SIFT_sigma)
             deformation_field = kwargs.get('deformation_field', np.nan)
-            perform_deformation = np.any(np.invert(np.isnan(deformation_field)))
+            perform_deformation = not np.all(np.isnan(deformation_field))
             interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
             fill_value = kwargs.get('fill_value', 0)
             use_existing_data = kwargs.get('use_existing_data', False)
+            n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
 
             kpt_kwargs = {'ftype' : ftype,
                         'thr_min' : thr_min,
@@ -12120,7 +12151,8 @@ class FIBSEM_dataset:
                         'SIFT_sigma' : SIFT_sigma,
                         'use_existing_data' : use_existing_data,
                         'interpolation' : interpolation,
-                        'fill_value' : fill_value}
+                        'fill_value' : fill_value,
+                        'n_cv2_threads' : n_cv2_threads}
 
 
             if U8_conversion == 'sliding':
@@ -12200,6 +12232,9 @@ class FIBSEM_dataset:
             Returns a width of interval determined using search direction from above or total number of bins above half max. Options are 'interval' (default) or 'count'.
         use_existing_data : boolean
             Default is False. If True and this had already been performed, use existing results.
+        n_cv2_threads : int
+            Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
+            or 1 if not running under LSF. Set to match the cores allocated per worker.
     
         Returns:
         ----------
@@ -12239,6 +12274,7 @@ class FIBSEM_dataset:
             start = kwargs.get('start', 'edges')
             estimation = kwargs.get('estimation', 'interval')
             use_existing_data = kwargs.get('use_existing_data', False)
+            n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
             dt_kwargs = {'ftype' : ftype,
                             'TransformType' : TransformType,
                             'l2_matrix' : l2_matrix,
@@ -12252,7 +12288,8 @@ class FIBSEM_dataset:
                             'Lowe_Ratio_Threshold' : Lowe_Ratio_Threshold,
                             'start' : start,
                             'estimation' : estimation,
-                            'use_existing_data' : use_existing_data}
+                            'use_existing_data' : use_existing_data,
+                            'n_cv2_threads' : n_cv2_threads}
 
             params_s4 = []
             for j, fnm in enumerate(self.fnms[:-1]):
