@@ -468,7 +468,7 @@ def assemble_layer(params, deformation_field, **kwargs):
     layer_mosaic_weights = np.zeros((Ysize, Xsize-left_crop), dtype=np.float32)
     tile_params_mult = []
     n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
-    kwargs_tt = {'n_cv2_threads ' : n_cv2_threads}
+    kwargs_tt = {'n_cv2_threads' : n_cv2_threads}
     for fl, (j, tr_matr_single) in zip(tqdm(fls_layer, desc = 'Building tile parameter sets', display = verbose), enumerate(tr_matr_layer)):
         #tile_params : list :  j, fl, image_name, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max, left_crop, I0, scale
         tile_params_mult.append([j, fl, image_name, tr_matr_single, Ysize, Xsize, weight_min, weight_max, left_crop, tile_I0s[j], tile_scales[j]])
@@ -3239,6 +3239,10 @@ class FIBSEM_mosaic_dataset:
             Number of allowed automatic retries if a task fails. Default is object attribute.
         verbose : boolean
             Display intermediate results. Default is False.
+        n_cv2_threads : int
+            Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
+            or 1 if not running under LSF. Set to match the cores allocated per worker.
+
 
         Returns:
         ----------
@@ -3349,6 +3353,8 @@ class FIBSEM_mosaic_dataset:
             DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
         else:
             DASK_client_retries = kwargs.get("DASK_client_retries", 3)
+        n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
+        kwargs_al = {'n_cv2_threads': n_cv2_threads}
 
         if fnm_types:            
             if save_mrc:
@@ -3382,7 +3388,7 @@ class FIBSEM_mosaic_dataset:
                                         save_mrc, save_tif, tif_fname, save_zarr, output_zarr_path, dtp, verbose])
             if use_DASK:
                 shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)
-                futures = DASK_client.map(assemble_layer, params_mult, deformation_field = shared_data_future, retries = DASK_client_retries)
+                futures = DASK_client.map(assemble_layer, params_mult, deformation_field = shared_data_future, retries = DASK_client_retries, **kwargs_al)
                 for future in tqdm(as_completed(futures), total=len(futures), desc='Assembling and saving mosaic layers'):
                     mosaic_out, j = future.result()
                     if save_mrc:
@@ -3390,7 +3396,7 @@ class FIBSEM_mosaic_dataset:
                     future.cancel()
             else:
                 for j, params in enumerate(tqdm(params_mult, desc = 'Assembling and saving mosaic layers')):
-                    mosaic_out = assemble_layer(params, deformation_field)[0]
+                    mosaic_out = assemble_layer(params, deformation_field, **kwargs_al)[0]
                     if save_mrc:
                         mrc_new.data[j, :, :] = mosaic_out
             if save_mrc:
