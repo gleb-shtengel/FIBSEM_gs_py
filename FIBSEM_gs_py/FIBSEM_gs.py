@@ -8666,8 +8666,6 @@ def extract_keypoints_descr_files(params, deformation_field):
     if use_existing_data and os.path.exists(fnm):
         pass
     else:
-        n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
-        #cv2.setNumThreads(n_cv2_threads)  # set number of threads used by CV2 to avoid context switching in DASK jobs
         SIFT_nfeatures = kwargs.get("SIFT_nfeatures", 0)
         SIFT_nOctaveLayers = kwargs.get("SIFT_nOctaveLayers", 3)
         SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", 0.025)
@@ -8876,9 +8874,6 @@ def determine_transformations_files(params_dsf):
     and kwargs must include:
     use_existing_data : boolean
         Default is False. If True and this had already been performed, use existing results.
-    n_cv2_threads : int
-        Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
-        or 1 if not running under LSF. Set to match the cores allocated per worker.
     TransformType - transformation type to be used (ShiftTransform, XScaleShiftTransform, ScaleShiftTransform, AffineTransform, RegularizedAffineTransform)
     BFMatcher -  if True - use BF matcher, otherwise use FLANN matcher for keypoint matching
     solver - a string indicating which solver to use:
@@ -8907,9 +8902,6 @@ def determine_transformations_files(params_dsf):
     transform_matrix, fnm_matches, kpts, kpt_ints, error_abs_mean, error_FWHMx, error_FWHMy, iteration
     '''
     fnm_1, fnm_2, kwargs = params_dsf
-    n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
-    #cv2.setNumThreads(n_cv2_threads)
-
     use_existing_data = kwargs.get('use_existing_data', False)
     ftype = kwargs.get("ftype", 0)
     TransformType = kwargs.get("TransformType", RegularizedAffineTransform)
@@ -9600,9 +9592,6 @@ def SIFT_evaluation_dataset(fs, **kwargs):
         If True will perform memory profiling. Default is False.
     use_existing_data : boolean
         Default is False. If True and this had already been performed, use existing results
-    n_cv2_threads : int
-        Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
-        or 1 if not running under LSF. Set to match the cores allocated per worker.
 
     Returns:
     ----------
@@ -10456,9 +10445,6 @@ def transform_and_save_chunk_of_frames(chunk_of_frame_parametrs, **kwargs):
 
     kwargs:
     ----------
-    n_cv2_threads : int
-        Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
-        or 1 if not running under LSF. Set to match the cores allocated per worker.
 
     Returns:
     ----------
@@ -10469,8 +10455,6 @@ def transform_and_save_chunk_of_frames(chunk_of_frame_parametrs, **kwargs):
     #ImgB_fraction, xsz, ysz, xi, xa, yi, ya, int_order, invert_data, flipY, flatten_image, image_correction_file, perform_transformation, shift_matrix, inv_shift_matrix, ftype, dtp, fill_value = tr_args
     ImgB_fraction, xsz, ysz, xi, xa, yi, ya, int_order, invert_data, flipY, flatten_image, image_correction_file, perform_transformation, shift_matrix, inv_shift_matrix, perform_deformation, deformation_type, ftype, dtp, fill_value = tr_args
     num_frames = len(frame_filenames)
-    n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
-    #cv2.setNumThreads(n_cv2_threads)
     transformed_img = np.zeros((ysz, xsz), dtype=np.float32)
     verbose = False
     save_debug_data = False
@@ -10803,10 +10787,6 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
         Fill value for padding. Default is zero.
     disp_res : boolean
         Default is False.
-    n_cv2_threads : int
-        Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
-        or 1 if not running under LSF. Set to match the cores allocated per worker.
-
 
     Returns:
     ----------
@@ -10820,7 +10800,6 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
     save_transformed_dataset = kwargs.get("save_transformed_dataset", True)
     use_DASK = kwargs.get("use_DASK", False)  # do not use DASK the data is to be saved
     DASK_client_retries = kwargs.get("DASK_client_retries", 3)
-    n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
     data_dir = kwargs.get("data_dir", '')
     fnm_reg = kwargs.get("fnm_reg", 'Registration_file.mrc')
     dump_filename = kwargs.get('dump_filename', '')
@@ -10854,8 +10833,6 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
     deformation_fields = kwargs.get('deformation_fields', np.zeros((nfrs, test_frame.YResolution), dtype=np.float32))
     shape = [np.max(YResolutions), np.max(XResolutions)]
     shapes = [YResolutions, XResolutions]
-    
-    kwargs_tt = {'n_cv2_threads' : n_cv2_threads}
 
     if pad_edges and perform_transformation:
         #Determining padding offsets
@@ -10903,7 +10880,7 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
     if use_DASK:
         if disp_res:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Transform and Save Chunks of Frames: Starting DASK jobs')
-        futures_td = DASK_client.map(transform_and_save_chunk_of_frames, chunk_of_frame_parametrs_dataset, retries = DASK_client_retries, **kwargs_tt)
+        futures_td = DASK_client.map(transform_and_save_chunk_of_frames, chunk_of_frame_parametrs_dataset, retries = DASK_client_retries)
         registered_filenames = np.array(DASK_client.gather(futures_td))
         if disp_res:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Finished DASK jobs')
@@ -10912,7 +10889,7 @@ def transform_and_save_frames(DASK_client, frame_inds, fls, tr_matr_cum_residual
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Transform and Save Chunks of Frames: Will perform local computations')
         registered_filenames = []
         for chunk_of_frame_parametrs in tqdm(chunk_of_frame_parametrs_dataset, desc = 'Transforming and saving frame chunks', display = disp_res):
-            registered_filenames.append(transform_and_save_chunk_of_frames(chunk_of_frame_parametrs, **kwargs_tt))
+            registered_filenames.append(transform_and_save_chunk_of_frames(chunk_of_frame_parametrs))
 
     return registered_filenames
 
@@ -11037,11 +11014,6 @@ def check_for_nomatch_frames_dataset(fls, fnms, fnms_matches,
                                      FOVtrend_x, FOVtrend_y,
                                      FIBSEM_Data,
                                      thr_npt, **kwargs):
-    '''
-    n_cv2_threads : int
-        Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
-        or 1 if not running under LSF. Set to match the cores allocated per worker.
-    '''
     data_dir = kwargs.get("data_dir", '')
     ftype = kwargs.get("ftype", 0)
     fnm_reg = kwargs.get("fnm_reg", 'Registration_file.mrc')
@@ -12114,9 +12086,6 @@ class FIBSEM_dataset:
             Fill value for outside pixeld in cv2.remap. Default is 0.
         use_existing_data : boolean
             Default is False. If True and this had already been performed, use existing results.
-        n_cv2_threads : int
-            Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
-            or 1 if not running under LSF. Set to match the cores allocated per worker.
     
         Returns:
         ----------
@@ -12154,7 +12123,6 @@ class FIBSEM_dataset:
             interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
             fill_value = kwargs.get('fill_value', 0)
             use_existing_data = kwargs.get('use_existing_data', False)
-            n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
 
             kpt_kwargs = {'ftype' : ftype,
                         'thr_min' : thr_min,
@@ -12167,8 +12135,7 @@ class FIBSEM_dataset:
                         'SIFT_sigma' : SIFT_sigma,
                         'use_existing_data' : use_existing_data,
                         'interpolation' : interpolation,
-                        'fill_value' : fill_value,
-                        'n_cv2_threads' : n_cv2_threads}
+                        'fill_value' : fill_value}
 
 
             if U8_conversion == 'sliding':
@@ -12248,10 +12215,7 @@ class FIBSEM_dataset:
             Returns a width of interval determined using search direction from above or total number of bins above half max. Options are 'interval' (default) or 'count'.
         use_existing_data : boolean
             Default is False. If True and this had already been performed, use existing results.
-        n_cv2_threads : int
-            Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
-            or 1 if not running under LSF. Set to match the cores allocated per worker.
-    
+
         Returns:
         ----------
         results_s4 : array of lists containing the results:
@@ -12290,7 +12254,6 @@ class FIBSEM_dataset:
             start = kwargs.get('start', 'edges')
             estimation = kwargs.get('estimation', 'interval')
             use_existing_data = kwargs.get('use_existing_data', False)
-            n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
             dt_kwargs = {'ftype' : ftype,
                             'TransformType' : TransformType,
                             'l2_matrix' : l2_matrix,
@@ -12304,8 +12267,7 @@ class FIBSEM_dataset:
                             'Lowe_Ratio_Threshold' : Lowe_Ratio_Threshold,
                             'start' : start,
                             'estimation' : estimation,
-                            'use_existing_data' : use_existing_data,
-                            'n_cv2_threads' : n_cv2_threads}
+                            'use_existing_data' : use_existing_data}
 
             params_s4 = []
             for j, fnm in enumerate(self.fnms[:-1]):
@@ -12803,10 +12765,6 @@ class FIBSEM_dataset:
             if True, the MRC stack is written in chunks, otherwise (False, Default) frame-by-frame.
         chunk_length : int
             length of MRC write chunk. Default is 32.
-        n_cv2_threads : int
-            Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
-            or 1 if not running under LSF. Set to match the cores allocated per worker.
-
         
         Returns:
         ----------
@@ -12818,7 +12776,6 @@ class FIBSEM_dataset:
 
         DASK_client = kwargs.get('DASK_client', '')
         use_DASK, status_update_address = check_DASK(DASK_client)
-        n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
 
         save_transformed_dataset = kwargs.get('save_transformed_dataset', True)
         save_registration_summary = kwargs.get('save_registration_summary', True)
@@ -12967,8 +12924,7 @@ class FIBSEM_dataset:
                         'save_registration_summary' : save_registration_summary,
                         'chunked_mrc_write' : chunked_mrc_write,
                         'chunk_length' : chunk_length,
-                        'verbose' : verbose,
-                        'n_cv2_threads' : n_cv2_threads}
+                        'verbose' : verbose}
 
         # first, transform, bin and save frame chunks into individual tif files
         if verbose:

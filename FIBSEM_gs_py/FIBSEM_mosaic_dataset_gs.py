@@ -124,9 +124,7 @@ def transform_tile(tile_params, deformation_field, **kwargs):
 
     kwargs:
     -----------
-    n_cv2_threads : int
-        Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
-        or 1 if not running under LSF. Set to match the cores allocated per worker.
+   
 
     Returns:
     ----------
@@ -134,8 +132,6 @@ def transform_tile(tile_params, deformation_field, **kwargs):
     
     '''
     j, fl, image_name, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max, left_crop, I0, scale = tile_params
-    n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
-    #cv2.setNumThreads(n_cv2_threads)
     fr = FIBSEM_frame(fl)
     if image_name == 'RawImageB':
         tile_initial = fr.RawImageB.astype(np.float32)
@@ -373,9 +369,6 @@ def find_Transform_ECC_DASK(params, deformation_field):
         repeat internally this many times. Default is 2.
     verbose : boolean
         Display intermediate results. Default is False.
-    n_cv2_threads : int
-        Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
-        or 1 if not running under LSF. Set to match the cores allocated per worker.
             
     Returns:
     ----------
@@ -384,8 +377,6 @@ def find_Transform_ECC_DASK(params, deformation_field):
         error_code : CV2.error code. 0 if no error.
     '''
     fname1, fname2, kwargs = params
-    n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
-    #cv2.setNumThreads(n_cv2_threads)
     ftype = kwargs.get('ftype', 0)
     perform_deformation = not np.all(np.isnan(deformation_field))
     interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
@@ -456,10 +447,7 @@ def assemble_layer(params, deformation_field, **kwargs):
             Display intermediate results.
     
     kwargs:
-        n_cv2_threads : int
-            Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
-            or 1 if not running under LSF. Set to match the cores allocated per worker.
-
+        
     deformation_field : 2D array
         Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
 
@@ -473,8 +461,6 @@ def assemble_layer(params, deformation_field, **kwargs):
     layer_mosaic = np.zeros((Ysize, Xsize-left_crop), dtype=np.float32)
     layer_mosaic_weights = np.zeros((Ysize, Xsize-left_crop), dtype=np.float32)
     tile_params_mult = []
-    n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
-    kwargs_tt = {'n_cv2_threads' : n_cv2_threads}
     for fl, (j, tr_matr_single) in zip(tqdm(fls_layer, desc = 'Building tile parameter sets', display = verbose), enumerate(tr_matr_layer)):
         #tile_params : list :  j, fl, image_name, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max, left_crop, I0, scale
         tile_params_mult.append([j, fl, image_name, tr_matr_single, Ysize, Xsize, weight_min, weight_max, left_crop, tile_I0s[j], tile_scales[j]])
@@ -483,7 +469,7 @@ def assemble_layer(params, deformation_field, **kwargs):
             if verbose:
                 print('Performing transform_tile with the following parameters:')
                 print(tile_params)
-            tile_out, weight_out, xi, xa, yi,  ya = transform_tile(tile_params, deformation_field, **kwargs)
+            tile_out, weight_out, xi, xa, yi,  ya = transform_tile(tile_params, deformation_field)
             if verbose:
                 print('Output is:')
                 print('tile_out.shape=', tile_out.shape, 'weight_out.shape=', weight_out.shape)
@@ -1867,7 +1853,6 @@ class FIBSEM_mosaic_dataset:
         interpolation = kwargs.get('interpolation', self.interpolation)
         fill_value = kwargs.get('fill_value', 0)
         use_existing_data = kwargs.get('use_existing_data', False)
-        n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
         
         kpt_kwargs = {'ftype' : ftype,
                     'thr_min' : thr_min,
@@ -1880,8 +1865,7 @@ class FIBSEM_mosaic_dataset:
                     'SIFT_sigma' : SIFT_sigma,
                     'use_existing_data' : use_existing_data,
                     'interpolation' : interpolation,
-                    'fill_value' : fill_value,
-                    'n_cv2_threads' : n_cv2_threads}
+                    'fill_value' : fill_value}
 
         if U8_conversion == 'sliding':
             params_s3 = []
@@ -1962,9 +1946,6 @@ class FIBSEM_mosaic_dataset:
             Returns a width of interval determined using search direction from above or total number of bins above half max. Options are 'interval' (default) or 'count'.
         use_existing_data : boolean
             Default is False. If True and this had already been performed, use existing results.
-        n_cv2_threads : int
-            Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
-            or 1 if not running under LSF. Set to match the cores allocated per worker.
         verbose : boolean
             Display intermediate results. Default is True.
     
@@ -2019,7 +2000,6 @@ class FIBSEM_mosaic_dataset:
             start = kwargs.get('start', 'edges')
             estimation = kwargs.get('estimation', 'interval')
             use_existing_data = kwargs.get('use_existing_data', False)
-            n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
 
             params_SIFT = []
             fnms_kpts = self.fnms_kpts.ravel()
@@ -2039,8 +2019,7 @@ class FIBSEM_mosaic_dataset:
                         'start' : start,
                         'estimation' : estimation,
                         'use_existing_data' : use_existing_data,
-                        'verbose' : verbose,
-                        'n_cv2_threads' : n_cv2_threads}
+                        'verbose' : verbose}
 
                 fname1 = fnms_kpts[index_pair[0]]
                 fname2 = fnms_kpts[index_pair[1]]
@@ -2165,9 +2144,7 @@ class FIBSEM_mosaic_dataset:
             If True (Default), the results are saved into a PNG file.
         save_filename : str
             A path for saving PNG data. Default is auto-generated as os.path.join(self.data_dir, os.path.split(fnm_matches)[1].replace('_matches.bin') + '_SIFT_test.png').
-        n_cv2_threads : int
-            Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
-            or 1 if not running under LSF. Set to match the cores allocated per worker.
+       
         Returns:
         ----------
         fnm_deformed1, fnm_deformed2, transformations_result, int_results
@@ -2191,7 +2168,6 @@ class FIBSEM_mosaic_dataset:
         SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", self.SIFT_contrastThreshold)
         SIFT_edgeThreshold = kwargs.get("SIFT_edgeThreshold", self.SIFT_edgeThreshold)
         SIFT_sigma = kwargs.get("SIFT_sigma", self.SIFT_sigma)
-        n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
         TransformType = kwargs.get("TransformType", self.TransformType)
         l2_matrix = kwargs.get("l2_matrix", self.l2_matrix)
         targ_vector = kwargs.get("targ_vector", self.targ_vector)
@@ -2246,8 +2222,7 @@ class FIBSEM_mosaic_dataset:
                     'save_deformed_image' : True,
                     'interpolation' : interpolation,
                     'fill_value' : fill_value,
-                    'verbose' : verbose,
-                    'n_cv2_threads' : n_cv2_threads}
+                    'verbose' : verbose}
         if verbose:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Will perform SIFT evaluation using following parameters (kpt_kwargs):')
             print(kpt_kwargs)
@@ -2278,8 +2253,7 @@ class FIBSEM_mosaic_dataset:
                 'start' : start,
                 'estimation' : estimation,
                 'use_existing_data' : False,
-                'verbose' : verbose,
-                'n_cv2_threads' : n_cv2_threads}
+                'verbose' : verbose}
 
         fname1 = fnms_kpts[0]
         fname2 = fnms_kpts[1]
@@ -2477,9 +2451,6 @@ class FIBSEM_mosaic_dataset:
             Default is False. If True and this had already been performed, use existing results.
         verbose : boolean
             Display intermediate results. Default is True.
-        n_cv2_threads : int
-            Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
-            or 1 if not running under LSF. Set to match the cores allocated per worker.
         
         Returns:
         ----------
@@ -2516,7 +2487,6 @@ class FIBSEM_mosaic_dataset:
         else:
             DASK_client_retries = kwargs.get("DASK_client_retries", 3)
         use_existing_data = kwargs.get('use_existing_data', False)
-        n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
         params_ECC = []
         fls = self.fls.ravel()
 
@@ -2525,8 +2495,7 @@ class FIBSEM_mosaic_dataset:
                      'motion' : motion,
                      'criteria' : criteria,
                      'use_existing_data' : use_existing_data,
-                     'verbose' : verbose,
-                     'n_cv2_threads' : n_cv2_threads}
+                     'verbose' : verbose}
             fname1 = fls[index_pair[0]]
             fname2 = fls[index_pair[1]]
             index_loc0, index_loc1 = np.mod(index_pair, self.n_tiles_per_layer)
@@ -2894,9 +2863,6 @@ class FIBSEM_mosaic_dataset:
             The name of the image to perform these operations (default is self.fls[layer_id].ravel()[0].replace('0-0-0.dat', 'layer_mosaic.jpg')).
         verbose : boolean
             Display intermediate results. Default is False.
-        n_cv2_threads : int
-            Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
-            or 1 if not running under LSF. Set to match the cores allocated per worker.
 
         Returns:
         ----------
@@ -2921,7 +2887,6 @@ class FIBSEM_mosaic_dataset:
         weight_max = kwargs.get('weight_max', 512.0)
         fill_value = kwargs.get('fill_value', -10000) 
         perform_intensity_normalization = kwargs.get('perform_intensity_normalization', False)
-        n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
         verbose = kwargs.get('verbose', False)
         data_dir = kwargs.get('data_dir', self.data_dir)
         save_snapshot = kwargs.get('save_snapshot', False)
@@ -2939,8 +2904,6 @@ class FIBSEM_mosaic_dataset:
         fontsize = kwargs.get('fontsize', 6)
         color = kwargs.get('color', 'cyan')
         dpi = kwargs.get('dpi', 300)
-
-        kwargs_tt = {'n_cv2_threads' : n_cv2_threads}
 
         if hasattr(self, "DASK_client_retries"):
             DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
@@ -2964,7 +2927,7 @@ class FIBSEM_mosaic_dataset:
                     if verbose:
                         print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Started DASK Computation')
                     shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)
-                    futures = DASK_client.map(transform_tile, tile_params_mult, deformation_field=shared_data_future, **kwargs_tt)
+                    futures = DASK_client.map(transform_tile, tile_params_mult, deformation_field=shared_data_future)
                     for future in as_completed(futures):
                         tile_out, weight_out, xi, xa, yi, ya = future.result()
                         xy_limits.append([xi, xa, yi, ya])
@@ -2978,7 +2941,7 @@ class FIBSEM_mosaic_dataset:
                         if verbose:
                             print('Performing transform_tile with the following parameters:')
                             print(tile_params)
-                        tile_out, weight_out, xi, xa, yi,  ya = transform_tile(tile_params, deformation_field, **kwargs_tt)
+                        tile_out, weight_out, xi, xa, yi,  ya = transform_tile(tile_params, deformation_field)
                         xy_limits.append([xi, xa, yi, ya])
                         if verbose:
                             print('Output is:')
@@ -3245,11 +3208,7 @@ class FIBSEM_mosaic_dataset:
             Number of allowed automatic retries if a task fails. Default is object attribute.
         verbose : boolean
             Display intermediate results. Default is False.
-        n_cv2_threads : int
-            Number of OpenCV threads per DASK worker. Defaults to LSB_DJOB_NUMPROC env var,
-            or 1 if not running under LSF. Set to match the cores allocated per worker.
-
-
+        
         Returns:
         ----------
         fnms_saved
@@ -3359,8 +3318,6 @@ class FIBSEM_mosaic_dataset:
             DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
         else:
             DASK_client_retries = kwargs.get("DASK_client_retries", 3)
-        n_cv2_threads = kwargs.get('n_cv2_threads', int(os.environ.get('LSB_DJOB_NUMPROC', 1)))
-        kwargs_al = {'n_cv2_threads': n_cv2_threads}
 
         if fnm_types:            
             if save_mrc:
@@ -3394,7 +3351,7 @@ class FIBSEM_mosaic_dataset:
                                         save_mrc, save_tif, tif_fname, save_zarr, output_zarr_path, dtp, verbose])
             if use_DASK:
                 shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)
-                futures = DASK_client.map(assemble_layer, params_mult, deformation_field = shared_data_future, retries = DASK_client_retries, **kwargs_al)
+                futures = DASK_client.map(assemble_layer, params_mult, deformation_field = shared_data_future, retries = DASK_client_retries)
                 for future in tqdm(as_completed(futures), total=len(futures), desc='Assembling and saving mosaic layers'):
                     mosaic_out, j = future.result()
                     if save_mrc:
@@ -3402,7 +3359,7 @@ class FIBSEM_mosaic_dataset:
                     future.cancel()
             else:
                 for j, params in enumerate(tqdm(params_mult, desc = 'Assembling and saving mosaic layers')):
-                    mosaic_out = assemble_layer(params, deformation_field, **kwargs_al)[0]
+                    mosaic_out = assemble_layer(params, deformation_field)[0]
                     if save_mrc:
                         mrc_new.data[j, :, :] = mosaic_out
             if save_mrc:
