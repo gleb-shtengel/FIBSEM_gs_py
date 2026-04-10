@@ -173,7 +173,7 @@ def transform_tile(tile_params, deformation_field, **kwargs):
     # crop the transformed tile and adjust shift_x accordingly
     if left_crop > 0:
         tile_transformed = tile_transformed[:, left_crop:]
-        shift_x -= left_crop
+        shift_x += left_crop
         if verbose:
             print('Applied left_crop: returned image with shape:    ', tile_transformed.shape)
             print('Applied left_crop: returned shift_x={:d},  shift_y={:d}'.format(shift_x, shift_y))
@@ -286,10 +286,10 @@ def remap_tile(img, deformation_field, **kwargs):
     verbose = kwargs.get('verbose', False)
     
     img_shape = img.shape
-    #shift_x = int(np.min((np.nanmin(deformation_field[:, :, 0]), 0))) # Find the leftmost source coordinate in the entire field — but only if it is negative.
-    #shift_y = int(np.min((np.nanmin(deformation_field[:, :, 1]), 0))) # Find the top-most source coordinate in the entire field — but only if it is negative.
-    shift_x = int(np.nanmin(deformation_field[:, :, 0]))
-    shift_y = int(np.nanmin(deformation_field[:, :, 1]))
+    shift_x = int(np.min((np.nanmin(deformation_field[:, :, 0]), 0))) # Find the leftmost source coordinate in the entire field — but only if it is negative.
+    shift_y = int(np.min((np.nanmin(deformation_field[:, :, 1]), 0))) # Find the top-most source coordinate in the entire field — but only if it is negative.
+    #shift_x = int(np.nanmin(deformation_field[:, :, 0]))
+    #shift_y = int(np.nanmin(deformation_field[:, :, 1]))
 
     if verbose:
         print('shift_x={:d},  shift_y={:d}'.format(shift_x, shift_y))
