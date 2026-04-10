@@ -286,8 +286,11 @@ def remap_tile(img, deformation_field, **kwargs):
     verbose = kwargs.get('verbose', False)
     
     img_shape = img.shape
-    shift_x = int(np.min((np.nanmin(deformation_field[:, :, 0]), 0))) # Find the leftmost source coordinate in the entire field — but only if it is negative.
-    shift_y = int(np.min((np.nanmin(deformation_field[:, :, 1]), 0))) # Find the top-most source coordinate in the entire field — but only if it is negative.
+    #shift_x = int(np.min((np.nanmin(deformation_field[:, :, 0]), 0))) # Find the leftmost source coordinate in the entire field — but only if it is negative.
+    #shift_y = int(np.min((np.nanmin(deformation_field[:, :, 1]), 0))) # Find the top-most source coordinate in the entire field — but only if it is negative.
+    shift_x = int(np.nanmin(deformation_field[:, :, 0]))
+    shift_y = int(np.nanmin(deformation_field[:, :, 1]))
+
     if verbose:
         print('shift_x={:d},  shift_y={:d}'.format(shift_x, shift_y))
     # df_shifted = deformation_field*1.0
