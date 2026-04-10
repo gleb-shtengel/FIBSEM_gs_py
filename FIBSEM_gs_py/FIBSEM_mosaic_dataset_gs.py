@@ -288,15 +288,15 @@ def remap_tile(img, deformation_field, **kwargs):
         print('Original Image Shape: ', img_shape)
         print('Deformed Image Shape: ', (ysz_new, xsz_new))
     # Embed the tile in the expanded canvas 
-    image_expanded = np.zeros((ysz_new, xsz_new))
+    image_expanded = np.zeros((ysz_new, xsz_new), dtype=np.float32)
     image_expanded[0:img_shape[0],0:img_shape[1]] = img
     # Embed the shifted deformation field in the same expanded grid
-    df_expanded = np.zeros((ysz_new, xsz_new, 2))
+    df_expanded = np.zeros((ysz_new, xsz_new, 2), dtype=np.float32)
     df_expanded[0:img_shape[0],0:img_shape[1], :] = df_shifted
                            
     image_deformed = cv2.remap(image_expanded,
-                               df_expanded[:, :, 0].astype(np.float32),
-                               df_expanded[:, :, 1].astype(np.float32), interpolation=interpolation, borderValue=borderValue)
+                               df_expanded[:, :, 0],
+                               df_expanded[:, :, 1], interpolation=interpolation, borderValue=borderValue)
     # shift_x and shift_y are returned so transform_tile knows where to place the output in the mosaic
     return image_deformed, shift_x, shift_y
 
