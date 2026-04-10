@@ -8674,12 +8674,12 @@ def extract_keypoints_descr_files(params, deformation_field):
         interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
         fill_value = kwargs.get('fill_value', 0)
 
-        #sift = cv2.xfeatures2d.SIFT_create(nfeatures=SIFT_nfeatures, nOctaveLayers=SIFT_nOctaveLayers, edgeThreshold=SIFT_edgeThreshold, contrastThreshold=SIFT_contrastThreshold, sigma=SIFT_sigma)
         sift = cv2.SIFT_create(nfeatures=SIFT_nfeatures, nOctaveLayers=SIFT_nOctaveLayers, edgeThreshold=SIFT_edgeThreshold, contrastThreshold=SIFT_contrastThreshold, sigma=SIFT_sigma)
         img, d1, d2 = FIBSEM_frame(fl, ftype=ftype, calculate_scaled_images=False).RawImageA_8bit_thresholds(thr_min = 1.0e-3, thr_max = 1.0e-3, data_min = dmin, data_max = dmax, nbins=256)
         if perform_deformation:
-            img = cv2.remap(img, deformation_field[:, :, 0].astype(np.float32), deformation_field[:, :, 1].astype(np.float32), interpolation=interpolation, borderValue=fill_value)[:, left_crop:].astype(np.uint8)
-        # extract keypoints and descriptors for both images
+            img = cv2.remap(img, deformation_field[:, :, 0].astype(np.float32), deformation_field[:, :, 1].astype(np.float32), interpolation=interpolation, borderValue=fill_value).astype(np.uint8)
+        if left_crop > 0:
+            img = img[:, left_crop:]
         if save_deformed_image:
             fnm_deformed_image = kwargs.get('fnm_deformed_image', os.path.splitext(fl)[0] + '_def_image.tif')
             tiff.imwrite(fnm_deformed_image, img)
