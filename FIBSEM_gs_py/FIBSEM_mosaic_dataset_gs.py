@@ -174,6 +174,9 @@ def transform_tile(tile_params, deformation_field, **kwargs):
     if left_crop > 0:
         tile_transformed = tile_transformed[:, left_crop:]
         shift_x -= left_crop
+        if verbose:
+            print('Applied left_crop: returned image with shape:    ', tile_transformed.shape)
+            print('Applied left_crop: returned shift_x={:d},  shift_y={:d}'.format(shift_x, shift_y))
 
     loc_szy, loc_szx = tile_transformed.shape
     # shift_x <= 0, shift_y <= 0  (remap_tile convention: negative = tile extends left/above origin)
