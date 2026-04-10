@@ -163,31 +163,34 @@ def transform_tile(tile_params, deformation_field, **kwargs):
     else:
         # No distortion correction — apply registration transform only
         df = convert_tr_matr_into_deformation_field(tr_matr_single, (fr.YResolution, fr.XResolution)).astype(np.float32)
+    #   remap_tile is needed to work around CV2.remap SHRT_MAX limitation (CV2.remap cannot work with images larger than 32767).
+    #   1. The deformation field is shifted - constant shifts (shift_x and shift_y) are subtracted so that the output array image has as few empty pixels as possible.
+    #   2. Then the image is deformed and returned along with shifts, indicating where this tile needs to be placed in the mosaic.
     tile_transformed, shift_x, shift_y = remap_tile(tile_initial_rescaled, df, verbose=verbose)
     if verbose:
         print('remap_tile returned image with shape:    ', tile_transformed.shape)
         print('remap_tile returned shift_x={:d},  shift_y={:d}'.format(shift_x, shift_y))
+    # crop the transformed tile and adjust shift_x accordingly
+    if left_crop > 0:
+        tile_transformed = tile_transformed[:, left_crop:]
+        shift_x -= left_crop
+
     loc_szy, loc_szx = tile_transformed.shape
     # shift_x <= 0, shift_y <= 0  (remap_tile convention: negative = tile extends left/above origin)
-    x0 = np.max((shift_x, 0))   # always 0
     xi = np.max((-shift_x, 0))  # mosaic x-start for this tile
     xa = np.min(((xi + loc_szx), montage_xsz-1))
-    y0 = np.max((shift_y, 0))   # always 0
     yi = np.max((-shift_y, 0))  # mosaic y-start for this tile
     ya = np.min(((yi + loc_szy), montage_ysz-1))
-    # Apply left_crop: remove the left margin strip from the deformed tile output
-    tile_transformed_cropped = tile_transformed[y0:(ya-yi), x0+left_crop:(xa-xi)]
+
+    tile_transformed_cropped = tile_transformed[0:(ya-yi), 0:(xa-xi)]
     weight_out = build_weight_array(tile_transformed_cropped.shape, weight_min = weight_min, weight_max = weight_max)
     weight_out[np.isnan(tile_transformed_cropped)] = 0
     tile_out = np.nan_to_num(tile_transformed_cropped, copy=False, nan=0.0) * weight_out
-    xi_out = xi
-    xa_out = xa-left_crop-x0
-    yi_out = yi
-    ya_out = ya-y0
+
     if verbose:
         print('transform_tile returning image with shape:             ', tile_out.shape)
-        print('transform_tile returning tile positions  xi, xa, yi, ya:', xi_out, xa_out, yi_out, ya_out)
-    return tile_out, weight_out, xi_out, xa_out, yi_out, ya_out
+        print('transform_tile returning tile positions  xi, xa, yi, ya:', xi, xa, yi, ya)
+    return tile_out, weight_out, xi, xa, yi, ya
     
 
 def overlay_montage_grid(ax, montage_object, **kwargs):
@@ -251,7 +254,9 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
 def remap_tile(img, deformation_field, **kwargs):
     '''
     Remap Image using CV2.remap (using deformation field). gleb.shtengel@gmail.com 11.2025
-    This is needed to work around CV2.remap SHRT_MAX limitation (CV2.remap cannot work with images larger than 32767).
+    remap_tile is needed to work around CV2.remap SHRT_MAX limitation (CV2.remap cannot work with images larger than 32767).
+    1. The deformation field is shifted - constant shifts (shift_x and shift_y) are subtracted so that the output array image has as few empty pixels as possible.
+    2. Then the image is deformed and returned along with shifts, indicating where this tile needs to be placed in the mosaic.
     
     Parameters:
     ---------
@@ -269,7 +274,6 @@ def remap_tile(img, deformation_field, **kwargs):
         verbose : bool
             If True, print out intermediate resulys. Default is False.
     
-    
     Returns:
     ---------- 
     image_deformed, shift_x, shift_y
@@ -280,7 +284,7 @@ def remap_tile(img, deformation_field, **kwargs):
     
     img_shape = img.shape
     shift_x = int(np.min((np.nanmin(deformation_field[:, :, 0]), 0))) # Find the leftmost source coordinate in the entire field — but only if it is negative.
-    shift_y = int(np.min((np.nanmin(deformation_field[:, :, 1]), 0))) # Find the topmost source coordinate in the entire field — but only if it is negative.
+    shift_y = int(np.min((np.nanmin(deformation_field[:, :, 1]), 0))) # Find the top-most source coordinate in the entire field — but only if it is negative.
     if verbose:
         print('shift_x={:d},  shift_y={:d}'.format(shift_x, shift_y))
     # df_shifted = deformation_field*1.0
