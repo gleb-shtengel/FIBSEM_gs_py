@@ -138,7 +138,7 @@ def transform_tile(tile_params, deformation_field, **kwargs):
     kwargs:
     -----------
     verbose : bool
-        If True, the inntermediate results are displaued. Default is False.
+        If True, the intermediate results are displayed. Default is False.
 
     Returns:
     ----------
@@ -165,7 +165,7 @@ def transform_tile(tile_params, deformation_field, **kwargs):
         df = convert_tr_matr_into_deformation_field(tr_matr_single, (fr.YResolution, fr.XResolution)).astype(np.float32)
     tile_transformed, shift_x, shift_y = remap_tile(tile_initial_rescaled, df, verbose=verbose)
     if verbose:
-        print('remap_tile returned image with shape:    ' tile_transformed.shape)
+        print('remap_tile returned image with shape:    ', tile_transformed.shape)
         print('remap_tile returned shift_x={:d},  shift_y={:d}'.format(shift_x, shift_y))
     loc_szy, loc_szx = tile_transformed.shape
     # shift_x <= 0, shift_y <= 0  (remap_tile convention: negative = tile extends left/above origin)
@@ -185,8 +185,8 @@ def transform_tile(tile_params, deformation_field, **kwargs):
     yi_out = yi
     ya_out = ya-y0
     if verbose:
-        print('transform_tile returning image with shape:             ' tile_out.shape)
-        print('transform_tile returning tile positions  xi, xa, yi, ya': xi_out, xa_out, yi_out, ya_out)
+        print('transform_tile returning image with shape:             ', tile_out.shape)
+        print('transform_tile returning tile positions  xi, xa, yi, ya:', xi_out, xa_out, yi_out, ya_out)
     return tile_out, weight_out, xi_out, xa_out, yi_out, ya_out
     
 
