@@ -1457,7 +1457,7 @@ class FIBSEM_mosaic_dataset:
         self.add_reverse_edges = kwargs.get('add_reverse_edges', False)
         self.diagonal_exclusion_threshold = kwargs.get('diagonal_exclusion_threshold', 0.75)
         self.U8_conversion = kwargs.get('U8_conversion', 'local')
-        left_crop = kwargs.get('left_crop', self.left_crop)
+        left_crop = kwargs.get('left_crop', 0)
         deformation_field = kwargs.get('deformation_field', np.nan)
         if self.ftype == 0:
             test_frame = FIBSEM_frame(fname0, ftype = self.ftype, calculate_scaled_images=False, read_header_only=True)
