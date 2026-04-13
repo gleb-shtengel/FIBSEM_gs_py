@@ -2012,7 +2012,7 @@ class FIBSEM_mosaic_dataset:
         if hasattr(self, 'left_crop'):
             left_crop = kwargs.get('left_crop', self.left_crop)
         else:
-            left_crop = kwargs('left_crop', 0)
+            left_crop = kwargs.get('left_crop', 0)
         if hasattr(self, 'deformation_field'):
             deformation_field = kwargs.get('deformation_field', self.deformation_field)
         else:
@@ -2147,7 +2147,7 @@ class FIBSEM_mosaic_dataset:
             if hasattr(self, 'left_crop'):
                 left_crop = kwargs.get('left_crop', self.left_crop)
             else:
-                left_crop = kwargs('left_crop', 0)
+                left_crop = kwargs.get('left_crop', 0)
             if hasattr(self, 'deformation_field'):
                 deformation_field = kwargs.get('deformation_field', self.deformation_field)
             else:
@@ -2329,7 +2329,7 @@ class FIBSEM_mosaic_dataset:
         if hasattr(self, 'left_crop'):
             left_crop = kwargs.get('left_crop', self.left_crop)
         else:
-            left_crop = kwargs('left_crop', 0)
+            left_crop = kwargs.get('left_crop', 0)
         if hasattr(self, 'deformation_field'):
             deformation_field = kwargs.get('deformation_field', self.deformation_field)
         else:
@@ -2649,7 +2649,7 @@ class FIBSEM_mosaic_dataset:
         if hasattr(self, 'left_crop'):
             left_crop = kwargs.get('left_crop', self.left_crop)
         else:
-            left_crop = kwargs('left_crop', 0)
+            left_crop = kwargs.get('left_crop', 0)
         if hasattr(self, 'deformation_field'):
             deformation_field = kwargs.get('deformation_field', self.deformation_field)
         else:
@@ -3072,7 +3072,7 @@ class FIBSEM_mosaic_dataset:
         if hasattr(self, 'left_crop'):
             left_crop = kwargs.get('left_crop', self.left_crop)
         else:
-            left_crop = kwargs('left_crop', 0)
+            left_crop = kwargs.get('left_crop', 0)
         if hasattr(self, 'deformation_field'):
             deformation_field = kwargs.get('deformation_field', self.deformation_field)
         else:
