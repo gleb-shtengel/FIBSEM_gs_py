@@ -8635,8 +8635,8 @@ def extract_keypoints_descr_files(params, deformation_field):
             Default is False. If True and this had already been performed, use existing results.
         save_deformed_image : boolean
             Used for debugging. Default is False.
-    deformation_field : 2D array
-        Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
+    deformation_field : 3D array, shape (YResolution, XResolution - left_crop, 2)
+        Deformation field for distortion corrections. Pass np.nan to skip.
         Deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
 
     Returns:
@@ -8676,10 +8676,10 @@ def extract_keypoints_descr_files(params, deformation_field):
 
         sift = cv2.SIFT_create(nfeatures=SIFT_nfeatures, nOctaveLayers=SIFT_nOctaveLayers, edgeThreshold=SIFT_edgeThreshold, contrastThreshold=SIFT_contrastThreshold, sigma=SIFT_sigma)
         img, d1, d2 = FIBSEM_frame(fl, ftype=ftype, calculate_scaled_images=False).RawImageA_8bit_thresholds(thr_min = 1.0e-3, thr_max = 1.0e-3, data_min = dmin, data_max = dmax, nbins=256)
-        if perform_deformation:
-            img = cv2.remap(img, deformation_field[:, :, 0].astype(np.float32), deformation_field[:, :, 1].astype(np.float32), interpolation=interpolation, borderValue=fill_value).astype(np.uint8)
         if left_crop > 0:
             img = img[:, left_crop:]
+        if perform_deformation:
+            img = cv2.remap(img, deformation_field[:, :, 0].astype(np.float32), deformation_field[:, :, 1].astype(np.float32), interpolation=interpolation, borderValue=fill_value).astype(np.uint8)
         if save_deformed_image:
             fnm_deformed_image = kwargs.get('fnm_deformed_image', os.path.splitext(fl)[0] + '_def_image.tif')
             tiff.imwrite(fnm_deformed_image, img)
@@ -8889,8 +8889,6 @@ def determine_transformations_files(params_dsf):
         'edges' (default) or 'center'. Start of search (registration error histogram evaluation).
     estimation : string
         'interval' (default) or 'count'. Returns a width of interval determined using search direction from above or total number of bins above half max (registration error histogram evaluation).
-    left_crop : int 
-        Cropping value for cropping the image from the left side (used along with deformation_field or on its own). Default is 0 - no cropping.
     image_margins : tuple of 2 ints
         Parts of images to be used. It is assumed that img1 is to the left and above of the img2.
         Subsets img1[-ymargin:, -xmargin:] and  img2[0:ymargin, 0:xmargin] will be used for correlation.
@@ -9575,9 +9573,9 @@ def SIFT_evaluation_dataset(fs, **kwargs):
         If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
     I0 : float
         Dark Count used for Intensity calculation. Default is 0.0.
-    deformation_field : 2D array
-         Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
-    deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
+    deformation_field : 3D array, shape (YResolution, XResolution - left_crop, 2)
+        Deformation field for distortion corrections. Pass np.nan to skip.
+        Deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
     interpolation : int
         Interpolation type as defined in CV2 (if deformation_field is not np.nan) . Default is cv2.INTER_LINEAR.
     fill_value = 0.0
@@ -12077,9 +12075,9 @@ class FIBSEM_dataset:
         SIFT_sigma : double
             The sigma of the Gaussian applied to the input image at the octave #0. Default is object attribute. SIFT library default is 1.6.
             If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
-        deformation_field : 2D array
-             Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
-        deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
+        deformation_field : 3D array, shape (YResolution, XResolution - left_crop, 2)
+            Deformation field for distortion corrections. Pass np.nan to skip.
+            Deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
         interpolation : int
             Interpolation type as defined in CV2 (if deformation_field is not np.nan) . Default is cv2.INTER_LINEAR.
         fill_value = 0.0

@@ -72,6 +72,7 @@ from FIBSEM_gs_py.FIBSEM_help_functions_gs import (check_DASK,
 from FIBSEM_gs_py.tif_stack_to_zarr import create_zarr_store, rechunk_s0, finalize_pyramid, _print_neuroglancer_info
 
 
+
 def build_weight_array(shape, **kwargs):
     '''
     Builds a 2D array of weights for image blending. gleb.shtengel@gmail.com 11.2025
@@ -100,100 +101,184 @@ def build_weight_array(shape, **kwargs):
     return weights
 
 
+def split_translation_int_fract(transformation_matrix):
+    '''
+    Split transformation_matrix into large integer shift and fractional transformation.
+
+    Parameters:
+        transformation_matrix : (3, 3) array — affine transformation matrix
+    Returns:
+        transformation_matrix_fract : (3, 3) float32 — matrix with fractional translations only
+        dx, dy : int — integer translation components extracted from the matrix
+    '''
+    transformation_matrix_fract = (transformation_matrix - np.floor(transformation_matrix)).astype(np.float32)
+    dx, dy = (transformation_matrix - transformation_matrix_fract)[0:2, 2].astype(np.int32)
+    return transformation_matrix_fract, dx, dy
+
+
+def combine_deformation_fields(DF1, DF2, interpolation=cv2.INTER_LINEAR):
+    """
+    Combine two deformation fields: DFjoint = DF2 ∘ DF1
+    i.e. first apply DF1, then DF2.
+
+    Parameters:
+        DF1: (YResolution, XResolution - left_crop, 2) float32 — local nonlinear warp, absolute coords in src_tile
+        DF2: (YResolution, XResolution - left_crop, 2) float32 — local shift (small enough to no violate CV2.remap SHRT_MAX limitation).
+        interpolation : int
+            Interpolation type to be used. default is cv2.INTER_LINEAR
+
+    Returns:
+        DFjoint:   (YResolution, XResolution - left_crop, 2) float32 — composed deformation field
+    """
+    DF1_x = DF1[..., 0].astype(np.float32)
+    DF1_y = DF1[..., 1].astype(np.float32)
+
+    DF2_x = DF2[..., 0].astype(np.float32)
+    DF2_y = DF2[..., 1].astype(np.float32)
+
+    DFjoint_x = cv2.remap(DF2_x, DF1_x, DF1_y, interpolation)
+    DFjoint_y = cv2.remap(DF2_y, DF1_x, DF1_y, interpolation)
+
+    return np.stack([DFjoint_x, DFjoint_y], axis=-1)
+
+
+def _add_warped_to_mosaic(tile, xi, yi, mosaic, mosaic_weight, **kwargs):
+    """
+    Warp and accumulate a tile into the mosaic using weighted blending.
+
+    Parameters:
+        tile:   2D array
+        xi, yi — integer mosaic placement coords [x, y]
+        mosaic:   output array to write into
+        mosaic_weight :  total mosaic weight for tile merging
+
+    kwargs:
+    weight_min : float
+        vmin for weight. Default is 1.
+    weight_max : float
+        vmax for weight. Default is 512
+    """
+
+    weight_min = kwargs.get('weight_min', 1.0)
+    weight_max = kwargs.get('weight_max', 512.0)
+    
+    mosaic_sy, mosaic_sx = mosaic.shape[:2]
+    tile_sy, tile_sx = tile.shape[:2]
+
+    xa = xi + tile_sx
+    ya = yi + tile_sy
+
+    # Clamp to mosaic bounds
+    cxi = max(xi, 0)
+    cyi = max(yi, 0)
+    cxa = min(xa, mosaic_sx)
+    cya = min(ya, mosaic_sy)
+
+    if cxi >= cxa or cyi >= cya:
+        return  # tile falls entirely outside mosaic
+        
+    # Corresponding region in warped tile
+    txi = cxi - xi
+    tyi = cyi - yi
+    txa = txi + (cxa - cxi)
+    tya = tyi + (cya - cyi)
+
+    tile_out = tile[tyi:tya, txi:txa]
+    tile_weight = build_weight_array(tile_out.shape, weight_min = weight_min, weight_max = weight_max)
+
+    nan_mask = np.isnan(tile_out)
+    tile_weight[nan_mask] = 0
+    tile_out = np.nan_to_num(tile_out, copy=True, nan=0.0)
+
+    mosaic[cyi:cya, cxi:cxa] += tile_out*tile_weight
+    mosaic_weight[cyi:cya, cxi:cxa] += tile_weight
+
+
 def transform_tile(tile_params, deformation_field, **kwargs):
     '''
     Transforms individual tile to add to the montage. gleb.shtengel@gmail.com 11.2025
+    Assumes following order of the tile transformations: left_crop ->  nonlinear transformation defined by deformation_field -> transformation determined by tr_matr_single
+    1. Apply left_crop.
+    2. Split tr_matr_single into large integer shift and fractional transformation.
+    3. Combine non-linear deformation defined by deformation_field with fractional transformation.
+    4. Perform the transformation determined by a combined field calculated in previous step.
+    5. Return the transformed image and coordinates for placing the transformed tile into the mosaic.
 
     Parameters:
     -----------
-    tile_params : list :  j, fl, image_name, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max, left_crop, I0, scale
+    tile_params : list :  j, fl, image_name, tr_matr_single, montage_ysz, montage_xsz, left_crop, I0, scale
         j : int, tile ID
         fl : str, filename for the tile
         image_name : str, image name ('RawImageA' or 'RawImageB')
         tr_matr_single : 3x3 array : transformation matrix (backward map: mosaic → corrected+cropped tile)
         montage_xsz : int : montage x-size in pixels
         montage_ysz : int : montage y-size in pixels
-        weight_min : np.float32 :  weight_min for weight
-        weight_max : np.float32 :  weight_max for weight
         left_crop : int : number of pixels to crop from the left of the deformed tile
         I0 : np.float32 : intensity offset for tile normalization
         scale : np.float32 : intensity scale for tile normalization
 
-    deformation_field : 3D array, shape (H, W, 2)
-        DISPLACEMENT (incremental) deformation field for distortion correction.
-        Must be DF_incr = DF_abs - identity, where DF_abs is the absolute coordinate map
-        used by cv2.remap (i.e., DF_abs[y,x] gives the raw-image source coordinate for
-        corrected pixel (y,x)).  DF_incr[y,x] = DF_abs[y,x] - [x, y].
+    deformation_field : 3D array, shape (YResolution, XResolution - left_crop, 2)
+        Deformation field for distortion correction.
         Pass np.nan (scalar) to skip distortion correction (registration only).
-
-        Compound transform when deformation_field is provided:
-            df = DF_incr + df0_abs
-               = (DF_abs - identity) + df0_abs
-               = DF_abs + (df0_abs - identity)
-               = DF_abs + registration_displacement
-        For a pure translation tr_matr_single this equals DF_abs[y,x] + [Tx, Ty],
-        which is the correct single-interpolation compound map (distortion + registration).
-        left_crop is then applied to the output of remap_tile to remove the left margin strip.
 
     kwargs:
     -----------
     verbose : bool
         If True, the intermediate results are displayed. Default is False.
+    interpolation : int
+        Default is cv2.INTER_LINEAR
+    border_value : float
+        borderValue for cv2.remap. Default is np.nan
+    border_mode : int
+        borderMode for cv2.remap. Default is cv2.BORDER_CONSTANT
 
     Returns:
     ----------
-    tile_out, weight_out, xi, xa-left_crop-x0, yi, ya-y0
+    tile_transformed, dx, dy
 
     '''
-    j, fl, image_name, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max, left_crop, I0, scale = tile_params
+    j, fl, image_name, tr_matr_single, montage_ysz, montage_xsz, left_crop, I0, scale = tile_params
     verbose = kwargs.get('verbose', False)
+    interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
+    border_value = kwargs.get('border_value', np.nan)
+    border_mode = kwargs.get('border_mode', cv2.BORDER_CONSTANT)
+
     fr = FIBSEM_frame(fl)
+    
+    # Step 1. Apply left_crop
     if image_name == 'RawImageB':
-        tile_initial = fr.RawImageB.astype(np.float32)
+        tile_initial = fr.RawImageB.astype(np.float32)[:, left_crop:]
     else:
-        tile_initial = fr.RawImageA.astype(np.float32)
+        tile_initial = fr.RawImageA.astype(np.float32)[:, left_crop:]
     tile_initial_rescaled = (tile_initial - I0) * scale + I0
+
+    # Step 2. Split tr_matr_single into large integer shift (dx, dy) and fractional transformation (transformation_matrix_fract).
+    transformation_matrix_fract, dx, dy = split_translation_int_fract(tr_matr_single)
+
+    # Step 3. Combine non-linear deformation defined by deformation_field with fractional transformation.
     perform_deformation = not np.all(np.isnan(deformation_field))
     if perform_deformation:
-        # df0_abs: absolute coordinate map for the registration transform alone (index_map='abs' is default)
-        df0_abs = convert_tr_matr_into_deformation_field(tr_matr_single, (fr.YResolution, fr.XResolution)).astype(np.float32)
-        # Compound map: DF_incr (displacement) + df0_abs (absolute) = DF_abs + registration_displacement
-        # For pure translation Tx,Ty: df[y,x] = [DF_abs[y,x,0]+Tx, DF_abs[y,x,1]+Ty]
-        df = deformation_field + df0_abs
+        df_tr_matr_fract = convert_tr_matr_into_deformation_field(transformation_matrix_fract, (fr.YResolution, fr.XResolution-left_crop)).astype(np.float32)
+        df_joint = combine_deformation_fields(deformation_field, df_tr_matr_fract, interpolation=interpolation)
     else:
         # No distortion correction — apply registration transform only
-        df = convert_tr_matr_into_deformation_field(tr_matr_single, (fr.YResolution, fr.XResolution)).astype(np.float32)
-    #   remap_tile is needed to work around CV2.remap SHRT_MAX limitation (CV2.remap cannot work with images larger than 32767).
-    #   1. The deformation field is shifted - constant shifts (shift_x and shift_y) are subtracted so that the output array image has as few empty pixels as possible.
-    #   2. Then the image is deformed and returned along with shifts, indicating where this tile needs to be placed in the mosaic.
-    tile_transformed, shift_x, shift_y = remap_tile(tile_initial_rescaled, df, verbose=verbose)
-    if verbose:
-        print('remap_tile returned image with shape:    ', tile_transformed.shape)
-        print('remap_tile returned shift_x={:d},  shift_y={:d}'.format(shift_x, shift_y))
-    # crop the transformed tile and adjust shift_x accordingly
-    if left_crop > 0:
-        tile_transformed = tile_transformed[:, left_crop:]
-        shift_x += left_crop
-        if verbose:
-            print('Applied left_crop: returned image with shape:    ', tile_transformed.shape)
-            print('Applied left_crop: returned shift_x={:d},  shift_y={:d}'.format(shift_x, shift_y))
+        df_joint = convert_tr_matr_into_deformation_field(transformation_matrix_fract, (fr.YResolution, fr.XResolution-left_crop)).astype(np.float32)
 
-    loc_szy, loc_szx = tile_transformed.shape
-    # shift_x <= 0, shift_y <= 0  (remap_tile convention: negative = tile extends left/above origin)
-    xi = np.max((-shift_x, 0))  # mosaic x-start for this tile
-    xa = np.min(((xi + loc_szx), montage_xsz-1))
-    yi = np.max((-shift_y, 0))  # mosaic y-start for this tile
-    ya = np.min(((yi + loc_szy), montage_ysz-1))
-
-    tile_transformed_cropped = tile_transformed[0:(ya-yi), 0:(xa-xi)]
-    weight_out = build_weight_array(tile_transformed_cropped.shape, weight_min = weight_min, weight_max = weight_max)
-    weight_out[np.isnan(tile_transformed_cropped)] = 0
-    tile_out = np.nan_to_num(tile_transformed_cropped, copy=False, nan=0.0) * weight_out
+    # Step 4 — Single remap: one interpolation on image data. Perform the transformation determined by a combined field calculated in previous step.
+    tile_transformed = cv2.remap(
+        tile_initial_rescaled,
+        df_joint[..., 0],
+        df_joint[..., 1],
+        interpolation,
+        borderMode=border_mode,
+        borderValue=border_value,
+    )
 
     if verbose:
-        print('transform_tile returning image with shape:             ', tile_out.shape)
-        print('transform_tile returning tile positions  xi, xa, yi, ya:', xi, xa, yi, ya)
-    return tile_out, weight_out, xi, xa, yi, ya
+        print('cv2.remap returned image with shape:    ', tile_transformed.shape)
+        print('Transformed tile will be placed with offsets dx={:d},  dy={:d}'.format(dx, dy))
+
+    return tile_transformed, dx, dy
     
 
 def overlay_montage_grid(ax, montage_object, **kwargs):
@@ -395,8 +480,8 @@ def find_Transform_ECC_DASK(params, deformation_field):
     Parameters:
     ----------
     params : list of [fname1, fname2, kwargs]
-    deformation_field : 2D array
-        Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
+    deformation_field : 3D array
+        Array with dimensions (YResolution, XResolution - left_crop, 2). Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
     
     ----------
     kwargs:
@@ -437,8 +522,8 @@ def find_Transform_ECC_DASK(params, deformation_field):
     if perform_deformation:
         if verbose:
             print('find_Transform_ECC_DASK: performing deformation and cropping, left_crop={:d}'.format(left_crop))
-        img1 = cv2.remap(FIBSEM_frame(fname1, ftype=ftype).RawImageA_8bit_thresholds()[0].astype(np.float32), deformation_field[:, :, 0].astype(np.float32), deformation_field[:, :, 1].astype(np.float32), interpolation=interpolation, borderValue=fill_value)[:, left_crop:].astype(np.uint8)
-        img2 = cv2.remap(FIBSEM_frame(fname2, ftype=ftype).RawImageA_8bit_thresholds()[0].astype(np.float32), deformation_field[:, :, 0].astype(np.float32), deformation_field[:, :, 1].astype(np.float32), interpolation=interpolation, borderValue=fill_value)[:, left_crop:].astype(np.uint8)
+        img1 = cv2.remap(FIBSEM_frame(fname1, ftype=ftype).RawImageA_8bit_thresholds()[0].astype(np.float32)[:, left_crop:], deformation_field[:, :, 0].astype(np.float32), deformation_field[:, :, 1].astype(np.float32), interpolation=interpolation, borderValue=fill_value).astype(np.uint8)
+        img2 = cv2.remap(FIBSEM_frame(fname2, ftype=ftype).RawImageA_8bit_thresholds()[0].astype(np.float32)[:, left_crop:], deformation_field[:, :, 0].astype(np.float32), deformation_field[:, :, 1].astype(np.float32), interpolation=interpolation, borderValue=fill_value).astype(np.uint8)
     else:
         if verbose:
             print('find_Transform_ECC_DASK: no deformation, left_crop={:d}'.format(left_crop))
@@ -497,15 +582,29 @@ def assemble_layer(params, deformation_field, **kwargs):
         verbose : boolean
             Display intermediate results.
     
+    deformation_field : 3D array
+        Array with dimensions (YResolution, XResolution - left_crop, 2). Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
+
     kwargs:
-        
-    deformation_field : 2D array
-        Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
+    -----------
+    verbose : bool
+    If True, the intermediate results are displayed. Default is False.
+    interpolation : int
+        Default is cv2.INTER_LINEAR
+    border_value : float
+        borderValue for cv2.remap. Default is np.nan
+    border_mode : int
+        borderMode for cv2.remap. Default is cv2.BORDER_CONSTANT
 
     Returns:
     ----------
     layer_mosaic, layer_id
     '''
+    verbose = kwargs.get('verbose', False)
+    interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
+    border_value = kwargs.get('border_value', np.nan)
+    border_mode = kwargs.get('border_mode', cv2.BORDER_CONSTANT)
+
     layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, \
     Xsize, Ysize, left_crop, tile_I0s, tile_scales, save_mrc, save_tif, tif_fname, \
     save_zarr, output_zarr_path, dtp, verbose = params
@@ -513,22 +612,35 @@ def assemble_layer(params, deformation_field, **kwargs):
     layer_mosaic_weights = np.zeros((Ysize, Xsize-left_crop), dtype=np.float32)
     tile_params_mult = []
     for fl, (j, tr_matr_single) in zip(tqdm(fls_layer, desc = 'Building tile parameter sets', display = verbose), enumerate(tr_matr_layer)):
-        #tile_params : list :  j, fl, image_name, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max, left_crop, I0, scale
-        tile_params_mult.append([j, fl, image_name, tr_matr_single, Ysize, Xsize, weight_min, weight_max, left_crop, tile_I0s[j], tile_scales[j]])
+        tile_params_mult.append([j, fl, image_name, tr_matr_single, Ysize, Xsize, left_crop, tile_I0s[j], tile_scales[j]])
+
+    kwargs_tt = {'verbose' : verbose,
+                'interpolation' : interpolation,
+                'border_value' : border_value,
+                'border_mode' : border_mode}
+
+    kwargs_awp = {'weight_min' : weight_min,
+                'weight_max' : weight_max}
+
+    # transform_tile(tile_params, deformation_field, **kwargs)
+    # tile_params : list :  j, fl, image_name, tr_matr_single, montage_ysz, montage_xsz, left_crop, I0, scale
+    # Returns: tile_transformed, dx, dy
+
     if len(tile_params_mult)>0:
         for tile_params in tqdm(tile_params_mult, desc = 'Building mosaic for layer_id={:d}'.format(layer_id), display = verbose):
             if verbose:
                 print('Performing transform_tile with the following parameters:')
                 print(tile_params)
-            tile_out, weight_out, xi, xa, yi,  ya = transform_tile(tile_params, deformation_field)
+            tile_out, xi, yi = transform_tile(tile_params, deformation_field, **kwargs_tt)
             if verbose:
                 print('Output is:')
-                print('tile_out.shape=', tile_out.shape, 'weight_out.shape=', weight_out.shape)
-                print('xi={:d}, xa={:d}, yi={:d},  ya={:d}'.format(xi, xa, yi,  ya))
-            layer_mosaic[yi:ya, xi:xa] = layer_mosaic[yi:ya, xi:xa] + tile_out
-            layer_mosaic_weights[yi:ya, xi:xa] = layer_mosaic_weights[yi:ya, xi:xa] + weight_out
+                print('tile_out.shape=', tile_out.shape)
+                print('xi={:d}, yi={:d}'.format(xi, yi))
+            _add_warped_to_mosaic(tile_out, xi, yi, layer_mosaic, layer_mosaic_weights, **kwargs_awp)
+        
         layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*len(fls_layer)) 
         layer_mosaic = np.nan_to_num(layer_mosaic / layer_mosaic_weights, nan=fill_value)
+
         if save_tif:
             tiff.imwrite(tif_fname, layer_mosaic.astype(dtp))
         if save_zarr:
@@ -1210,6 +1322,11 @@ class FIBSEM_mosaic_dataset:
             If 1 then the data is assumed uint8, otherwise int16
         U8_conversion : str
             Range selection for U8 conversion. Options are: 'global', 'sliding', and 'local'. Default is 'local'.
+        left_crop : int
+            left image margine to be cropped off BEFORE distortion correction (via deformation field) is applied. Default is 0.
+        deformation_field : 3D array
+            Array with dimensions (YResolution, XResolution - left_crop, 2). Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
+            Deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
         DASK_client_retries : int
             Number of allowed automatic retries if a task fails. Default is 3.
         Sample_ID : str
@@ -1292,19 +1409,7 @@ class FIBSEM_mosaic_dataset:
         dtp : Data Type
             Python data type for saving. Default is np.int16.
         pad_edges : boolean
-            If True, the data will be padded before transformation to avoid clipping.
-        perform_deformation : boolean
-            If True - the data is deformed (in addition to transformation defined above) using the deformation field data defined below.
-        deformation_type : str
-            Type of Deformation. Options are:
-                'post_1DY'  - Default. Deformation is performed AFTER the matrix transformation using 1D deformation field with only Y-coordinate components (all pixels along X-axis are deformed the same way).
-                'prior_1DY' - Deformation is performed PRIOR to the matrix transformation using 1D deformation field with only Y-coordinate components (all pixels along X-axis are deformed the same way).
-                'post_1DX'  - Deformation is performed AFTER the matrix transformation using 1D deformation field with only X-coordinate components (all pixels along Y-axis are deformed the same way).
-                'prior_1DX' - Deformation is performed PRIOR to the matrix transformation using 1D deformation field with only X-coordinate components (all pixels along Y-axis are deformed the same way).
-                'post_2D'   - Deformation is performed AFTER the matrix transformation using 2D deformation field.
-                'prior_2D'  - Deformation is performed PRIOR to the matrix transformation using 2D deformation field.
-        deformation_sigma :  list of 1 or two floats.
-            Gaussian width of smoothing (units of pixels). Default is 50.    
+            If True, the data will be padded before transformation to avoid clipping. 
         disp_res : boolean
             If False, the intermediate printouts will be suppressed. Default is True.
         save_res_png  : boolean
@@ -1352,6 +1457,8 @@ class FIBSEM_mosaic_dataset:
         self.add_reverse_edges = kwargs.get('add_reverse_edges', False)
         self.diagonal_exclusion_threshold = kwargs.get('diagonal_exclusion_threshold', 0.75)
         self.U8_conversion = kwargs.get('U8_conversion', 'local')
+        left_crop = kwargs.get('left_crop', self.left_crop)
+        deformation_field = kwargs.get('deformation_field', np.nan)
         if self.ftype == 0:
             test_frame = FIBSEM_frame(fname0, ftype = self.ftype, calculate_scaled_images=False, read_header_only=True)
             self.MachineID = test_frame.MachineID
@@ -1826,8 +1933,10 @@ class FIBSEM_mosaic_dataset:
             CDF threshold for determining the minimum data value. Default is object attribute.
         thr_max : float
             CDF threshold for determining the maximum data value. Default is object attribute.
+        left_crop : int
+            left image margine to be cropped off BEFORE distortion correction (via deformation field) is applied. Default is object attribute (or 0 if absent).
         deformation_field : 3D array
-            Deformation field for distortion corrections to be executed before SIFT. Default is np.nan - no distortion correction.
+            Array with dimensions (YResolution, XResolution - left_crop, 2). Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
             Deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
         nbins : int
             Number of histogram bins for building the PDF and CDF. Default is object attribute.
@@ -1900,7 +2009,14 @@ class FIBSEM_mosaic_dataset:
         SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", self.SIFT_contrastThreshold)
         SIFT_edgeThreshold = kwargs.get("SIFT_edgeThreshold", self.SIFT_edgeThreshold)
         SIFT_sigma = kwargs.get("SIFT_sigma", self.SIFT_sigma)
-        deformation_field = kwargs.get('deformation_field', np.nan)
+        if hasattr(self, 'left_crop'):
+            left_crop = kwargs.get('left_crop', self.left_crop)
+        else:
+            left_crop = kwargs('left_crop', 0)
+        if hasattr(self, 'deformation_field'):
+            deformation_field = kwargs.get('deformation_field', self.deformation_field)
+        else:
+            deformation_field = kwargs.get('deformation_field', np.nan)
         interpolation = kwargs.get('interpolation', self.interpolation)
         fill_value = kwargs.get('fill_value', 0)
         use_existing_data = kwargs.get('use_existing_data', False)
@@ -1916,7 +2032,8 @@ class FIBSEM_mosaic_dataset:
                     'SIFT_sigma' : SIFT_sigma,
                     'use_existing_data' : use_existing_data,
                     'interpolation' : interpolation,
-                    'fill_value' : fill_value}
+                    'fill_value' : fill_value,
+                    'left_crop' : left_crop}
 
         if U8_conversion == 'sliding':
             params_s3 = []
@@ -2027,8 +2144,14 @@ class FIBSEM_mosaic_dataset:
             else:
                 DASK_client_retries = kwargs.get("DASK_client_retries", 3)
             ftype = kwargs.get("ftype", self.ftype)
-            deformation_field = kwargs.get('deformation_field', np.nan)
-            left_crop = kwargs.get('left_crop', 0)
+            if hasattr(self, 'left_crop'):
+                left_crop = kwargs.get('left_crop', self.left_crop)
+            else:
+                left_crop = kwargs('left_crop', 0)
+            if hasattr(self, 'deformation_field'):
+                deformation_field = kwargs.get('deformation_field', self.deformation_field)
+            else:
+                deformation_field = kwargs.get('deformation_field', np.nan)
             if hasattr(self, 'pair_margins'):
                 pair_margins = kwargs.get('pair_margins', self.pair_margins)
             else:
@@ -2070,7 +2193,8 @@ class FIBSEM_mosaic_dataset:
                         'start' : start,
                         'estimation' : estimation,
                         'use_existing_data' : use_existing_data,
-                        'verbose' : verbose}
+                        'verbose' : verbose,
+                        'left_crop' : left_crop}
 
                 fname1 = fnms_kpts[index_pair[0]]
                 fname2 = fnms_kpts[index_pair[1]]
@@ -2084,7 +2208,6 @@ class FIBSEM_mosaic_dataset:
                 dt_kwargs['warp_matrix'] = np.array([[1, 0, -FirstPixels_delta[0]], [0, 1, -FirstPixels_delta[1]]], dtype=np.float32)
                 dt_kwargs['image_margins'] = (ymargin, xmargin)
                 dt_kwargs['image_shape'] = (self.YResolution, self.XResolution)
-                dt_kwargs['left_crop'] = left_crop
                 param_SIFT = [fname1, fname2, dt_kwargs]
                 params_SIFT.append(param_SIFT)
                 if verbose:
@@ -2138,9 +2261,10 @@ class FIBSEM_mosaic_dataset:
         ftype : int
             File type (0 - Shan Xu's .dat, 1 - tif). Default is object attribute.
         left_crop : int
-            Cropping value for cropping the image from the left side (used along with deformation_field or on its own). Default is 0 - no cropping.
+            left image margine to be cropped off BEFORE distortion correction (via deformation field) is applied. Default is object attribute (or 0 if absent).
         deformation_field : 3D array
-            Deformation field for distortion corrections to be executed before SIFT. Default is np.nan - no distortion correction
+            Deformation field for distortion corrections to be executed before SIFT. Default is image attribute (or np.nan if absent - no distortion correction).
+            Deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
         thr_min : float
             CDF threshold for determining the minimum data value. Default is object attribute.
         thr_max : float
@@ -2202,8 +2326,14 @@ class FIBSEM_mosaic_dataset:
             int_results is pd.Dataframe with columns: ['X-src', 'Y-src', 'X-src transformed', 'Y-src transformed', 'X-dst', 'Y-dst', 'X-error', 'Y-error', 'Int-src', 'Int-dst']
         '''
         ftype = kwargs.get("ftype", self.ftype)
-        left_crop = kwargs.get('left_crop', 0)
-        deformation_field = kwargs.get('deformation_field', np.nan)
+        if hasattr(self, 'left_crop'):
+            left_crop = kwargs.get('left_crop', self.left_crop)
+        else:
+            left_crop = kwargs('left_crop', 0)
+        if hasattr(self, 'deformation_field'):
+            deformation_field = kwargs.get('deformation_field', self.deformation_field)
+        else:
+            deformation_field = kwargs.get('deformation_field', np.nan)
         perform_deformation = not np.all(np.isnan(deformation_field))
         if perform_deformation:
             perform_deformation_text = 'True'
@@ -2331,7 +2461,6 @@ class FIBSEM_mosaic_dataset:
         dt_kwargs['warp_matrix'] = np.array([[1, 0, -FirstPixels_delta[0]], [0, 1, -FirstPixels_delta[1]]], dtype=np.float32)
         dt_kwargs['image_margins'] = (ymargin, xmargin)
         dt_kwargs['image_shape'] = (self.YResolution, self.XResolution)
-        dt_kwargs['left_crop'] = left_crop
         param_SIFT = [fname1, fname2, dt_kwargs]
 
         transformations_result = determine_transformations_files(param_SIFT)
@@ -2490,10 +2619,11 @@ class FIBSEM_mosaic_dataset:
             Parts of images to be used. It is assumed that first image (img1) in each target_pair is to the left and above of the second image (img2).
             Subsets img1[-ymargin:, :] and  img2[0:ymargin, :] or img1[:, -xmargin:] and  img2[:, 0:xmargin] will be used for correlation.
             Default is full images, so image_margins = (self.YResolution, self.XResolution)
+        left_crop : int
+            left image margine to be cropped off BEFORE distortion correction (via deformation field) is applied. Default is object attribute (or 0 if absent).
         deformation_field : 3D array
-            Deformation field for distortion corrections to be executed before ECC. Default is np.nan - no distortion correction
-        left_crop : int 
-            Cropping value for cropping the image from the left side (used along with deformation_field or on its own). Default is 0 - no cropping.
+            Deformation field for distortion corrections to be executed before SIFT. Default is image attribute (or np.nan if absent - no distortion correction).
+            Deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
         motion : target transformation.
             Default is cv2.MOTION_TRANSLATION
         repeats : int
@@ -2516,8 +2646,14 @@ class FIBSEM_mosaic_dataset:
         repeats = kwargs.get('repeats', 2)
         verbose = kwargs.get('verbose', False)
         use_existing_data = kwargs.get('use_existing_data', False)
-        deformation_field = kwargs.get('deformation_field', np.nan)
-        left_crop = kwargs.get('left_crop', 0)
+        if hasattr(self, 'left_crop'):
+            left_crop = kwargs.get('left_crop', self.left_crop)
+        else:
+            left_crop = kwargs('left_crop', 0)
+        if hasattr(self, 'deformation_field'):
+            deformation_field = kwargs.get('deformation_field', self.deformation_field)
+        else:
+            deformation_field = kwargs.get('deformation_field', np.nan)
         if hasattr(self, 'pair_margins'):
             pair_margins = kwargs.get('pair_margins', self.pair_margins)
         else:
@@ -2879,14 +3015,11 @@ class FIBSEM_mosaic_dataset:
             vmin for weight. Default is 1.
         weight_max : float
             vmax for weight. Default is 512.
-        deformation_field : 3D array, shape (H, W, 2)
-            DISPLACEMENT (incremental) deformation field for lens-distortion correction.
-            Must be DF_incr = DF_abs - identity, where DF_abs is the absolute cv2.remap coordinate map.
-            DF_incr is combined with each tile's registration map in transform_tile as a single
-            compound interpolation: df = DF_incr + df0_abs.  left_crop is applied after remapping.
-            Default is np.nan (scalar) — no distortion correction, registration only.
         left_crop : int
-            Cropping value for cropping the image from the left side (used along with deformation_field or on its own). Default is 0 - no cropping.
+            left image margine to be cropped off BEFORE distortion correction (via deformation field) is applied. Default is object attribute (or 0 if absent).
+        deformation_field : 3D array
+            Deformation field for distortion corrections to be executed before SIFT. Default is image attribute (or np.nan if absent - no distortion correction).
+            Deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
         fill_value : int
             The value to assign to pixels outside the transformed image bounds. Default is -10000.
         perform_intensity_normalization : boolean
@@ -2936,8 +3069,14 @@ class FIBSEM_mosaic_dataset:
             return np.nan
         DASK_client = kwargs.get('DASK_client', '')
         use_DASK, status_update_address = check_DASK(DASK_client, verbose=True)
-        deformation_field = kwargs.get('deformation_field', np.nan)
-        left_crop = kwargs.get('left_crop', 0)
+        if hasattr(self, 'left_crop'):
+            left_crop = kwargs.get('left_crop', self.left_crop)
+        else:
+            left_crop = kwargs('left_crop', 0)
+        if hasattr(self, 'deformation_field'):
+            deformation_field = kwargs.get('deformation_field', self.deformation_field)
+        else:
+            deformation_field = kwargs.get('deformation_field', np.nan)
         weight_min = kwargs.get('weight_min', 1.0)
         weight_max = kwargs.get('weight_max', 512.0)
         fill_value = kwargs.get('fill_value', -10000) 
@@ -2958,55 +3097,29 @@ class FIBSEM_mosaic_dataset:
         linewidth = kwargs.get('linewidth', 0.25)
         fontsize = kwargs.get('fontsize', 6)
         color = kwargs.get('color', 'cyan')
+        dtp = kwargs.get('dtp', np.int16)
         dpi = kwargs.get('dpi', 300)
 
         if hasattr(self, "DASK_client_retries"):
             DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
         else:
-            DASK_client_retries = kwargs.get("DASK_client_retries", 3) 
+            DASK_client_retries = kwargs.get("DASK_client_retries", 3)
+
+        save_mrc = False
+        save_tif = False
+        tif_fname = ''
+        save_zarr= False
+        output_zarr_path = ''
 
         layer_mosaics = []
-        layer_mosaic_weights = np.zeros((self.Ysize, self.Xsize-left_crop), dtype=np.float32)
+        
         for image_name in image_names:
-            layer_mosaic = np.zeros((self.Ysize, self.Xsize-left_crop), dtype=np.float32)
-            tile_params_mult = []
-            xy_limits = []
-            for fl, (j, tr_matr_single) in zip(tqdm(self.fls[layer_id].ravel(), desc = 'Building tile parameter sets', display = verbose), enumerate(self.tr_matr[layer_id])):
-                #tile_params : list :  j, fl, image_name, tr_matr_single, montage_ysz, montage_xsz, weight_min, weight_max, left_crop, I0, scale
-                if hasattr(self, 'tile_scales') and perform_intensity_normalization:
-                    tile_params_mult.append([j, fl, image_name, tr_matr_single, self.Ysize, self.Xsize, weight_min, weight_max, left_crop, self.tile_I0s[layer_id, j], self.tile_scales[layer_id, j]])
-                else:
-                    tile_params_mult.append([j, fl, image_name, tr_matr_single, self.Ysize, self.Xsize, weight_min, weight_max, left_crop, 0, 1.0])
-            if len(tile_params_mult)>0:
-                if use_DASK:
-                    if verbose:
-                        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Started DASK Computation')
-                    shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)
-                    futures = DASK_client.map(transform_tile, tile_params_mult, deformation_field=shared_data_future)
-                    for future in as_completed(futures):
-                        tile_out, weight_out, xi, xa, yi, ya = future.result()
-                        xy_limits.append([xi, xa, yi, ya])
-                        layer_mosaic[yi:ya, xi:xa] = layer_mosaic[yi:ya, xi:xa] + tile_out
-                        layer_mosaic_weights[yi:ya, xi:xa] = layer_mosaic_weights[yi:ya, xi:xa] + weight_out
-                        future.cancel()
-                    if verbose:
-                        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Finished post-DASK Computation')
-                else:
-                    for tile_params in tqdm(tile_params_mult, desc = 'Building mosaic for layer_id={:d}'.format(layer_id), display = verbose):
-                        if verbose:
-                            print('Performing transform_tile with the following parameters:')
-                            print(tile_params)
-                        tile_out, weight_out, xi, xa, yi,  ya = transform_tile(tile_params, deformation_field)
-                        xy_limits.append([xi, xa, yi, ya])
-                        if verbose:
-                            print('Output is:')
-                            print('tile_out.shape=', tile_out.shape, 'weight_out.shape=', weight_out.shape)
-                            print('xi={:d}, xa={:d}, yi={:d},  ya={:d}'.format(xi, xa, yi,  ya))
-                        layer_mosaic[yi:ya, xi:xa] = layer_mosaic[yi:ya, xi:xa] + tile_out
-                        layer_mosaic_weights[yi:ya, xi:xa] = layer_mosaic_weights[yi:ya, xi:xa] + weight_out
-                layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*self.n_tiles_per_layer)
-                layer_mosaic = np.nan_to_num(layer_mosaic / layer_mosaic_weights, nan=-fill_value)
-                layer_mosaics.append(layer_mosaic)
+            params = [layer_id, self.fls[layer_id].ravel(), image_name, self.tr_matr[layer_id], weight_min, weight_max,
+                                        fill_value, self.Xsize, self.Ysize, left_crop,
+                                        self.tile_I0s[layer_id], self.tile_scales[layer_id],
+                                        save_mrc, save_tif, tif_fname, save_zarr, output_zarr_path, dtp, verbose]
+
+            layer_mosaics.append(assemble_layer(params, deformation_field, **kwargs_al)[0])
 
         if save_snapshot:
             if ifDetB:
