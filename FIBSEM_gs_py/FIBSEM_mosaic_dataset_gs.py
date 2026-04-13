@@ -588,7 +588,7 @@ def assemble_layer(params, deformation_field, **kwargs):
     kwargs:
     -----------
     verbose : bool
-    If True, the intermediate results are displayed. Default is False.
+        If True, the intermediate results are displayed. Default is False.
     interpolation : int
         Default is cv2.INTER_LINEAR
     border_value : float
@@ -3051,6 +3051,14 @@ class FIBSEM_mosaic_dataset:
             The name of the image to perform these operations (default is self.fls[layer_id].ravel()[0].replace('0-0-0.dat', 'layer_mosaic.jpg')).
         verbose : boolean
             Display intermediate results. Default is False.
+        verbose : bool
+            If True, the intermediate results are displayed. Default is False.
+        interpolation : int
+            Default is cv2.INTER_LINEAR
+        border_value : float
+            borderValue for cv2.remap. Default is np.nan
+        border_mode : int
+            borderMode for cv2.remap. Default is cv2.BORDER_CONSTANT
 
         Returns:
         ----------
@@ -3082,6 +3090,9 @@ class FIBSEM_mosaic_dataset:
         fill_value = kwargs.get('fill_value', -10000) 
         perform_intensity_normalization = kwargs.get('perform_intensity_normalization', False)
         verbose = kwargs.get('verbose', False)
+        interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
+        border_value = kwargs.get('border_value', np.nan)
+        border_mode = kwargs.get('border_mode', cv2.BORDER_CONSTANT)
         data_dir = kwargs.get('data_dir', self.data_dir)
         save_snapshot = kwargs.get('save_snapshot', False)
         snapshot_fname = kwargs.get('snapshot_fname',  self.fls[layer_id].ravel()[0].replace('0-0-0.dat', 'snapshot.png'))
@@ -3110,8 +3121,12 @@ class FIBSEM_mosaic_dataset:
         tif_fname = ''
         save_zarr= False
         output_zarr_path = ''
-
         layer_mosaics = []
+
+        kwargs_al = {'verbose' : verbose,
+                    'interpolation' : interpolation,
+                    'border_value' : border_value,
+                    'border_mode' : border_mode}
         
         for image_name in image_names:
             params = [layer_id, self.fls[layer_id].ravel(), image_name, self.tr_matr[layer_id], weight_min, weight_max,
@@ -3378,9 +3393,14 @@ class FIBSEM_mosaic_dataset:
         neuroglancer_display_axes_order : list
             Axes order for Neuroglancer display e.g. ["x","y","z"].
             Default is None (Z-Y-X, matching storage order).
-        
-        verbose : boolean
-            Display intermediate results. Default is False.
+        verbose : bool
+            If True, the intermediate results are displayed. Default is False.
+        interpolation : int
+            Default is cv2.INTER_LINEAR
+        border_value : float
+            borderValue for cv2.remap. Default is np.nan
+        border_mode : int
+            borderMode for cv2.remap. Default is cv2.BORDER_CONSTANT
         
         Returns:
         ----------
@@ -3398,6 +3418,9 @@ class FIBSEM_mosaic_dataset:
         fill_value = kwargs.get('fill_value', -10000)
         kwargs['fill_value'] = fill_value
         verbose = kwargs.get('verbose', False)
+        interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
+        border_value = kwargs.get('border_value', np.nan)
+        border_mode = kwargs.get('border_mode', cv2.BORDER_CONSTANT)
         use_DASK, status_update_address = check_DASK(DASK_client, verbose=True)
         deformation_field = kwargs.get('deformation_field', np.nan)
         #DF0 = convert_tr_matr_into_deformation_field(np.eye(3,3).astype(np.float32), (self.YResolution, self.XResolution))
@@ -3492,6 +3515,11 @@ class FIBSEM_mosaic_dataset:
         else:
             DASK_client_retries = kwargs.get("DASK_client_retries", 3)
 
+        kwargs_al = {'verbose' : verbose,
+            'interpolation' : interpolation,
+            'border_value' : border_value,
+            'border_mode' : border_mode}
+
         if fnm_types:            
             if save_mrc:
                 mrc_filename = os.path.splitext(fnm_mosaic_stack)[0] + '.mrc'
@@ -3524,7 +3552,7 @@ class FIBSEM_mosaic_dataset:
                                         save_mrc, save_tif, tif_fname, save_zarr, output_zarr_path, dtp, verbose])
             if use_DASK:
                 shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)
-                futures = DASK_client.map(assemble_layer, params_mult, deformation_field = shared_data_future, retries = DASK_client_retries)
+                futures = DASK_client.map(assemble_layer, params_mult, deformation_field = shared_data_future, retries = DASK_client_retries, **kwargs_al)
                 for future in tqdm(as_completed(futures), total=len(futures), desc='Assembling and saving mosaic layers'):
                     mosaic_out, j = future.result()
                     if save_mrc:
@@ -3532,7 +3560,7 @@ class FIBSEM_mosaic_dataset:
                     future.cancel()
             else:
                 for j, params in enumerate(tqdm(params_mult, desc = 'Assembling and saving mosaic layers')):
-                    mosaic_out = assemble_layer(params, deformation_field)[0]
+                    mosaic_out = assemble_layer(params, deformation_field, **kwargs_al)[0]
                     if save_mrc:
                         mrc_new.data[j, :, :] = mosaic_out
             if save_mrc:
