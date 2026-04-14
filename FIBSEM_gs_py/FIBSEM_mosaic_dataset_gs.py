@@ -638,7 +638,7 @@ def assemble_layer(params, deformation_field, **kwargs):
         if use_DASK:
             shared_data_future = local_DASK_client.scatter(deformation_field, broadcast=True)
             futures = local_DASK_client.map(transform_tile, tile_params_mult, deformation_field = shared_data_future, retries = DASK_client_retries, **kwargs_tt)
-            for future in tqdm(as_completed(futures), total=len(futures), desc='Assembling the mosaic layer'):
+            for future in tqdm(as_completed(futures), total=len(futures), desc='Assembling the ' + image_name + ' mosaic layer'):
                     tile_out, xi, yi = future.result()
                     _add_warped_to_mosaic(tile_out, xi, yi, layer_mosaic, layer_mosaic_weights, **kwargs_awp)
                     future.cancel()
@@ -665,7 +665,7 @@ def assemble_layer(params, deformation_field, **kwargs):
             return layer_mosaic, layer_id
         else:
             return np.zeros(1), layer_id
-            
+
     return np.zeros(1), layer_id
 
 
@@ -3149,6 +3149,8 @@ class FIBSEM_mosaic_dataset:
                     'DASK_client_retries' : DASK_client_retries}
         
         for image_name in image_names:
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S  ') + ' processing the data for ' + image_name)
             params = [layer_id, self.fls[layer_id].ravel(), image_name, self.tr_matr[layer_id], weight_min, weight_max,
                                         fill_value, self.Xsize, self.Ysize, left_crop,
                                         self.tile_I0s[layer_id], self.tile_scales[layer_id],
@@ -3157,6 +3159,8 @@ class FIBSEM_mosaic_dataset:
             layer_mosaics.append(assemble_layer(params, deformation_field, **kwargs_al)[0])
 
         if save_snapshot:
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S  ') + ' saving snapshot')
             if ifDetB:
                 try:
                     vminB, vmaxB = get_min_max_thresholds(layer_mosaics[1], thr_min=thr_min, thr_max=thr_max, nbins=nbins, disp_res=False)
@@ -3271,6 +3275,8 @@ class FIBSEM_mosaic_dataset:
             fig.savefig(snapshot_fname, dpi=dpi)
         
         if save_to_dat:
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S  ') + ' saving into .dat file')
             '''
             Save existing montage into a new .dat file. Only works on .dat files at the moment. ©G.Shtengel 11/2025 gleb.shtengel@gmail.com
             '''
@@ -3299,6 +3305,8 @@ class FIBSEM_mosaic_dataset:
                 np.moveaxis(np.array(layer_mosaics), 0, 2).astype(dt).tofile(f)
 
         if save_images:
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S  ') + ' saving images into .jpg files')
             imf1, imf2 = os.path.splitext(image_fname)
             for j, layer_mosaic in enumerate(layer_mosaics):
                 sx = 15.0
