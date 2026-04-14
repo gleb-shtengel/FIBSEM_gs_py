@@ -595,6 +595,10 @@ def assemble_layer(params, deformation_field, **kwargs):
         borderValue for cv2.remap. Default is np.nan
     border_mode : int
         borderMode for cv2.remap. Default is cv2.BORDER_CONSTANT
+    local_DASK_client : client
+        local DASK client, may be used if called by assemble_layer_mosaic
+    DASK_client_retries : int
+        Number of DASK_client_retries. Default is 3.
 
     Returns:
     ----------
@@ -604,6 +608,10 @@ def assemble_layer(params, deformation_field, **kwargs):
     interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
     border_value = kwargs.get('border_value', np.nan)
     border_mode = kwargs.get('border_mode', cv2.BORDER_CONSTANT)
+    local_DASK_client = kwargs.get('local_DASK_client', '')
+    DASK_client_retries = kwargs.get('DASK_client_retries', 3)
+
+    use_DASK, status = check_DASK(local_DASK_client, verbose = False)
 
     layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, \
     Xsize, Ysize, left_crop, tile_I0s, tile_scales, return_layer_array, save_tif, tif_fname, \
@@ -627,16 +635,24 @@ def assemble_layer(params, deformation_field, **kwargs):
     # Returns: tile_transformed, dx, dy
 
     if len(tile_params_mult)>0:
-        for tile_params in tqdm(tile_params_mult, desc = 'Building mosaic for layer_id={:d}'.format(layer_id), display = verbose):
-            if verbose:
-                print('Performing transform_tile with the following parameters:')
-                print(tile_params)
-            tile_out, xi, yi = transform_tile(tile_params, deformation_field, **kwargs_tt)
-            if verbose:
-                print('Output is:')
-                print('tile_out.shape=', tile_out.shape)
-                print('xi={:d}, yi={:d}'.format(xi, yi))
-            _add_warped_to_mosaic(tile_out, xi, yi, layer_mosaic, layer_mosaic_weights, **kwargs_awp)
+        if use_DASK:
+            shared_data_future = local_DASK_client.scatter(deformation_field, broadcast=True)
+            futures = local_DASK_client.map(transform_tile, tile_params_mult, deformation_field = shared_data_future, retries = DASK_client_retries, **kwargs_tt)
+            for future in tqdm(as_completed(futures), total=len(futures), desc='Assembling the mosaic layer'):
+                    tile_out, xi, yi = future.result()
+                    _add_warped_to_mosaic(tile_out, xi, yi, layer_mosaic, layer_mosaic_weights, **kwargs_awp)
+                    future.cancel()
+        else:
+            for tile_params in tqdm(tile_params_mult, desc = 'Building mosaic for layer_id={:d}'.format(layer_id), display = verbose):
+                if verbose:
+                    print('Performing transform_tile with the following parameters:')
+                    print(tile_params)
+                tile_out, xi, yi = transform_tile(tile_params, deformation_field, **kwargs_tt)
+                if verbose:
+                    print('Output is:')
+                    print('tile_out.shape=', tile_out.shape)
+                    print('xi={:d}, yi={:d}'.format(xi, yi))
+                _add_warped_to_mosaic(tile_out, xi, yi, layer_mosaic, layer_mosaic_weights, **kwargs_awp)
         
         layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*len(fls_layer)) 
         layer_mosaic = np.nan_to_num(layer_mosaic / layer_mosaic_weights, nan=fill_value)
@@ -649,6 +665,8 @@ def assemble_layer(params, deformation_field, **kwargs):
             return layer_mosaic, layer_id
         else:
             return np.zeros(1), layer_id
+            
+    return np.zeros(1), layer_id
 
 
 def generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs):
@@ -3126,7 +3144,9 @@ class FIBSEM_mosaic_dataset:
         kwargs_al = {'verbose' : verbose,
                     'interpolation' : interpolation,
                     'border_value' : border_value,
-                    'border_mode' : border_mode}
+                    'border_mode' : border_mode,
+                    'local_DASK_client' : DASK_client,
+                    'DASK_client_retries' : DASK_client_retries}
         
         for image_name in image_names:
             params = [layer_id, self.fls[layer_id].ravel(), image_name, self.tr_matr[layer_id], weight_min, weight_max,
