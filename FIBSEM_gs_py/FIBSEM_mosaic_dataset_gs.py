@@ -137,8 +137,8 @@ def combine_deformation_fields(DF1, DF2, interpolation=cv2.INTER_LINEAR):
     DF2_x = DF2[..., 0].astype(np.float32)
     DF2_y = DF2[..., 1].astype(np.float32)
 
-    DFjoint_x = cv2.remap(DF2_x, DF1_x, DF1_y, interpolation)
-    DFjoint_y = cv2.remap(DF2_y, DF1_x, DF1_y, interpolation)
+    DFjoint_x = cv2.remap(DF2_x, DF1_x, DF1_y, interpolation, borderMode=cv2.BORDER_CONSTANT,    borderValue=np.nan)
+    DFjoint_y = cv2.remap(DF2_y, DF1_x, DF1_y, interpolation, borderMode=cv2.BORDER_CONSTANT,    borderValue=np.nan)
 
     return np.stack([DFjoint_x, DFjoint_y], axis=-1)
 
