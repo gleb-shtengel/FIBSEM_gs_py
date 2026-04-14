@@ -3030,6 +3030,8 @@ class FIBSEM_mosaic_dataset:
         
         kwargs:
         ----------
+        image_names : str
+            String of Image names. Default is ['RawImageA', 'RawImageB'] if both are available, ['RawImageA'] otherwise.
         weight_min : float
             vmin for weight. Default is 1.
         weight_max : float
@@ -3088,9 +3090,10 @@ class FIBSEM_mosaic_dataset:
             ifDetB = (self.DetB != 'None')
         else:
             ifDetB = False
-        image_names = ['RawImageA']
+        image_names_default = ['RawImageA']
         if ifDetB:
-            image_names.append('RawImageB')
+            image_names_default.append('RawImageB')
+        image_names = kwargs.get('image_names', image_names_default)
         if layer_id<-1 or layer_id>self.nz_tiles-1:
             print('layer_id parameter {:d} is out of range: -1 to {:d}'.format(layer_id, self.nz_tiles))
             return np.nan
