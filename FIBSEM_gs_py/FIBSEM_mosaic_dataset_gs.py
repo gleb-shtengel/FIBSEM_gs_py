@@ -544,7 +544,7 @@ def assemble_layer(params, deformation_field, **kwargs):
     ----------
     params = [layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max,
           fill_value, Xsize, Ysize, left_crop, tile_I0s, tile_scales,
-          save_mrc, save_tif, tif_fname, save_zarr, output_zarr_path, dtp, verbose]
+          return_layer_array, save_tif, tif_fname, save_zarr, output_zarr_path, dtp, verbose]
         layer_id : int
             Layer ID should be a value between -1 and self.nz_tiles-1. -1 means the last layer will be assembled.
         fls_layer : list
@@ -565,8 +565,8 @@ def assemble_layer(params, deformation_field, **kwargs):
             Overall Mosaic height (pixels).
         left_crop : int 
             Cropping value for cropping the image from the left side (used along with deformation_field or on its own).
-        save_mrc : bool
-            If True, the layer mosaic is output as an array for saving into mrc file by a caller
+        return_layer_array : bool
+            If True, the layer mosaic array is returned to the caller. If False, np.zeros(1) is returned.
         save_tif : bool
             If True, the layer mosaic is saved into tif file
         tif_fname : str
@@ -606,7 +606,7 @@ def assemble_layer(params, deformation_field, **kwargs):
     border_mode = kwargs.get('border_mode', cv2.BORDER_CONSTANT)
 
     layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, \
-    Xsize, Ysize, left_crop, tile_I0s, tile_scales, save_mrc, save_tif, tif_fname, \
+    Xsize, Ysize, left_crop, tile_I0s, tile_scales, return_layer_array, save_tif, tif_fname, \
     save_zarr, output_zarr_path, dtp, verbose = params
     layer_mosaic = np.zeros((Ysize, Xsize-left_crop), dtype=np.float32)
     layer_mosaic_weights = np.zeros((Ysize, Xsize-left_crop), dtype=np.float32)
@@ -645,7 +645,7 @@ def assemble_layer(params, deformation_field, **kwargs):
             tiff.imwrite(tif_fname, layer_mosaic.astype(dtp))
         if save_zarr:
             _zarr.open(output_zarr_path, mode='r+')['s0'][layer_id, :, :] = layer_mosaic
-        if save_mrc:
+        if return_layer_array:
             return layer_mosaic, layer_id
         else:
             return np.zeros(1), layer_id
@@ -3116,7 +3116,7 @@ class FIBSEM_mosaic_dataset:
         else:
             DASK_client_retries = kwargs.get("DASK_client_retries", 3)
 
-        save_mrc = False
+        return_layer_array = True
         save_tif = False
         tif_fname = ''
         save_zarr= False
@@ -3132,7 +3132,7 @@ class FIBSEM_mosaic_dataset:
             params = [layer_id, self.fls[layer_id].ravel(), image_name, self.tr_matr[layer_id], weight_min, weight_max,
                                         fill_value, self.Xsize, self.Ysize, left_crop,
                                         self.tile_I0s[layer_id], self.tile_scales[layer_id],
-                                        save_mrc, save_tif, tif_fname, save_zarr, output_zarr_path, dtp, verbose]
+                                        return_layer_array, save_tif, tif_fname, save_zarr, output_zarr_path, dtp, verbose]
 
             layer_mosaics.append(assemble_layer(params, deformation_field, **kwargs_al)[0])
 
@@ -3445,8 +3445,10 @@ class FIBSEM_mosaic_dataset:
             os.makedirs(save_folder, exist_ok=True)
         
         save_mrc = False
+        return_layer_array = False
         if 'mrc' in fnm_types:
             save_mrc = True
+            return_layer_array = True
             '''
             mode 0 -> uint8
             mode 1 -> int16
@@ -3544,12 +3546,12 @@ class FIBSEM_mosaic_dataset:
                     params_mult.append([layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max,
                                         fill_value, self.Xsize, self.Ysize, left_crop,
                                         self.tile_I0s[layer_id], self.tile_scales[layer_id],
-                                        save_mrc, save_tif, tif_fname, save_zarr, output_zarr_path, dtp, verbose])
+                                        return_layer_array, save_tif, tif_fname, save_zarr, output_zarr_path, dtp, verbose])
                 else:
                     params_mult.append([layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max,
                                         fill_value, self.Xsize, self.Ysize, left_crop,
                                         np.zeros(len(fls_layer)), np.ones(len(fls_layer)),
-                                        save_mrc, save_tif, tif_fname, save_zarr, output_zarr_path, dtp, verbose])
+                                        return_layer_array, save_tif, tif_fname, save_zarr, output_zarr_path, dtp, verbose])
             if use_DASK:
                 shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)
                 futures = DASK_client.map(assemble_layer, params_mult, deformation_field = shared_data_future, retries = DASK_client_retries, **kwargs_al)
