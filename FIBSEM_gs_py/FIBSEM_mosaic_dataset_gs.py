@@ -112,7 +112,7 @@ def split_translation_int_fract(transformation_matrix):
         dx, dy : int — integer translation components extracted from the matrix
     '''
     transformation_matrix_fract = (transformation_matrix - np.floor(transformation_matrix)).astype(np.float32)
-    dx, dy = (transformation_matrix - transformation_matrix_fract)[0:2, 2].astype(np.int32)
+    dx, dy = (transformation_matrix_fract - transformation_matrix)[0:2, 2].astype(np.int32)
     return transformation_matrix_fract, dx, dy
 
 
@@ -3080,7 +3080,7 @@ class FIBSEM_mosaic_dataset:
 
         Returns:
         ----------
-        layer_mosaics, layer_id, layer_mosaic_weights, xy_limits
+        layer_mosaics, layer_id
         
         '''
         if hasattr(self, 'DetB'):
@@ -3347,7 +3347,7 @@ class FIBSEM_mosaic_dataset:
                     image_fname_loc = imf1 + '_' + self.DetA.strip('\x00') + imf2
                 fig.savefig(image_fname_loc, dpi=dpi)
 
-        return layer_mosaics, layer_id, layer_mosaic_weights, xy_limits
+        return layer_mosaics, layer_id
 
 
     def save_stack(self, **kwargs):
