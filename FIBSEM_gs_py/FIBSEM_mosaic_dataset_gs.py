@@ -111,7 +111,8 @@ def split_translation_int_fract(transformation_matrix):
         transformation_matrix_fract : (3, 3) float32 — matrix with fractional translations only
         dx, dy : int — integer translation components extracted from the matrix
     '''
-    transformation_matrix_fract = (transformation_matrix - np.floor(transformation_matrix)).astype(np.float32)
+    transformation_matrix_fract = (transformation_matrix - np.floor(transformation_matrix)+ np.eye(3,3)).astype(np.float32)
+    #transformation_matrix_fract = (transformation_matrix - np.floor(transformation_matrix)).astype(np.float32)
     dx, dy = (transformation_matrix_fract - transformation_matrix)[0:2, 2].astype(np.int32)
     return transformation_matrix_fract, dx, dy
 
@@ -638,7 +639,7 @@ def assemble_layer(params, deformation_field, **kwargs):
         if use_DASK:
             shared_data_future = local_DASK_client.scatter(deformation_field, broadcast=True)
             futures = local_DASK_client.map(transform_tile, tile_params_mult, deformation_field = shared_data_future, retries = DASK_client_retries, **kwargs_tt)
-            for future in tqdm(as_completed(futures), total=len(futures), desc='Assembling the ' + image_name + ' mosaic layer'):
+            for future in tqdm(as_completed(futures), total=len(futures), desc='Assembling ' + image_name + ' mosaic layer'):
                     tile_out, xi, yi = future.result()
                     _add_warped_to_mosaic(tile_out, xi, yi, layer_mosaic, layer_mosaic_weights, **kwargs_awp)
                     future.cancel()
