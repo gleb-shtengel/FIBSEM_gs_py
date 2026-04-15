@@ -1476,8 +1476,8 @@ class FIBSEM_mosaic_dataset:
         self.add_reverse_edges = kwargs.get('add_reverse_edges', False)
         self.diagonal_exclusion_threshold = kwargs.get('diagonal_exclusion_threshold', 0.75)
         self.U8_conversion = kwargs.get('U8_conversion', 'local')
-        left_crop = kwargs.get('left_crop', 0)
-        deformation_field = kwargs.get('deformation_field', np.nan)
+        self.left_crop = kwargs.get('left_crop', 0)
+        self.deformation_field = kwargs.get('deformation_field', np.nan)
         if self.ftype == 0:
             test_frame = FIBSEM_frame(fname0, ftype = self.ftype, calculate_scaled_images=False, read_header_only=True)
             self.MachineID = test_frame.MachineID
@@ -2091,10 +2091,10 @@ class FIBSEM_mosaic_dataset:
             Parts of images to be used. It is assumed that first image (img1) in each target_pair is to the left and above of the second image (img2).
             Subsets img1[-ymargin:, :] and  img2[0:ymargin, :] or img1[:, -xmargin:] and  img2[:, 0:xmargin] will be used for correlation.
             Default is full images, so image_margins = (self.YResolution, self.XResolution)
-        deformation_field : 3D array
-            Deformation field for distortion corrections to be executed before SIFT. Default is np.nan - no distortion correction
         left_crop : int 
             Cropping value for cropping the image from the left side (used along with deformation_field or on its own). Default is 0 - no cropping.
+        deformation_field : 3D array
+            Deformation field for distortion corrections to be executed before SIFT. Default is np.nan - no distortion correction.
         TransformType : object reference
             Transformation model used for determining the transformation matrix from Key-Point pairs. Default is object attribute.
             Choose from the following options:
@@ -2701,15 +2701,14 @@ class FIBSEM_mosaic_dataset:
                      'motion' : motion,
                      'criteria' : criteria,
                      'use_existing_data' : use_existing_data,
-                     'verbose' : verbose}
+                     'verbose' : verbose,
+                     'left_crop' : left_crop,
+                     'image_margins' : pair_margins}
             fname1 = fls[index_pair[0]]
             fname2 = fls[index_pair[1]]
             index_loc0, index_loc1 = np.mod(index_pair, self.n_tiles_per_layer)
             FirstPixels_delta = self.FirstPixels[index_loc1] - self.FirstPixels[index_loc0]
-            ymargin, xmargin = pair_margins
             dt_kwargs['warp_matrix'] = np.array([[1, 0, -FirstPixels_delta[0]], [0, 1, -FirstPixels_delta[1]]], dtype=np.float32)
-            dt_kwargs['image_margins'] = (ymargin, xmargin)
-            dt_kwargs['left_crop'] = left_crop
             param_ECC = [fname1, fname2, dt_kwargs]
             params_ECC.append(param_ECC)
         if use_DASK:
@@ -3386,10 +3385,10 @@ class FIBSEM_mosaic_dataset:
             vmin for weight. Default is 1
         weight_max : float
             vmax for weight. Default is 2048
-        deformation_field : 3D array
-            Deformation field for distortion corrections to be executed before ECC. Default is np.nan - no distortion correction
         left_crop : int 
             Cropping value for cropping the image from the left side (used along with deformation_field or on its own). Default is 0 - no cropping.
+        deformation_field : 3D array
+            Deformation field for distortion corrections to be executed before ECC. Default is np.nan - no distortion correction.
         fill_value : int
             The value to assign to pixels outside the transformed image bounds. Default is -10000.
         perform_intensity_normalization : boolean
@@ -3445,7 +3444,7 @@ class FIBSEM_mosaic_dataset:
         image_name = kwargs.get('image_name', 'RawImageA')
         weight_min = kwargs.get('weight_min', 1.0)
         kwargs['weight_min'] = weight_min 
-        weight_max = kwargs.get('weight_max', 2048.0)
+        weight_max = kwargs.get('weight_max', 512.0)
         kwargs['weight_max'] = weight_max 
         fill_value = kwargs.get('fill_value', -10000)
         kwargs['fill_value'] = fill_value
@@ -3454,10 +3453,14 @@ class FIBSEM_mosaic_dataset:
         border_value = kwargs.get('border_value', np.nan)
         border_mode = kwargs.get('border_mode', cv2.BORDER_CONSTANT)
         use_DASK, status_update_address = check_DASK(DASK_client, verbose=True)
-        deformation_field = kwargs.get('deformation_field', np.nan)
-        #DF0 = convert_tr_matr_into_deformation_field(np.eye(3,3).astype(np.float32), (self.YResolution, self.XResolution))
-        #kwargs['deformation_field'] = deformation_field - DF0
-        left_crop = kwargs.get('left_crop', 0)
+        if hasattr(self, 'left_crop'):
+            left_crop = kwargs.get('left_crop', self.left_crop)
+        else:
+            left_crop = kwargs.get('left_crop', 0)
+        if hasattr(self, 'deformation_field'):
+            deformation_field = kwargs.get('deformation_field', self.deformation_field)
+        else:
+            deformation_field = kwargs.get('deformation_field', np.nan)
         kwargs['left_crop'] = left_crop
         fnm_mosaic_stack = kwargs.get('fnm_mosaic_stack', self.fnm_mosaic_stack)
         fnm_types = kwargs.get("fnm_types", ['mrc'])
