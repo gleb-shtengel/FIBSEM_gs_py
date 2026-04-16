@@ -1600,6 +1600,50 @@ def Perform_2D_fit(img, estimator, **kwargs):
     return intercept, coefs, mse, img_correction_array
 
 
+def flatten_image_fast(img, intercept, coefs, degree, bins):
+    '''
+    Flatten a single image using polynomial fit coefficients.
+    Builds the rescaling 2D array on-the-fly from the polynomial
+    coefficients and intercept, avoiding storage of full-resolution
+    correction arrays.
+
+    The correction surface is reconstructed as:
+        predicted_surface = PolynomialFeatures(degree).fit_transform(Xf) @ coefs + intercept
+        img_correction_array = mean(predicted_surface) / predicted_surface
+
+    Parameters:
+    ----------
+    img : 2D array
+        Image to be flattened. For 'RawImageA'/'RawImageB' sources, this should be
+        the offset-subtracted image (e.g., RawImageA - Scaling[1,0]).
+        For 'ImageA'/'ImageB' sources, this should be the scaled image directly.
+    intercept : float
+        Intercept of the polynomial fit (from Perform_2D_fit).
+    coefs : 1D array
+        Coefficients of the polynomial fit (from Perform_2D_fit).
+    degree : int
+        Degree of the polynomial features used in fitting.
+    bins : int
+        Binning factor used during fitting (for coordinate scaling).
+
+    Returns:
+    ----------
+    flattened_image : 2D array
+        The flattened image (same shape as img).
+    '''
+    ysz, xsz = img.shape
+    yf, xf = np.indices((ysz, xsz))
+    xf_1d = xf.ravel() / bins
+    yf_1d = yf.ravel() / bins
+    Xf = np.vstack((xf_1d, yf_1d)).T
+
+    poly = PolynomialFeatures(degree)
+    Xf_poly = poly.fit_transform(Xf)
+    predicted_surface = (Xf_poly @ coefs + intercept).reshape(ysz, xsz)
+    img_correction_array = np.mean(predicted_surface) / predicted_surface
+
+    return img * img_correction_array
+
 
 ##############################################
 #      Two-Frame Image processing Functions
@@ -7925,6 +7969,7 @@ class FIBSEM_frame:
         img_correction_arrays = []
         img_correction_coeffs = []
         img_correction_intercepts = []
+        img_correction_degrees = []
         for j, image_name in enumerate(image_names):
             if image_name == 'RawImageA':
                 img = self.RawImageA - self.Scaling[1,0]
@@ -7964,18 +8009,21 @@ class FIBSEM_frame:
             img_correction_arrays.append(img_correction_array)
             img_correction_coeffs.append(coefs)
             img_correction_intercepts.append(intercept)
+            img_correction_degrees.append(Fit_kwargs['degree'])
         kwargs['res_fname'] = res_fname
 
         if calc_corr:
-            self.image_correction_sources = image_names
             self.img_correction_arrays = img_correction_arrays
             if save_correction_binary:
                 bin_fname = res_fname.replace('png', 'bin')
                 pickle.dump([image_names, img_correction_arrays], open(bin_fname, 'wb')) # saves source name and correction array into the binary file
                 self.image_correction_file = res_fname.replace('png', 'bin')
                 print('Image Flattening Info saved into the binary file: ', self.image_correction_file)
-        #self.intercept = intercept
+        self.image_correction_sources = image_names
         self.img_correction_coeffs = img_correction_coeffs
+        self.img_correction_intercepts = img_correction_intercepts
+        self.img_correction_degrees = img_correction_degrees
+        self.img_correction_bins = bins
         return img_correction_intercepts, img_correction_coeffs, img_correction_arrays
 
         
@@ -8044,6 +8092,88 @@ class FIBSEM_frame:
                     flattened_image = self.ImageA
                 if image_correction_source == 'ImageB':
                     flattened_image = self.ImageB
+            flattened_images.append(flattened_image)
+
+        return flattened_images
+
+
+    def flatten_image_fast(self, **kwargs):
+        '''
+        Flatten the image(s) using stored polynomial coefficients, without requiring
+        full-resolution img_correction_arrays. Calls the standalone function
+        flatten_image_fast(img, intercept, coefs, degree, bins) for each detector image.
+
+        Flattening parameters must be determined first via determine_field_fattening_parameters().
+
+        kwargs:
+        ----------
+        image_correction_sources : list of str
+            Options are: 'RawImageA' (default), 'RawImageB', 'ImageA', 'ImageB'
+        img_correction_intercepts : list of float
+            Intercepts from polynomial fits.
+        img_correction_coeffs : list of 1D arrays
+            Coefficients from polynomial fits.
+        img_correction_degrees : list of int
+            Polynomial degrees used in fitting.
+        img_correction_bins : int
+            Binning factor used during fitting.
+
+        Returns:
+        ----------
+        flattened_images : list of 2D arrays
+        '''
+        if hasattr(self, 'image_correction_sources'):
+            image_correction_sources = kwargs.get("image_correction_sources", self.image_correction_sources)
+        else:
+            image_correction_sources = kwargs.get("image_correction_sources", [False])
+
+        img_correction_intercepts = kwargs.get("img_correction_intercepts",
+            getattr(self, 'img_correction_intercepts', [False]))
+        img_correction_coeffs = kwargs.get("img_correction_coeffs",
+            getattr(self, 'img_correction_coeffs', [False]))
+        img_correction_degrees = kwargs.get("img_correction_degrees",
+            getattr(self, 'img_correction_degrees', [2]))
+        bins = kwargs.get("img_correction_bins",
+            getattr(self, 'img_correction_bins', 10))
+
+        calculate_scaled_images = (
+            ('ImageA' in image_correction_sources) and (not hasattr(self, 'ImageA'))
+        ) or (
+            ('ImageB' in image_correction_sources) and (not hasattr(self, 'ImageB'))
+        )
+        if calculate_scaled_images:
+            self.calculate_scaled_images()
+
+        flattened_images = []
+        for source, intercept, coefs, degree in zip(
+                image_correction_sources,
+                img_correction_intercepts,
+                img_correction_coeffs,
+                img_correction_degrees):
+
+            if (source is not False) and (coefs is not False):
+                if source == 'RawImageA':
+                    img = self.RawImageA - self.Scaling[1, 0]
+                    flattened_image = flatten_image_fast(img, intercept, coefs, degree, bins) + self.Scaling[1, 0]
+                elif source == 'RawImageB':
+                    img = self.RawImageB - self.Scaling[1, 1]
+                    flattened_image = flatten_image_fast(img, intercept, coefs, degree, bins) + self.Scaling[1, 1]
+                elif source == 'ImageA':
+                    flattened_image = flatten_image_fast(self.ImageA, intercept, coefs, degree, bins)
+                elif source == 'ImageB':
+                    flattened_image = flatten_image_fast(self.ImageB, intercept, coefs, degree, bins)
+            else:
+                if source == 'RawImageA':
+                    flattened_image = self.RawImageA
+                elif source == 'RawImageB':
+                    flattened_image = self.RawImageB
+                elif source == 'ImageA':
+                    flattened_image = self.ImageA
+                elif source == 'ImageB':
+                    flattened_image = self.ImageB
+                else:
+                    continue
+
             flattened_images.append(flattened_image)
 
         return flattened_images
