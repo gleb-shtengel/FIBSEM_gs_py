@@ -614,6 +614,19 @@ def assemble_layer(params, deformation_field, **kwargs):
         local DASK client, may be used if called by assemble_layer_mosaic
     DASK_client_retries : int
         Number of DASK_client_retries. Default is 3.
+    flatten_mosaic : bool
+        If True, apply mosaic-level field flattening. Default is False.
+    mosaic_correction_intercept : float
+        Intercept for this image_name's polynomial fit.
+    mosaic_correction_coefs : 1D array
+        Coefficients for this image_name's polynomial fit.
+    mosaic_correction_degree : int
+        Polynomial degree.
+    mosaic_correction_bins : int
+        Binning factor used during fitting.
+    mosaic_Scaling_offset : float
+        Scaling offset for Raw images (e.g. Scaling[1,0]). Only used when flatten_mosaic=True.
+        Set to 0.0 for ImageA/ImageB sources. Default is 0.0.
 
     Returns:
     ----------
@@ -625,6 +638,12 @@ def assemble_layer(params, deformation_field, **kwargs):
     border_mode = kwargs.get('border_mode', cv2.BORDER_CONSTANT)
     local_DASK_client = kwargs.get('local_DASK_client', '')
     DASK_client_retries = kwargs.get('DASK_client_retries', 3)
+    flatten_mosaic = kwargs.get('flatten_mosaic', False)
+    mosaic_correction_intercept = kwargs.get('mosaic_correction_intercept', None)
+    mosaic_correction_coefs = kwargs.get('mosaic_correction_coefs', None)
+    mosaic_correction_degree = kwargs.get('mosaic_correction_degree', 2)
+    mosaic_correction_bins = kwargs.get('mosaic_correction_bins', 10)
+    mosaic_Scaling_offset = kwargs.get('mosaic_Scaling_offset', 0.0)
 
     use_DASK, status = check_DASK(local_DASK_client, verbose = False)
 
@@ -671,6 +690,14 @@ def assemble_layer(params, deformation_field, **kwargs):
         
         layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*len(fls_layer)) 
         layer_mosaic = np.nan_to_num(layer_mosaic / layer_mosaic_weights, nan=fill_value)
+        if flatten_mosaic and mosaic_correction_coefs is not None:
+            # Subtract offset, flatten, re-add offset
+            layer_mosaic = flatten_image_fast(
+                layer_mosaic - mosaic_Scaling_offset,
+                mosaic_correction_intercept,
+                mosaic_correction_coefs,
+                mosaic_correction_degree,
+                mosaic_correction_bins) + mosaic_Scaling_offset
 
         if save_tif:
             tiff.imwrite(tif_fname, layer_mosaic.astype(dtp))
@@ -3056,6 +3083,9 @@ class FIBSEM_mosaic_dataset:
             Deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
         fill_value : int
             The value to assign to pixels outside the transformed image bounds. Default is -10000.
+        flatten_mosaic : boolean
+            If True, apply mosaic-level field flattening using parameters from 
+            determine_mosaic_flattening_parameters(). Default is False.
         perform_intensity_normalization : boolean
             Default is False. If True and tile_scales attribute is avilable, perform intensity normalization (tile intensity rescaling).
         DASK_client : DASK client. If set to empty string '' (default), local computations are performed.
@@ -3125,6 +3155,7 @@ class FIBSEM_mosaic_dataset:
         fill_value = kwargs.get('fill_value', -10000) 
         perform_intensity_normalization = kwargs.get('perform_intensity_normalization', False)
         verbose = kwargs.get('verbose', False)
+        flatten_mosaic = kwargs.get('flatten_mosaic', False)
         interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
         border_value = kwargs.get('border_value', np.nan)
         border_mode = kwargs.get('border_mode', cv2.BORDER_CONSTANT)
@@ -3165,7 +3196,7 @@ class FIBSEM_mosaic_dataset:
                     'local_DASK_client' : DASK_client,
                     'DASK_client_retries' : DASK_client_retries}
         
-        for image_name in image_names:
+        for j, image_name in enumerate(image_names):
             if verbose:
                 print(time.strftime('%Y/%m/%d  %H:%M:%S  ') + ' processing the data for ' + image_name)
             params = [layer_id, self.fls[layer_id].ravel(), image_name, self.tr_matr[layer_id], weight_min, weight_max,
@@ -3173,7 +3204,23 @@ class FIBSEM_mosaic_dataset:
                                         self.tile_I0s[layer_id], self.tile_scales[layer_id],
                                         return_layer_array, save_tif, tif_fname, save_zarr, output_zarr_path, dtp, verbose]
 
-            layer_mosaics.append(assemble_layer(params, deformation_field, **kwargs_al)[0])
+            # Add per-image flattening parameters
+            kwargs_al_local = dict(kwargs_al)
+            if flatten_mosaic and hasattr(self, 'mosaic_correction_coeffs'):
+                kwargs_al_local['flatten_mosaic'] = True
+                kwargs_al_local['mosaic_correction_intercept'] = self.mosaic_correction_intercepts[j]
+                kwargs_al_local['mosaic_correction_coefs'] = self.mosaic_correction_coeffs[j]
+                kwargs_al_local['mosaic_correction_degree'] = self.mosaic_correction_degrees[j]
+                kwargs_al_local['mosaic_correction_bins'] = self.mosaic_correction_bins
+                # Determine offset for Raw images
+                if image_name == 'RawImageA':
+                    kwargs_al_local['mosaic_Scaling_offset'] = self.Scaling[1, 0]
+                elif image_name == 'RawImageB':
+                    kwargs_al_local['mosaic_Scaling_offset'] = self.Scaling[1, 1]
+                else:
+                    kwargs_al_local['mosaic_Scaling_offset'] = 0.0
+
+            layer_mosaics.append(assemble_layer(params, deformation_field, **kwargs_al_local)[0])
 
         if save_snapshot:
             if verbose:
@@ -3577,8 +3624,9 @@ class FIBSEM_mosaic_dataset:
             with pyramid levels. Use empty list if do not want to save the data.
         image_name : str
             Image name ('RawImageA' or 'RawImageB'). Default is 'RawImageA'.
-        flatten_image : boolean
-            perform image flattening
+        flatten_mosaic : boolean
+            If True, apply mosaic-level field flattening using parameters from
+            determine_mosaic_flattening_parameters(). Default is False.
         image_correction_file : str
             full path to a binary filename that contains source name (image_correction_source) and correction array (img_correction_array)
         tif_folder : str
@@ -3655,6 +3703,7 @@ class FIBSEM_mosaic_dataset:
         fill_value = kwargs.get('fill_value', -10000)
         kwargs['fill_value'] = fill_value
         verbose = kwargs.get('verbose', False)
+        flatten_mosaic = kwargs.get('flatten_mosaic', False)
         interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
         border_value = kwargs.get('border_value', np.nan)
         border_mode = kwargs.get('border_mode', cv2.BORDER_CONSTANT)
@@ -3762,6 +3811,26 @@ class FIBSEM_mosaic_dataset:
             'interpolation' : interpolation,
             'border_value' : border_value,
             'border_mode' : border_mode}
+
+
+        if flatten_mosaic and hasattr(self, 'mosaic_correction_coeffs'):
+            # Find the index of image_name in mosaic_correction_sources
+            try:
+                corr_idx = self.mosaic_correction_sources.index(image_name)
+                kwargs_al['flatten_mosaic'] = True
+                kwargs_al['mosaic_correction_intercept'] = self.mosaic_correction_intercepts[corr_idx]
+                kwargs_al['mosaic_correction_coefs'] = self.mosaic_correction_coeffs[corr_idx]
+                kwargs_al['mosaic_correction_degree'] = self.mosaic_correction_degrees[corr_idx]
+                kwargs_al['mosaic_correction_bins'] = self.mosaic_correction_bins
+                if image_name == 'RawImageA':
+                    kwargs_al['mosaic_Scaling_offset'] = self.Scaling[1, 0]
+                elif image_name == 'RawImageB':
+                    kwargs_al['mosaic_Scaling_offset'] = self.Scaling[1, 1]
+                else:
+                    kwargs_al['mosaic_Scaling_offset'] = 0.0
+            except ValueError:
+                print('Warning: no mosaic flattening parameters found for ' + image_name)
+                flatten_mosaic = False
 
         if fnm_types:            
             if save_mrc:
