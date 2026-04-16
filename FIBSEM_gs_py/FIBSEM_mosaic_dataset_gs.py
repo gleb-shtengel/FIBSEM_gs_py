@@ -3391,6 +3391,8 @@ class FIBSEM_mosaic_dataset:
         degrees : int or list of int
             Polynomial degree(s). Default is 2.
         Analysis_ROIs : list of lists: [[left, right, top, bottom]]
+        save_correction_binary : boolean
+            Save the image_name and img_correction_array data into a binary file. Default is False.
         ignore_Y : boolean
         linear_Y : boolean
         Xsect : int
@@ -3414,6 +3416,7 @@ class FIBSEM_mosaic_dataset:
         disp_res = kwargs.get("disp_res", True)
         verbose = kwargs.get("verbose", True)
         Analysis_ROIs = kwargs.get("Analysis_ROIs", [])
+        save_correction_binary = kwargs.get("save_correction_binary", False)
         save_res_png = kwargs.get("save_res_png", False)
         res_fname = kwargs.get("res_fname", '_Mosaic_Image_Flattening.png')
         dpi = kwargs.get("dpi", 300)
@@ -3444,6 +3447,7 @@ class FIBSEM_mosaic_dataset:
         mosaic_correction_coeffs = []
         mosaic_correction_intercepts = []
         mosaic_correction_degrees = []
+        mosaic_correction_arrays = []
 
         for j, (image_name, mosaic) in enumerate(zip(image_names, layer_mosaics)):
             # subtract offset for Raw images (same as FIBSEM_frame version)
@@ -3459,7 +3463,7 @@ class FIBSEM_mosaic_dataset:
             Ysect = kwargs.get("Ysect", ysz // 2)
 
             Fit_kwargs = {'image_name': image_name,
-                          'calc_corr': False,
+                          'calc_corr': save_correction_binary,
                           'ignore_Y': ignore_Y,
                           'linear_Y': linear_Y,
                           'Xsect': Xsect,
@@ -3475,16 +3479,23 @@ class FIBSEM_mosaic_dataset:
             except:
                 Fit_kwargs['degree'] = degrees
 
-            intercept, coefs, mse, _ = Perform_2D_fit(img, estimator, **Fit_kwargs)
+            intercept, coefs, mse, mosaic_correction_array = Perform_2D_fit(img, estimator, **Fit_kwargs)
             mosaic_correction_coeffs.append(coefs)
             mosaic_correction_intercepts.append(intercept)
             mosaic_correction_degrees.append(Fit_kwargs['degree'])
+            mosaic_correction_arrays.append()
 
         self.mosaic_correction_sources = image_names
         self.mosaic_correction_coeffs = mosaic_correction_coeffs
         self.mosaic_correction_intercepts = mosaic_correction_intercepts
         self.mosaic_correction_degrees = mosaic_correction_degrees
         self.mosaic_correction_bins = bins
+
+        if save_correction_binary:
+            bin_fname = res_fname.replace('png', 'bin')
+            pickle.dump([image_names, mosaic_correction_arrays], open(bin_fname, 'wb')) # saves source name and correction array into the binary file
+            self.image_correction_file = bin_fname
+            print('Image Flattening Info saved into the binary file: ', self.image_correction_file)
 
         return mosaic_correction_intercepts, mosaic_correction_coeffs
 
