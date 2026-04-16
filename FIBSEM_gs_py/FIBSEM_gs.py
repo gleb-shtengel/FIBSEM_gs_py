@@ -12089,26 +12089,21 @@ class FIBSEM_dataset:
         else:
             DASK_client_retries = kwargs.get("DASK_client_retries", 3)
         if self.ftype ==0 :
-            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Step 2a: Creating "*InLens.tif" files using DASK distributed')
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Creating .tif files using DASK distributed')
             t00 = time.time()
             if use_DASK:
-                try:
-                    futures = DASK_client.map(save_data_tif, self.fls, retries = DASK_client_retries, **kwargs)
-                    fls_new = np.array(DASK_client.gather(futures))
-                except:
-                    fls_new = []
-                    for fl in tqdm(self.fls, desc = 'Converting .dat data files into .tif format'):
-                            fls_new.append(save_data_tif(fl, **kwargs))
+                futures = DASK_client.map(save_data_tif, self.fls, retries = DASK_client_retries, **kwargs)
+                fls_new = DASK_client.gather(futures)
             else:
                 fls_new = []
                 for fl in tqdm(self.fls, desc = 'Converting .dat data files into .tif format'):
-                    fls_new.append(save_data_tif(fl, **kwargs))
+                        fls_new.append(save_data_tif(fl, **kwargs))
 
             t01 = time.time()
-            print('Step 2a: Elapsed time: {:.2f} seconds'.format(t01 - t00))
-            print('Step 2a: Quick check if all files were converted: ', np.array_equal(self.fls, fls_new))
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Elapsed time: {:.2f} seconds'.format(t01 - t00))
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Quick check if all files were converted: ', np.array_equal(self.fls, fls_new))
         else:
-            print('Step 2a: data is already in TIF format')
+            print('Data is already in TIF format')
 
 
     def evaluate_FIBSEM_statistics(self, **kwargs):
