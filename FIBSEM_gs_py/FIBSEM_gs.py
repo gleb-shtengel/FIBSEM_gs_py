@@ -1600,7 +1600,7 @@ def Perform_2D_fit(img, estimator, **kwargs):
     return intercept, coefs, mse, img_correction_array
 
 
-def flatten_image_fast(img, intercept, coefs, degree, bins):
+def flatten_image_fast_old(img, intercept, coefs, degree, bins):
     '''
     Flatten a single image using polynomial fit coefficients.
     Builds the rescaling 2D array on-the-fly from the polynomial
@@ -1644,6 +1644,80 @@ def flatten_image_fast(img, intercept, coefs, degree, bins):
 
     return img * img_correction_array
 
+
+def flatten_image_fast(img, intercept, coefs, degree, bins):
+    '''
+    Flatten a single image using polynomial fit coefficients.
+    Evaluates the polynomial correction surface term-by-term, avoiding
+    construction of the full polynomial feature matrix.
+
+    The correction surface is reconstructed as:
+        predicted_surface(x, y) = intercept + sum(coefs[k] * x^px * y^py)
+        img_correction_array = mean(predicted_surface) / predicted_surface
+    where (px, py) are the polynomial exponent pairs from PolynomialFeatures(degree).
+
+    Parameters:
+    ----------
+    img : 2D array
+        Image to be flattened. For 'RawImageA'/'RawImageB' sources, this should be
+        the offset-subtracted image (e.g., RawImageA - Scaling[1,0]).
+        For 'ImageA'/'ImageB' sources, this should be the scaled image directly.
+    intercept : float
+        Intercept of the polynomial fit (from Perform_2D_fit).
+    coefs : 1D array
+        Coefficients of the polynomial fit (from Perform_2D_fit).
+    degree : int
+        Degree of the polynomial features used in fitting.
+    bins : int
+        Binning factor used during fitting (for coordinate scaling).
+
+    Returns:
+    ----------
+    flattened_image : 2D array
+        The flattened image (same shape as img).
+    '''
+    ysz, xsz = img.shape
+
+    # Get polynomial exponent pairs without building the full feature matrix.
+    # powers_[k] = (px, py) means the k-th feature is x^px * y^py.
+    poly = PolynomialFeatures(degree)
+    poly.fit(np.zeros((1, 2)))           # fit on dummy data to populate powers_
+    powers = poly.powers_                # shape (n_features, 2)
+
+    # Build 1D coordinate vectors (not full 2D grids)
+    xv = np.arange(xsz, dtype=np.float64) / bins    # shape (xsz,)
+    yv = np.arange(ysz, dtype=np.float64) / bins    # shape (ysz,)
+
+    # Precompute needed powers of x and y: x^0, x^1, ..., x^degree (same for y)
+    xpows = [None] * (degree + 1)     # xpows[p] is shape (xsz,)  or scalar 1
+    ypows = [None] * (degree + 1)     # ypows[p] is shape (ysz,)  or scalar 1
+    xpows[0] = 1.0
+    ypows[0] = 1.0
+    if degree >= 1:
+        xpows[1] = xv
+        ypows[1] = yv
+    for p in range(2, degree + 1):
+        xpows[p] = xpows[p-1] * xv
+        ypows[p] = ypows[p-1] * yv
+
+    # Evaluate polynomial: predicted_surface[i, j] = intercept + sum_k coefs[k] * x[j]^px * y[i]^py
+    # Using outer product: (y^py)[:,None] * (x^px)[None,:] broadcasts to (ysz, xsz)
+    predicted_surface = np.full((ysz, xsz), intercept, dtype=np.float64)
+    for coef, (px, py) in zip(coefs, powers):
+        if coef == 0.0:
+            continue
+        # outer product: ypows[py] is (ysz,) or scalar, xpows[px] is (xsz,) or scalar
+        if py == 0 and px == 0:
+            predicted_surface += coef
+        elif py == 0:
+            predicted_surface += coef * xpows[px][np.newaxis, :]
+        elif px == 0:
+            predicted_surface += coef * ypows[py][:, np.newaxis]
+        else:
+            predicted_surface += coef * (ypows[py][:, np.newaxis] * xpows[px][np.newaxis, :])
+
+    img_correction_array = np.mean(predicted_surface) / predicted_surface
+    return img * img_correction_array
 
 ##############################################
 #      Two-Frame Image processing Functions

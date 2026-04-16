@@ -3483,7 +3483,7 @@ class FIBSEM_mosaic_dataset:
             mosaic_correction_coeffs.append(coefs)
             mosaic_correction_intercepts.append(intercept)
             mosaic_correction_degrees.append(Fit_kwargs['degree'])
-            mosaic_correction_arrays.append()
+            mosaic_correction_arrays.append(mosaic_correction_array)
 
         self.mosaic_correction_sources = image_names
         self.mosaic_correction_coeffs = mosaic_correction_coeffs
