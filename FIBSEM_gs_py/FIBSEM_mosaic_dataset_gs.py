@@ -47,6 +47,18 @@ from scipy.ndimage import gaussian_filter
 from scipy.optimize import curve_fit
 from scipy.ndimage import map_coordinates
 
+#from sklearn import __version__ as sklearn_version
+#print('sklearn version: ', sklearn_version)
+from sklearn.linear_model import (LinearRegression,
+    TheilSenRegressor,
+    RANSACRegressor,
+    HuberRegressor,
+    RidgeCV,
+    LassoCV)
+from sklearn.metrics import mean_squared_error
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.pipeline import make_pipeline
+
 from FIBSEM_gs_py.FIBSEM_gs import (FIBSEM_frame,
                         ShiftTransform,
                         XScaleShiftTransform,
@@ -3403,7 +3415,7 @@ class FIBSEM_mosaic_dataset:
         verbose = kwargs.get("verbose", True)
         Analysis_ROIs = kwargs.get("Analysis_ROIs", [])
         save_res_png = kwargs.get("save_res_png", False)
-        res_fname = kwargs.get("res_fname", 'Mosaic_Image_Flattening.png')
+        res_fname = kwargs.get("res_fname", '_Mosaic_Image_Flattening.png')
         dpi = kwargs.get("dpi", 300)
 
         # --- resolve image_names (same pattern as assemble_layer_mosaic) ---
