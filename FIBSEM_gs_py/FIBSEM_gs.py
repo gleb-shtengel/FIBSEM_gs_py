@@ -7257,26 +7257,45 @@ class FIBSEM_frame:
         except:
             print('No Detector B image to save')
 
-    def save_images_tif(self, images_to_save = 'Both'):
+    def save_images_tif(self, **kwargs):
         '''
         Save the detector images into TIF file (s).
 
-        Parameters:
+        kwargs:
         ----------
-        images_to_save : str
-            Images to save. options are: 'A', 'B', or 'Both' (default).
+        image_names : str
+            String of Image names. Default is ['RawImageA', 'RawImageB'] if both are available, ['RawImageA'] otherwise.
+        tif_folder : str
+            Specific folder to save the tif files into. If not provided, the .tif files will be saved next to .dat files.
         
         '''
+        if hasattr(self, 'DetB'):
+            ifDetB = (self.DetB != 'None')
+        else:
+            ifDetB = False
+        image_names_default = ['RawImageA']
+        if ifDetB:
+            image_names_default.append('RawImageB')
+        image_names = kwargs.get('image_names', image_names_default)
+        tif_folder = kwargs.get('tif_folder', False)
         if self.ftype == 0:
-            if images_to_save == 'Both' or images_to_save == 'A':
-                fnameA = os.path.splitext(self.fname)[0] + '_' + self.DetA.strip('\x00') + '.tif'
-                try:
-                    tiff.imsave(fnameA, self.RawImageA.astype(np.int16))
-                except:
-                    tiff.imwrite(fnameA, self.RawImageA.astype(np.int16))
-            if self.DetB != 'None':
-                if images_to_save == 'Both' or images_to_save == 'B':
-                    fnameB = os.path.splitext(self.fname)[0] + '_' + self.DetB.strip('\x00') + '.tif'
+            for image_name in image_names:
+                if image_name == 'RawImageA':
+                    if tif_folder:
+                        fnameA0 = os.path.splitext(self.fname)[0] + '_' + self.DetA.strip('\x00') + '.tif'
+                        fnameA = os.path.join(tif_folder, os.path.split(fnameA0)[-1])
+                    else:
+                        fnameA = os.path.splitext(self.fname)[0] + '_' + self.DetA.strip('\x00') + '.tif'
+                    try:
+                        tiff.imsave(fnameA, self.RawImageA.astype(np.int16))
+                    except:
+                        tiff.imwrite(fnameA, self.RawImageA.astype(np.int16))
+                if image_name == 'RawImageB' and ifDetB:
+                    if tif_folder:
+                        fnameB0 = os.path.splitext(self.fname)[0] + '_' + self.DetB.strip('\x00') + '.tif'
+                        fnameB = os.path.join(tif_folder, os.path.split(fnameB0)[-1])
+                    else:
+                        fnameB = os.path.splitext(self.fname)[0] + '_' + self.DetB.strip('\x00') + '.tif'
                     try:
                         tiff.imsave(fnameB, self.RawImageB.astype(np.int16))
                     except:
@@ -10449,9 +10468,9 @@ def check_registration(img0, img1, **kwargs):
     return error_FWHMx, error_FWHMy
 
 
-def save_inlens_data(fname):
+def save_data_tif(fname, **kwargs):
     tfr = FIBSEM_frame(fname)
-    tfr.save_images_tif('A')
+    tfr.save_images_tif(**kwargs)
     return fname
 
 
@@ -12044,7 +12063,25 @@ class FIBSEM_dataset:
             If set to empty string '' (default), local computations are performed
         DASK_client_retries : int
             Number of allowed automatic retries if a task fails. Default is object attribute.
+        image_names : str
+            String of Image names. Default is ['RawImageA', 'RawImageB'] if both are available, ['RawImageA'] otherwise.
+        tif_folder : str
+            Path to a directory to save the tiff files into
+
         '''
+        if hasattr(self, 'DetB'):
+            ifDetB = (self.DetB != 'None')
+        else:
+            ifDetB = False
+        image_names_default = ['RawImageA']
+        if ifDetB:
+            image_names_default.append('RawImageB')
+        image_names = kwargs.get('image_names', image_names_default)
+        kwargs['image_names'] = image_names
+        tif_folder = kwargs.get('tif_folder', False)
+        kwargs['tif_folder'] = tif_folder
+        if tif_folder:
+            os.makedirs(tif_folder, exist_ok=True)
         DASK_client = kwargs.get('DASK_client', '')
         use_DASK, status_update_address = check_DASK(DASK_client)
         if hasattr(self, "DASK_client_retries"):
@@ -12056,16 +12093,16 @@ class FIBSEM_dataset:
             t00 = time.time()
             if use_DASK:
                 try:
-                    futures = DASK_client.map(save_inlens_data, self.fls, retries = DASK_client_retries)
+                    futures = DASK_client.map(save_data_tif, self.fls, retries = DASK_client_retries, **kwargs)
                     fls_new = np.array(DASK_client.gather(futures))
                 except:
                     fls_new = []
                     for fl in tqdm(self.fls, desc = 'Converting .dat data files into .tif format'):
-                            fls_new.append(save_inlens_data(fl))
+                            fls_new.append(save_data_tif(fl, **kwargs))
             else:
                 fls_new = []
                 for fl in tqdm(self.fls, desc = 'Converting .dat data files into .tif format'):
-                    fls_new.append(save_inlens_data(fl))
+                    fls_new.append(save_data_tif(fl, **kwargs))
 
             t01 = time.time()
             print('Step 2a: Elapsed time: {:.2f} seconds'.format(t01 - t00))

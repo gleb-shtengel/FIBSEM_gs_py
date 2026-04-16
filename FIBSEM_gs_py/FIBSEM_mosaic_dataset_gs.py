@@ -3481,13 +3481,13 @@ class FIBSEM_mosaic_dataset:
         # --- get or assemble mosaics ---
         if 'layer_mosaics' in kwargs:
             if verbose:
-                print(time.strftime('%Y/%m/%d  %H:%M:%S  ') + ' using existing layer_mosaics')
+                print(time.strftime('%Y/%m/%d  %H:%M:%S  ') + ' using existing layer_mosaics to determine flattening parameters')
             layer_mosaics = kwargs['layer_mosaics']
         else:
             layer_id = kwargs.get('layer_id', 0)
             if verbose:
                 print(time.strftime('%Y/%m/%d  %H:%M:%S  ') + ' no layer_mosaics provided')
-                print('Will build the layer mosaics for layer_id={:d}'.format(layer_id))
+                print('Will build the layer_mosaics for layer_id={:d} to determine flattening parameters'.format(layer_id))
             layer_mosaics, _ = self.assemble_layer_mosaic(layer_id, **kwargs)
 
 
