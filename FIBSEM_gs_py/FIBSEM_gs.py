@@ -1685,14 +1685,14 @@ def flatten_image_fast(img, intercept, coefs, degree, bins):
     powers = poly.powers_                # shape (n_features, 2)
 
     # Build 1D coordinate vectors (not full 2D grids)
-    xv = np.arange(xsz, dtype=np.float64) / bins    # shape (xsz,)
-    yv = np.arange(ysz, dtype=np.float64) / bins    # shape (ysz,)
+    xv = np.arange(xsz, dtype=np.float32) / bins    # shape (xsz,)
+    yv = np.arange(ysz, dtype=np.float32) / bins    # shape (ysz,)
 
     # Precompute needed powers of x and y: x^0, x^1, ..., x^degree (same for y)
     xpows = [None] * (degree + 1)     # xpows[p] is shape (xsz,)  or scalar 1
     ypows = [None] * (degree + 1)     # ypows[p] is shape (ysz,)  or scalar 1
-    xpows[0] = 1.0
-    ypows[0] = 1.0
+    xpows[0] = np.float32(1.0)
+    ypows[0] = np.float32(1.0)
     if degree >= 1:
         xpows[1] = xv
         ypows[1] = yv
@@ -1702,21 +1702,22 @@ def flatten_image_fast(img, intercept, coefs, degree, bins):
 
     # Evaluate polynomial: predicted_surface[i, j] = intercept + sum_k coefs[k] * x[j]^px * y[i]^py
     # Using outer product: (y^py)[:,None] * (x^px)[None,:] broadcasts to (ysz, xsz)
-    predicted_surface = np.full((ysz, xsz), intercept, dtype=np.float64)
+    predicted_surface = np.full((ysz, xsz), intercept, dtype=np.float32)
     for coef, (px, py) in zip(coefs, powers):
         if coef == 0.0:
             continue
+        coef_f32 = np.float32(coef)
         # outer product: ypows[py] is (ysz,) or scalar, xpows[px] is (xsz,) or scalar
         if py == 0 and px == 0:
-            predicted_surface += coef
+            predicted_surface += coef_f32
         elif py == 0:
-            predicted_surface += coef * xpows[px][np.newaxis, :]
+            predicted_surface += coef_f32 * xpows[px][np.newaxis, :]
         elif px == 0:
-            predicted_surface += coef * ypows[py][:, np.newaxis]
+            predicted_surface += coef_f32 * ypows[py][:, np.newaxis]
         else:
-            predicted_surface += coef * (ypows[py][:, np.newaxis] * xpows[px][np.newaxis, :])
+            predicted_surface += coef_f32 * (ypows[py][:, np.newaxis] * xpows[px][np.newaxis, :])
 
-    img_correction_array = np.mean(predicted_surface) / predicted_surface
+    img_correction_array = np.float32(np.mean(predicted_surface)) / predicted_surface
     return img * img_correction_array
 
 ##############################################
@@ -12088,6 +12089,8 @@ class FIBSEM_dataset:
             DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
         else:
             DASK_client_retries = kwargs.get("DASK_client_retries", 3)
+        kwargs.pop('DASK_client', None)
+        kwargs.pop('DASK_client_retries', None)
         if self.ftype ==0 :
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Creating .tif files using DASK distributed')
             t00 = time.time()
