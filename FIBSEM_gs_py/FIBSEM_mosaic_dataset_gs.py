@@ -57,6 +57,8 @@ from FIBSEM_gs_py.FIBSEM_gs import (FIBSEM_frame,
                         extract_image_intensity, 
                         determine_transformations_files,
                         convert_tr_matr_into_deformation_field,
+                        Perform_2D_fit,
+                        flatten_image_fast,
                         evaluate_FIBSEM_frames_dataset)
 
 from FIBSEM_gs_py.FIBSEM_help_functions_gs import (check_DASK,
@@ -3351,6 +3353,187 @@ class FIBSEM_mosaic_dataset:
                 fig.savefig(image_fname_loc, dpi=dpi)
 
         return layer_mosaics, layer_id
+
+
+    def determine_mosaic_flattening_parameters(self, **kwargs):
+        '''
+        Perform 2D polynomial fit on assembled mosaic layer(s) and determine 
+        the field-flattening parameters.
+        Calls Perform_2D_fit(img, estimator, **kwargs) for each mosaic image.
+
+        kwargs:
+        ----------
+        layer_mosaics : list of 2D arrays
+            Pre-assembled mosaic images (from assemble_layer_mosaic).
+            If not provided, layer_id must be given and the mosaic will be assembled.
+        layer_id : int
+            Layer ID for assembling the mosaic via assemble_layer_mosaic.
+            Used only if layer_mosaics is not provided. Default is 0.
+        image_names : list of str
+            Image source names, must match the order of layer_mosaics.
+            Default is ['RawImageA', 'RawImageB'] if DetB available, ['RawImageA'] otherwise.
+        estimator : sklearn estimator
+            Default is LinearRegression().
+        bins : int
+            Binning size (in pixel units) for image binning. Default is 10.
+        degrees : int or list of int
+            Polynomial degree(s). Default is 2.
+        Analysis_ROIs : list of lists: [[left, right, top, bottom]]
+        ignore_Y : boolean
+        linear_Y : boolean
+        Xsect : int
+        Ysect : int
+        disp_res : boolean
+        verbose : boolean
+        save_res_png : boolean
+        res_fname : string
+        dpi : int
+        
+        Returns:
+        ----------
+        mosaic_correction_intercepts, mosaic_correction_coeffs
+        '''
+        # --- fitting parameters ---
+        estimator = kwargs.get("estimator", LinearRegression())
+        bins = kwargs.get("bins", 10)
+        degrees = kwargs.get("degrees", 2)
+        ignore_Y = kwargs.get("ignore_Y", False)
+        linear_Y = kwargs.get("linear_Y", False)
+        disp_res = kwargs.get("disp_res", True)
+        verbose = kwargs.get("verbose", True)
+        Analysis_ROIs = kwargs.get("Analysis_ROIs", [])
+        save_res_png = kwargs.get("save_res_png", False)
+        res_fname = kwargs.get("res_fname", 'Mosaic_Image_Flattening.png')
+        dpi = kwargs.get("dpi", 300)
+
+        # --- resolve image_names (same pattern as assemble_layer_mosaic) ---
+        if hasattr(self, 'DetB'):
+            ifDetB = (self.DetB != 'None')
+        else:
+            ifDetB = False
+        image_names_default = ['RawImageA']
+        if ifDetB:
+            image_names_default.append('RawImageB')
+        image_names = kwargs.get('image_names', image_names_default)
+
+        # --- get or assemble mosaics ---
+        if 'layer_mosaics' in kwargs:
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S  ') + ' using existing layer_mosaics')
+            layer_mosaics = kwargs['layer_mosaics']
+        else:
+            layer_id = kwargs.get('layer_id', 0)
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S  ') + ' no layer_mosaics provided')
+                print('Will build the layer mosaics for layer_id={:d}'.format(layer_id))
+            layer_mosaics, _ = self.assemble_layer_mosaic(layer_id, **kwargs)
+
+
+        mosaic_correction_coeffs = []
+        mosaic_correction_intercepts = []
+        mosaic_correction_degrees = []
+
+        for j, (image_name, mosaic) in enumerate(zip(image_names, layer_mosaics)):
+            # subtract offset for Raw images (same as FIBSEM_frame version)
+            if image_name == 'RawImageA':
+                img = mosaic - self.Scaling[1, 0]
+            elif image_name == 'RawImageB':
+                img = mosaic - self.Scaling[1, 1]
+            else:
+                img = mosaic
+
+            ysz, xsz = img.shape
+            Xsect = kwargs.get("Xsect", xsz // 2)
+            Ysect = kwargs.get("Ysect", ysz // 2)
+
+            Fit_kwargs = {'image_name': image_name,
+                          'calc_corr': False,
+                          'ignore_Y': ignore_Y,
+                          'linear_Y': linear_Y,
+                          'Xsect': Xsect,
+                          'Ysect': Ysect,
+                          'disp_res': disp_res,
+                          'bins': bins,
+                          'Analysis_ROIs': Analysis_ROIs,
+                          'save_res_png': save_res_png,
+                          'res_fname': res_fname.replace('.png', '_' + image_name + '.png'),
+                          'dpi': dpi}
+            try:
+                Fit_kwargs['degree'] = degrees[j]
+            except:
+                Fit_kwargs['degree'] = degrees
+
+            intercept, coefs, mse, _ = Perform_2D_fit(img, estimator, **Fit_kwargs)
+            mosaic_correction_coeffs.append(coefs)
+            mosaic_correction_intercepts.append(intercept)
+            mosaic_correction_degrees.append(Fit_kwargs['degree'])
+
+        self.mosaic_correction_sources = image_names
+        self.mosaic_correction_coeffs = mosaic_correction_coeffs
+        self.mosaic_correction_intercepts = mosaic_correction_intercepts
+        self.mosaic_correction_degrees = mosaic_correction_degrees
+        self.mosaic_correction_bins = bins
+
+        return mosaic_correction_intercepts, mosaic_correction_coeffs
+
+
+    def flatten_layer_mosaic(self, layer_mosaics, **kwargs):
+        '''
+        Flatten assembled mosaic layer(s) using stored polynomial coefficients.
+        Calls the standalone function flatten_image_fast(img, intercept, coefs, degree, bins)
+        for each mosaic image.
+
+        Parameters:
+        ----------
+        layer_mosaics : list of 2D arrays
+            Assembled mosaic images (from assemble_layer_mosaic).
+
+        kwargs:
+        ----------
+        mosaic_correction_sources : list of str
+        mosaic_correction_intercepts : list of float
+        mosaic_correction_coeffs : list of 1D arrays
+        mosaic_correction_degrees : list of int
+        mosaic_correction_bins : int
+
+        Returns:
+        ----------
+        flattened_mosaics : list of 2D arrays
+        '''
+        mosaic_correction_sources = kwargs.get("mosaic_correction_sources",
+            getattr(self, 'mosaic_correction_sources', [False]))
+        mosaic_correction_intercepts = kwargs.get("mosaic_correction_intercepts",
+            getattr(self, 'mosaic_correction_intercepts', [False]))
+        mosaic_correction_coeffs = kwargs.get("mosaic_correction_coeffs",
+            getattr(self, 'mosaic_correction_coeffs', [False]))
+        mosaic_correction_degrees = kwargs.get("mosaic_correction_degrees",
+            getattr(self, 'mosaic_correction_degrees', [2]))
+        bins = kwargs.get("mosaic_correction_bins",
+            getattr(self, 'mosaic_correction_bins', 10))
+
+        flattened_mosaics = []
+        for mosaic, source, intercept, coefs, degree in zip(
+                layer_mosaics,
+                mosaic_correction_sources,
+                mosaic_correction_intercepts,
+                mosaic_correction_coeffs,
+                mosaic_correction_degrees):
+
+            if (source is not False) and (coefs is not False):
+                if source == 'RawImageA':
+                    img = mosaic - self.Scaling[1, 0]
+                    flattened_mosaic = flatten_image_fast(img, intercept, coefs, degree, bins) + self.Scaling[1, 0]
+                elif source == 'RawImageB':
+                    img = mosaic - self.Scaling[1, 1]
+                    flattened_mosaic = flatten_image_fast(img, intercept, coefs, degree, bins) + self.Scaling[1, 1]
+                else:
+                    flattened_mosaic = flatten_image_fast(mosaic, intercept, coefs, degree, bins)
+            else:
+                flattened_mosaic = mosaic
+
+            flattened_mosaics.append(flattened_mosaic)
+
+        return flattened_mosaics
 
 
     def save_stack(self, **kwargs):
