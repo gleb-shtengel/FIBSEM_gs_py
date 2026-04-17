@@ -1121,8 +1121,8 @@ def generate_report_data_minmax_montage_xlsx(minmax_xlsx_file, **kwargs):
             axs[0].plot(frames, framek_min, color=my_col, marker='x', markersize=4)
             axs[1].plot(frames, framek_max, color=my_col, marker='x', markersize=4)
         else:
-            axs[0].plot(frames, framek_min, color=my_col)
-            axs[1].plot(frames, framek_max, color=my_col)
+            axs[0].plot(frames, framek_min, color=my_col, linewidth = 0.5)
+            axs[1].plot(frames, framek_max, color=my_col, linewidth = 0.5)
     axs[0].set_ylabel('All Tiles Minima Values')
     axs[1].set_ylabel('All Tiles Maxima Values')
 
@@ -1162,6 +1162,123 @@ def generate_report_data_minmax_montage_xlsx(minmax_xlsx_file, **kwargs):
         axs[2].text(-0.12, -0.17, save_fname, fontsize = 5, transform=axs[2].transAxes)
         fig.savefig(save_fname, dpi=dpi)
     return save_fname
+
+
+def generate_outliers_report(outliers, shape):
+    sy, sx = shape
+    res = []
+    for outlier in outliers:
+        for frame in outlier[1]:
+            res.append([frame, outlier[0]])
+    if len(res) == 0:
+        return np.empty((0, 2), dtype=int)
+    res = np.array(res)
+    return res[res[:, 0].argsort()]
+
+    
+def analyze_minmax_outliers_montage_xlsx(minmax_xlsx_file, **kwargs):
+    '''
+    Generate Report Plot for data Min-Max from XLSX spreadsheet file. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
+    
+    Parameters:
+    ----------
+    minmax_xlsx_file : str
+        Path to the XLSX spreadsheet file containing Min-Max data
+
+    kwargs:
+    ----------
+    sigma_thr : float
+        Threshold (multiplied by sigma) for outlier determination. Default is 6.0 (6-sima outliers).
+    mosaic_shape : tuple or list of 2 ints
+        Mosaic shape (ny_tiles, nx_tiles). Default is (1,1).
+    tile_id : tuple or list of 2 ints
+        Y and X indices of the tile for which the WD fs frame will be evaluated. Default is (0, 0).
+    save_png : boolean
+        If True (default), the plot is saved into PNG file.
+    dpi : int
+        DPI for PNG. Default is 300.
+    save_fname : string
+        File name to save the PNG image. Default is os.path.join(data_dir, minmax_xlsx_file.replace('.xlsx','_Min_Max.png')).
+    verbose : boolean
+        Display intermediate results. Default is False.
+
+    Returns:
+    ----------
+    ouliers_min, ouliers_max
+    '''
+    saved_kwargs = read_kwargs_xlsx(minmax_xlsx_file, 'kwargs Info', **kwargs)
+    sigma_thr = kwargs.get('sigma_thr', 6.0)
+    mosaic_shape = kwargs.get('mosaic_shape', (1, 1))
+    nxny = np.prod(mosaic_shape)
+    data_dir = saved_kwargs.get("data_dir", '')
+    verbose = kwargs.get('verbose', False)
+    save_png = kwargs.get('save_png', True)
+    dpi = kwargs.get('dpi', 300)
+    if save_png:
+        save_fname = kwargs.get('save_fname', os.path.join(data_dir, minmax_xlsx_file.replace('.xlsx','_Min_Max_Outliers.png')))
+    else:
+        save_fname = 'Image not saved'
+    if verbose:
+        print('Loading kwarg Data')
+    Sample_ID = kwargs.get('Sample_ID', saved_kwargs.get('Sample_ID', ''))
+    fit_params_saved = saved_kwargs.get("fit_params", ['SG', 11, 3])
+    fit_params = kwargs.get("fit_params", fit_params_saved)
+     
+    if verbose:
+        print('Loading MinMax Data')
+    try:
+        int_results_all = pd.read_excel(minmax_xlsx_file, sheet_name='FIBSEM Data')
+    except:
+        int_results_all = pd.read_excel(minmax_xlsx_file, sheet_name='MinMax Data')
+    
+    frames = np.array(int_results_all.iloc[0::nxny, :]['Frame'])
+
+    if verbose:
+        print('Generating Plots')
+    fs = 12
+
+    fig, axs = plt.subplots(2,1, figsize = (6,7), sharex=True)
+    fig.subplots_adjust(left=0.15, bottom=0.06, right=0.99, top=0.97, wspace=0.05, hspace=0.05)
+
+    if fit_params[0] != 'None':
+        sv_apert = min([fit_params[1], len(frames)//8*2+1])
+        print('Using fit_params: ', 'SG', sv_apert, fit_params[2])
+
+    ouliers_min = []
+    ouliers_max = []
+    for k in np.arange(nxny):
+        my_col = plt.get_cmap("gist_rainbow_r")(0.0 if nxny == 1 else (nxny-k)/(nxny-1))
+        framek_min = np.array(int_results_all.iloc[k::nxny, :]['Min'])
+        framek_max = np.array(int_results_all.iloc[k::nxny, :]['Max'])
+        axs[0].plot(frames, framek_min, color=my_col, linewidth = 0.5)
+        axs[1].plot(frames, framek_max, color=my_col, linewidth = 0.5)
+        sliding_min = savgol_filter(framek_min.astype(np.double), sv_apert, fit_params[2])
+        sliding_max = savgol_filter(framek_max.astype(np.double), sv_apert, fit_params[2])
+        framek_min_delta = framek_min - sliding_min
+        framek_min_std = np.std(framek_min_delta)
+        ouliersk_min = np.where(np.abs(framek_min_delta) > framek_min_std * sigma_thr)[0]
+        if len(ouliersk_min) > 0:
+            ouliers_min.append([k, ouliersk_min])
+        axs[0].plot(frames[ouliersk_min], framek_min[ouliersk_min], color=my_col, marker='x', markersize=4, linestyle='')
+        framek_max_delta = framek_max - sliding_max
+        framek_max_std = np.std(framek_max_delta)
+        ouliersk_max = np.where(np.abs(framek_max_delta) > framek_max_std * sigma_thr)[0]
+        axs[1].plot(frames[ouliersk_max], framek_max[ouliersk_max], color=my_col, marker='x', markersize=4, linestyle='')
+        if len(ouliersk_max) > 0:
+            ouliers_max.append([k, ouliersk_max])
+    ouliers_min = generate_outliers_report(ouliers_min, mosaic_shape)
+    ouliers_max = generate_outliers_report(ouliers_max, mosaic_shape)
+    
+    axs[0].set_ylabel('All Tiles Minima Values')
+    axs[1].set_ylabel('All Tiles Maxima Values')
+
+    axs[0].text(0.2, 1.04, Sample_ID, fontsize = fs, transform=axs[0].transAxes)
+    for ax in axs:
+        ax.grid(True)
+    if save_png:
+        axs[1].text(-0.12, -0.17, save_fname, fontsize = 5, transform=axs[1].transAxes)
+        fig.savefig(save_fname, dpi=dpi)
+    return ouliers_min, ouliers_max
 
 
 class FIBSEM_mosaic_dataset: 
@@ -3081,8 +3198,8 @@ class FIBSEM_mosaic_dataset:
         frame_inds = kwargs.get('frame_inds', np.arange(self.nz_tiles))
         # Derive relative tile positions from tr_matr (tr_matr[:,:,i,2] = -position_i).
         # Subtracting frame 0 gives positions relative to the first layer.
-        tile_positions_x = self.tr_matr[0, :, 0, 2] - self.tr_matr[frame_inds, :, 0, 2]
-        tile_positions_y = self.tr_matr[0, :, 1, 2] - self.tr_matr[frame_inds, :, 1, 2]
+        tile_positions_x = np.mean(self.tr_matr[frame_inds, :, 0, 2]) - self.tr_matr[frame_inds, :, 0, 2]
+        tile_positions_y = np.mean(self.tr_matr[frame_inds, :, 1, 2]) - self.tr_matr[frame_inds, :, 1, 2]
 
         if verbose:
             print('Generating Plot')
