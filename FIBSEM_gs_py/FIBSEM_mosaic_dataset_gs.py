@@ -1231,7 +1231,7 @@ def analyze_minmax_outliers_montage_xlsx(minmax_xlsx_file, **kwargs):
     except:
         int_results_all = pd.read_excel(minmax_xlsx_file, sheet_name='MinMax Data')
     
-    frames = np.array(int_results_all.iloc[0::nxny, :]['Frame'])
+    frames = np.array(int_results_all.iloc[0::nxny, :]['Frame'])//nxny
 
     if verbose:
         print('Generating Plots')
