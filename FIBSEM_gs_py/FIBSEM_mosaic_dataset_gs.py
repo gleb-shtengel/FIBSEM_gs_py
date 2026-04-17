@@ -1298,7 +1298,10 @@ class FIBSEM_mosaic_dataset:
 
     Methods:
     ----------
-    save_parameters(**kwargs):
+    find_tile_pairs(layer_id, tile_id)
+        Searches self.index_pairs for all pairs containing the tile. Reports transformation records for each found pair. 
+
+    save_parameters(**kwargs)
         Save transformation attributes and parameters (including transformation matrices)
 
     evaluate_FIBSEM_statistics(**kwargs)
@@ -1812,6 +1815,63 @@ class FIBSEM_mosaic_dataset:
                         print('')
                         print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Failed to restore the object parameters from dump filename: ', dump_filename)
                         print(str(ex2))
+
+
+    def find_tile_pairs(self, layer_id, tile_ids, **kwargs):
+        '''
+        Searches self.index_pairs for all pairs containing the tile.
+        Reports SIFT transformation records for each found pair. 
+        
+        Parameters:
+        ----------
+        layer_id : int
+            Layer ID.
+        tile_id : int
+            Tile ID within a layer.
+
+        kwargs:
+        ----------
+        verbose : bool
+            If True (default), Verbose output is ON.
+
+        Returns:
+        ----------
+        result_df : pandas DataFrame
+            Contains these fields: Layer0, Tile0, Layer1, Tile1, SIFT x-shift, SIFT y-shift, SIFT nmatches, SIFT valid
+        '''
+        verbose = kwargs.get('verbose', True)
+        nl = self.n_tiles_per_layer
+        abs_tile_id = layer_id * nl + tile_id
+        pair_inds = np.argwhere(np.array(self.index_pairs)==abs_tile_id)[:, 0]
+        if len(pair_inds) == 0:
+            if verbose:
+                print('pair_inds contain no record of this tile')
+            res = pd.DataFrame(columns=['Layer 0', 'Tile 0', 'Layer 1', 'Tile 1',
+                                         'SIFT x-shift', 'SIFT y-shift',
+                                         'SIFT nmatches', 'SIFT valid'])
+        else:
+            tile_pairs = []
+            SIFT_shifts = []
+            SIFT_valid = []
+            SIFT_nmatches = []
+            for pair_ind in pair_inds:
+                pair = self.index_pairs[pair_ind]
+                layer0 = pair[0]//nl
+                tile0 = pair[0] - layer0*nl
+                layer1 = pair[1]//nl
+                tile1 = pair[1] - layer1*nl
+                tile_pairs.append([layer0, tile0, layer1, tile1])
+                SIFT_shifts.append(self.SIFT_transformation_matrices[pair_ind, 0:2, 2])
+                SIFT_valid.append(self.SIFT_transformation_valid[pair_ind])
+                SIFT_nmatches.append(self.SIFT_nmatches[pair_ind])
+            pd_layers = pd.DataFrame(np.array(tile_pairs), columns = ['Layer 0', 'Tile 0', 'Layer 1', 'Tile 1'])
+            pd_SIFT_shifts = pd.DataFrame(np.array(SIFT_shifts), columns = ['SIFT x-shift', 'SIFT y-shift'])
+            pd_SIFT_nmatches = pd.DataFrame(np.array(SIFT_nmatches), columns = ['SIFT nmatches'])
+            pd_SIFT_valid = pd.DataFrame(np.array(SIFT_valid), columns = ['SIFT valid'])
+            res = pd.concat([pd_layers, pd_SIFT_shifts, pd_SIFT_nmatches, pd_SIFT_valid], axis=1)
+        if verbose:
+            display(res)
+        return  res
 
 
     def save_parameters(self, **kwargs):
