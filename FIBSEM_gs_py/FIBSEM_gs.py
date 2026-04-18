@@ -8863,8 +8863,11 @@ def extract_keypoints_descr_files(params, deformation_field):
 
     Returns:
     ----------
+    fnm, nkpts
     fnm : str
         path to the file containing Key-Points and Descriptors
+    nkpts : int
+        number of extracted key-points
     '''
     fl, dmin, dmax, kwargs = params
     ftype = kwargs.get("ftype", 0)
@@ -8886,7 +8889,9 @@ def extract_keypoints_descr_files(params, deformation_field):
     save_deformed_image = kwargs.get('save_deformed_image', False)
 
     if use_existing_data and os.path.exists(fnm):
-        pass
+        with open(fnm, 'rb') as f:
+            kpd = pickle.load(f)
+        nkpts = len(kpd[0])
     else:
         SIFT_nfeatures = kwargs.get("SIFT_nfeatures", 0)
         SIFT_nOctaveLayers = kwargs.get("SIFT_nOctaveLayers", 3)
@@ -8929,13 +8934,14 @@ def extract_keypoints_descr_files(params, deformation_field):
         if verbose:
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   File: ', fl, ', extracted {:d} keypoints'.format(len(kps)))
         key_points = [kp_to_list(kp) for kp in kps]
+        nkpts = len(key_points)
         kpd = [key_points, dess, kpt_ints]
         
         #pickle.dump(kpd, open(fnm, 'wb')) # converts array to binary and writes to output
         with open(fnm, 'wb') as f:
             pickle.dump(kpd, f)
 
-    return fnm
+    return fnm, nkpts
 
 
 def estimate_kpts_transform_error(src_pts, dst_pts, transform_matrix):
@@ -9968,11 +9974,11 @@ def SIFT_evaluation_dataset(fs, **kwargs):
     t0 = time.time()
 
     params1 = [fs[0], dmin, dmax, kwargs]
-    fnm_1 = extract_keypoints_descr_files(params1, deformation_field)
+    fnm_1, nkpts1 = extract_keypoints_descr_files(params1, deformation_field)
     kpp1s, des1, kpt_int1 = pickle.load(open(fnm_1, 'rb'))
     n_kpts = len(kpp1s)
     params2 = [fs[1], dmin, dmax, kwargs]
-    fnm_2 = extract_keypoints_descr_files(params2, deformation_field)
+    fnm_2, nkpts2 = extract_keypoints_descr_files(params2, deformation_field)
 
     kwargs.pop('DASK_client', None)
     params_dsf = [fnm_1, fnm_2, kwargs]
@@ -12392,14 +12398,16 @@ class FIBSEM_dataset:
                 print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Using DASK distributed')
                 shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)
                 futures_s3 = DASK_client.map(extract_keypoints_descr_files, params_s3, deformation_field = shared_data_future, retries = DASK_client_retries)
-                fnms = DASK_client.gather(futures_s3)
+                results_s3 = DASK_client.gather(futures_s3)
             else:
                 print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Using Local Computation')
-                fnms = []
+                results_s3 = []
                 for j, param_s3 in enumerate(tqdm(params_s3, desc='Extracting Key Points and Descriptors: ')):
-                    fnms.append(extract_keypoints_descr_files(param_s3, deformation_field))
-
+                    results_s3.append(extract_keypoints_descr_files(param_s3, deformation_field))
+            fnms = [r[0] for r in results_s3]
+            nkpts = [r[1] for r in results_s3]
             self.fnms = fnms
+            self.nkpts = nkpts
         return fnms
 
 

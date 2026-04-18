@@ -2285,13 +2285,16 @@ class FIBSEM_mosaic_dataset:
         if use_DASK:
             shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)
             futures_s3 = DASK_client.map(extract_keypoints_descr_files, params_s3, deformation_field = shared_data_future, retries = DASK_client_retries)
-            fnms_kpts = DASK_client.gather(futures_s3)
+            results_s3 = DASK_client.gather(futures_s3)
         else:
-            fnms_kpts = []
+            results_s3 = []
             for j, param_s3 in enumerate(tqdm(params_s3, desc='Extracting Key Points and Descriptors: ', display=verbose)):
-                fnms_kpts.append(extract_keypoints_descr_files(param_s3, deformation_field))
+                results_s3.append(extract_keypoints_descr_files(param_s3, deformation_field))
+        fnms_kpts = [r[0] for r in results_s3]
+        nkpts = [r[1] for r in results_s3]
         self.fnms_kpts = np.array(fnms_kpts).reshape(self.fls.shape)
-        return fnms_kpts
+        self.nkpts = np.array(nkpts).reshape(self.fls.shape)
+        return fnms_kpts, nkpts
     
 
     def determine_transformations_SIFT(self, **kwargs):
@@ -2646,9 +2649,10 @@ class FIBSEM_mosaic_dataset:
             print(kpt_kwargs)
 
         params_s3 = [[fl, dmin, dmax, kpt_kwargs] for fl in [fl1, fl2]]
-        fnms_kpts = []
+        results_s3 = []
         for j, param_s3 in enumerate(tqdm(params_s3, desc='Extracting Key Points and Descriptors: ', display=verbose)):
-            fnms_kpts.append(extract_keypoints_descr_files(param_s3, deformation_field))
+            results_s3.append(extract_keypoints_descr_files(param_s3, deformation_field))
+        fnms_kpts = [r[0] for r in results_s3]
         with open(fnms_kpts[0], 'rb') as f:
             kpp1s, des1, kpt_int1 = pickle.load(f)
         n_kpts1 = len(kpp1s)
