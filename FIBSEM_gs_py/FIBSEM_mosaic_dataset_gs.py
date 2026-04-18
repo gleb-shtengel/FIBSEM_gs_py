@@ -1427,6 +1427,9 @@ class FIBSEM_mosaic_dataset:
     extract_keypoints(**kwargs):
         Extract Key-Points and Descriptors
 
+    analyze_kpt_statistics(**kwargs):
+        Analyze key-point statistic and report suspect outliers.
+
     determine_transformations_SIFT(self, **kwargs)
         Determine transformation matrices for frame pairs using SIFT. 
 
@@ -2295,6 +2298,83 @@ class FIBSEM_mosaic_dataset:
         self.fnms_kpts = np.array(fnms_kpts).reshape(self.fls.shape)
         self.nkpts = np.array(nkpts).reshape(self.fls.shape)
         return fnms_kpts, nkpts
+
+    def analyze_kpt_statistics(self, **kwargs):
+        '''
+        Analyze key-point statistic and report suspect outliers. ©G.Shtengel 04/2026 gleb.shtengel@gmail.com
+        
+        Parameters:
+        ----------
+
+        kwargs:
+        ----------
+        sigma_thr : float
+            Threshold (multiplied by sigma) for outlier determination. Default is 6.0 (6-sima outliers).
+        save_png : boolean
+            If True (default), the plot is saved into PNG file.
+        dpi : int
+            DPI for PNG. Default is 300.
+        save_fname : string
+            File name to save the PNG image. Default is os.path.join(data_dir, 'nkpts_Outliers.png').
+        verbose : boolean
+            Display intermediate results. Default is False.
+
+        Returns:
+        ----------
+        ouliers : np.ndarray, shape (N, 2)
+            Sorted array of [frame_index, tile_index] for all outlier detections.
+            Returns empty array of shape (0, 2) if no outliers are found.
+        
+        '''
+        sigma_thr = kwargs.get('sigma_thr', 6.0)
+        nxny = self.n_tiles_per_layer
+        data_dir = kwargs.get("data_dir", '')
+        verbose = kwargs.get('verbose', False)
+        save_png = kwargs.get('save_png', True)
+        dpi = kwargs.get('dpi', 300)
+        if save_png:
+            save_fname = kwargs.get('save_fname', os.path.join(data_dir, 'nkpts_Outliers.png'))
+        else:
+            save_fname = 'Image not saved'
+        if verbose:
+            print('Loading kwarg Data')
+        Sample_ID = kwargs.get('Sample_ID', '')
+        fit_params = kwargs.get("fit_params", ['SG', 11, 3])
+        frames = np.arange(self.nz_tiles)
+        if verbose:
+            print('Generating Plots')
+        fs = 12
+        fig, ax = plt.subplots(1,1, figsize = (6,4), sharex=True)
+        fig.subplots_adjust(left=0.15, bottom=0.06, right=0.99, top=0.97, wspace=0.05, hspace=0.05)
+        if fit_params[0] != 'None':
+            sv_apert = min([fit_params[1], len(frames)//8*2+1])
+            if verbose:
+                print('Using fit_params: ', 'SG', sv_apert, fit_params[2])
+            
+        ouliers_nkpts = []
+        for k in np.arange(nxny):
+            my_col = plt.get_cmap("gist_rainbow_r")(0.0 if nxny == 1 else (nxny-k)/(nxny-1))
+            tilek_nkpts = self.nkpts[:, k]
+            ax.plot(frames, tilek_nkpts, color=my_col, linewidth=0.5)
+            if fit_params[0] != 'None':
+                sliding_tilek_nkpts = savgol_filter(tilek_nkpts.astype(np.double), sv_apert, fit_params[2])
+            else:
+                sliding_tilek_nkpts = np.full_like(tilek_nkpts, np.mean(tilek_nkpts), dtype=np.double)
+            tilek_nkpts_delta = tilek_nkpts - sliding_tilek_nkpts
+            tilek_nkpts_std = np.std(tilek_nkpts_delta)
+            ouliers_tilek_nkpts = np.where(np.abs(tilek_nkpts_delta) > tilek_nkpts_std * sigma_thr)[0]
+            if len(ouliers_tilek_nkpts) > 0:
+                ouliers_nkpts.append([k, ouliers_tilek_nkpts])
+            ax.plot(frames[ouliers_tilek_nkpts], tilek_nkpts[ouliers_tilek_nkpts], color=my_col, marker='x', markersize=4, linestyle='')
+            
+        ouliers = generate_outliers_report(ouliers_nkpts, self.shape)
+        ax.set_ylabel('# of Key-Points')
+        ax.set_xlabel('Frame')
+        ax.text(0.2, 1.04, Sample_ID, fontsize = fs, transform=ax.transAxes)
+        ax.grid(True)
+        if save_png:
+            fig.savefig(save_fname, dpi=dpi)
+        return ouliers
     
 
     def determine_transformations_SIFT(self, **kwargs):
