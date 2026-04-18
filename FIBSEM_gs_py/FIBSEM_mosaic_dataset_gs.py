@@ -3198,8 +3198,8 @@ class FIBSEM_mosaic_dataset:
         frame_inds = kwargs.get('frame_inds', np.arange(self.nz_tiles))
         # Derive relative tile positions from tr_matr (tr_matr[:,:,i,2] = -position_i).
         # Subtracting frame 0 gives positions relative to the first layer.
-        tile_positions_x = np.mean(self.tr_matr[frame_inds, :, 0, 2]) - self.tr_matr[frame_inds, :, 0, 2]
-        tile_positions_y = np.mean(self.tr_matr[frame_inds, :, 1, 2]) - self.tr_matr[frame_inds, :, 1, 2]
+        tile_positions_x = - self.tr_matr[frame_inds, :, 0, 2]
+        tile_positions_y = - self.tr_matr[frame_inds, :, 1, 2]
 
         if verbose:
             print('Generating Plot')
@@ -3208,8 +3208,8 @@ class FIBSEM_mosaic_dataset:
 
         for k in np.arange(n_tiles_per_layer):
             my_col = plt.get_cmap("gist_rainbow_r")((n_tiles_per_layer-k)/(n_tiles_per_layer-1))
-            tile_positions_xk = tile_positions_x[:, k]
-            tile_positions_yk = tile_positions_y[:, k]
+            tile_positions_xk = tile_positions_x[:, k] - np.mean(tile_positions_x[:, k])
+            tile_positions_yk = tile_positions_y[:, k] - np.mean(tile_positions_y[:, k])
             if k == tile_id:
                 axs[0].plot(frame_inds, tile_positions_xk, color=my_col, marker='x', markersize=4, label='Tile {:d}, X-shift'.format(tile_id))
                 axs[1].plot(frame_inds, tile_positions_yk, color=my_col, marker='x', markersize=4, label='Tile {:d}, Y-shift'.format(tile_id))

@@ -1370,8 +1370,6 @@ def Perform_2D_fit(img, estimator, **kwargs):
         Plot/ display the results. Defaults is True.
     save_res_png : boolean
         Save the analysis output into a PNG file. Default is False.
-    save_correction_binary : boolean
-        Save the image_name and img_correction_array data into a binary file. Default is False.
     res_fname : string
         Filename for the result image. Default is 'Image_Flattening.png'.
     label : string
