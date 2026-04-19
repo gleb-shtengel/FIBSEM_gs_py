@@ -1164,7 +1164,7 @@ def generate_report_data_minmax_montage_xlsx(minmax_xlsx_file, **kwargs):
     return save_fname
 
 
-def generate_outliers_report(outliers, shape):
+def reformat_outliers_data(outliers, shape):
     sy, sx = shape
     res = []
     for outlier in outliers:
@@ -1175,18 +1175,51 @@ def generate_outliers_report(outliers, shape):
     res = np.array(res)
     return res[res[:, 0].argsort()]
 
+
+def generate_outliers_report(outliers, fls, **kwargs):
+    '''
+    Generate quick summary view of potential outliers.
+    Parameters:
+    -----------
+    outliers : list of [frame_id, tile_id]
+        List of potential outliers
+    fls : 2D array of filenames
+
+    kwargs:
+    -----------
+    bin_factor : int
+        Binnin factor. Default = 10
+
+    verbose : bool
+    '''
+    bin_factor = kwargs.get('bin_factor', 10)
+    verbose = kwargs.get('verbose', True)
+
+    for outlier in tqdm(outliers, desc='Building Outlier Report'):
+        outlier_fnm = fls[*outlier]
+        img = FIBSEM_frame(outlier_fnm).RawImageA
+        sy, sx = img.shape
+        img_reshaped = img[0:sy//bin_factor*bin_factor, 0:sx//bin_factor*bin_factor].reshape(sy//bin_factor, bin_factor, sx//bin_factor, bin_factor)
+        img_binned = np.mean(np.mean(img_reshaped, axis=3), axis=1)
+        vmin, vmax = get_min_max_thresholds(img_binned, disp_res=False)
+        fx = 5
+        fy = fx / sx * sy
+        fig, ax = plt.subplots(1,1, figsize=(fx, fy))
+        ax.imshow(img_binned, vmin = vmin, vmax=vmax, cmap='Greys')
+        ax.set_title('Frame: {:d} Tile: {:d}  '.format(*outlier) + outlier_fnm, fontsize=6)
+
     
 def analyze_minmax_outliers_montage_xlsx(minmax_xlsx_file, **kwargs):
     '''
     Generate Report Plot for data Min-Max from XLSX spreadsheet file. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
     
     Parameters:
-    ----------
+    -----------
     minmax_xlsx_file : str
         Path to the XLSX spreadsheet file containing Min-Max data
 
     kwargs:
-    ----------
+    -----------
     sigma_thr : float
         Threshold (multiplied by sigma) for outlier determination. Default is 6.0 (6-sima outliers).
     mosaic_shape : tuple or list of 2 ints
@@ -1201,10 +1234,12 @@ def analyze_minmax_outliers_montage_xlsx(minmax_xlsx_file, **kwargs):
         File name to save the PNG image. Default is os.path.join(data_dir, minmax_xlsx_file.replace('.xlsx','_Min_Max.png')).
     verbose : boolean
         Display intermediate results. Default is False.
+    mark_outliers : boolean
+        If True (default), each outlier is marked with "x" and its frame and tile number are printed next to "x".
 
     Returns:
     ----------
-    ouliers_min, ouliers_max
+    outliers_min, outliers_max
     '''
     saved_kwargs = read_kwargs_xlsx(minmax_xlsx_file, 'kwargs Info', **kwargs)
     sigma_thr = kwargs.get('sigma_thr', 6.0)
@@ -1212,6 +1247,7 @@ def analyze_minmax_outliers_montage_xlsx(minmax_xlsx_file, **kwargs):
     nxny = np.prod(mosaic_shape)
     data_dir = saved_kwargs.get("data_dir", '')
     verbose = kwargs.get('verbose', False)
+    mark_outliers = kwargs.get('mark_outliers', True)
     save_png = kwargs.get('save_png', True)
     dpi = kwargs.get('dpi', 300)
     if save_png:
@@ -1236,41 +1272,53 @@ def analyze_minmax_outliers_montage_xlsx(minmax_xlsx_file, **kwargs):
     if verbose:
         print('Generating Plots')
     fs = 12
+    fsmark = 6
 
     fig, axs = plt.subplots(2,1, figsize = (6,7), sharex=True)
     fig.subplots_adjust(left=0.15, bottom=0.06, right=0.99, top=0.97, wspace=0.05, hspace=0.05)
 
     if fit_params[0] != 'None':
         sv_apert = min([fit_params[1], len(frames)//8*2+1])
-        print('Using fit_params: ', 'SG', sv_apert, fit_params[2])
+        if verbose:
+            print('Using fit_params: ', 'SG', sv_apert, fit_params[2])
 
-    ouliers_min = []
-    ouliers_max = []
+    outliers_min = []
+    outliers_max = []
     for k in np.arange(nxny):
         my_col = plt.get_cmap("gist_rainbow_r")(0.0 if nxny == 1 else (nxny-k)/(nxny-1))
         framek_min = np.array(int_results_all.iloc[k::nxny, :]['Min'])
         framek_max = np.array(int_results_all.iloc[k::nxny, :]['Max'])
         axs[0].plot(frames, framek_min, color=my_col, linewidth = 0.5)
         axs[1].plot(frames, framek_max, color=my_col, linewidth = 0.5)
-        sliding_min = savgol_filter(framek_min.astype(np.double), sv_apert, fit_params[2])
-        sliding_max = savgol_filter(framek_max.astype(np.double), sv_apert, fit_params[2])
+        if fit_params[0] != 'None':
+            sliding_min = savgol_filter(framek_min.astype(np.double), sv_apert, fit_params[2])
+            sliding_max = savgol_filter(framek_max.astype(np.double), sv_apert, fit_params[2])
+        else:
+            sliding_min = np.full_like(framek_min, np.mean(framek_min), dtype=np.double)
+            sliding_max = np.full_like(framek_max, np.mean(framek_max), dtype=np.double)
         framek_min_delta = framek_min - sliding_min
         framek_min_std = np.std(framek_min_delta)
-        ouliersk_min = np.where(np.abs(framek_min_delta) > framek_min_std * sigma_thr)[0]
-        if len(ouliersk_min) > 0:
-            ouliers_min.append([k, ouliersk_min])
-        axs[0].plot(frames[ouliersk_min], framek_min[ouliersk_min], color=my_col, marker='x', markersize=4, linestyle='')
+        outliersk_min = np.where(np.abs(framek_min_delta) > framek_min_std * sigma_thr)[0]
+        if len(outliersk_min) > 0:
+            outliers_min.append([k, outliersk_min])
         framek_max_delta = framek_max - sliding_max
         framek_max_std = np.std(framek_max_delta)
-        ouliersk_max = np.where(np.abs(framek_max_delta) > framek_max_std * sigma_thr)[0]
-        axs[1].plot(frames[ouliersk_max], framek_max[ouliersk_max], color=my_col, marker='x', markersize=4, linestyle='')
-        if len(ouliersk_max) > 0:
-            ouliers_max.append([k, ouliersk_max])
-    ouliers_min = generate_outliers_report(ouliers_min, mosaic_shape)
-    ouliers_max = generate_outliers_report(ouliers_max, mosaic_shape)
+        outliersk_max = np.where(np.abs(framek_max_delta) > framek_max_std * sigma_thr)[0]
+        if mark_outliers:
+            axs[0].plot(frames[outliersk_min], framek_min[outliersk_min], color=my_col, marker='x', markersize=4, linestyle='')
+            for outlier_k_min in outliersk_min:
+                axs[0].text(frames[outlier_k_min], framek_min[outlier_k_min], '{:d}, {:d}'.format(k, frames[outlier_k_min]), fontsize=fsmark)
+            axs[1].plot(frames[outliersk_max], framek_max[outliersk_max], color=my_col, marker='x', markersize=4, linestyle='')
+            for outlier_k_max in outliersk_max:
+                axs[1].text(frames[outlier_k_max], framek_max[outlier_k_max], '{:d}, {:d}'.format(k, frames[outlier_k_max]), fontsize=fsmark)
+        if len(outliersk_max) > 0:
+            outliers_max.append([k, outliersk_max])
+    outliers_min = reformat_outliers_data(outliers_min, mosaic_shape)
+    outliers_max = reformat_outliers_data(outliers_max, mosaic_shape)
     
     axs[0].set_ylabel('All Tiles Minima Values')
     axs[1].set_ylabel('All Tiles Maxima Values')
+    axs[1].set_xlabel('Frame')
 
     axs[0].text(0.2, 1.04, Sample_ID, fontsize = fs, transform=axs[0].transAxes)
     for ax in axs:
@@ -1278,7 +1326,7 @@ def analyze_minmax_outliers_montage_xlsx(minmax_xlsx_file, **kwargs):
     if save_png:
         axs[1].text(-0.12, -0.17, save_fname, fontsize = 5, transform=axs[1].transAxes)
         fig.savefig(save_fname, dpi=dpi)
-    return ouliers_min, ouliers_max
+    return outliers_min, outliers_max
 
 
 class FIBSEM_mosaic_dataset: 
@@ -2318,10 +2366,12 @@ class FIBSEM_mosaic_dataset:
             File name to save the PNG image. Default is os.path.join(data_dir, 'nkpts_Outliers.png').
         verbose : boolean
             Display intermediate results. Default is False.
+        mark_outliers : boolean
+            If True (default), each outlier is marked with "x" and its frame and tile number are printed next to "x".
 
         Returns:
         ----------
-        ouliers : np.ndarray, shape (N, 2)
+        outliers : np.ndarray, shape (N, 2)
             Sorted array of [frame_index, tile_index] for all outlier detections.
             Returns empty array of shape (0, 2) if no outliers are found.
         
@@ -2332,6 +2382,8 @@ class FIBSEM_mosaic_dataset:
         verbose = kwargs.get('verbose', False)
         save_png = kwargs.get('save_png', True)
         dpi = kwargs.get('dpi', 300)
+        mark_outliers = kwargs.get('mark_outliers', True)
+        fsmark = 6
         if save_png:
             save_fname = kwargs.get('save_fname', os.path.join(data_dir, 'nkpts_Outliers.png'))
         else:
@@ -2351,7 +2403,7 @@ class FIBSEM_mosaic_dataset:
             if verbose:
                 print('Using fit_params: ', 'SG', sv_apert, fit_params[2])
             
-        ouliers_nkpts = []
+        outliers_nkpts = []
         for k in np.arange(nxny):
             my_col = plt.get_cmap("gist_rainbow_r")(0.0 if nxny == 1 else (nxny-k)/(nxny-1))
             tilek_nkpts = self.nkpts[:, k]
@@ -2362,19 +2414,22 @@ class FIBSEM_mosaic_dataset:
                 sliding_tilek_nkpts = np.full_like(tilek_nkpts, np.mean(tilek_nkpts), dtype=np.double)
             tilek_nkpts_delta = tilek_nkpts - sliding_tilek_nkpts
             tilek_nkpts_std = np.std(tilek_nkpts_delta)
-            ouliers_tilek_nkpts = np.where(np.abs(tilek_nkpts_delta) > tilek_nkpts_std * sigma_thr)[0]
-            if len(ouliers_tilek_nkpts) > 0:
-                ouliers_nkpts.append([k, ouliers_tilek_nkpts])
-            ax.plot(frames[ouliers_tilek_nkpts], tilek_nkpts[ouliers_tilek_nkpts], color=my_col, marker='x', markersize=4, linestyle='')
-            
-        ouliers = generate_outliers_report(ouliers_nkpts, self.shape)
+            outliers_tilek_nkpts = np.where(np.abs(tilek_nkpts_delta) > tilek_nkpts_std * sigma_thr)[0]
+            if len(outliers_tilek_nkpts) > 0:
+                outliers_nkpts.append([k, outliers_tilek_nkpts])
+            if mark_outliers:
+                ax.plot(frames[outliers_tilek_nkpts], tilek_nkpts[outliers_tilek_nkpts], color=my_col, marker='x', markersize=4, linestyle='')
+                for outlier_tilek_nkpts in outliers_tilek_nkpts:
+                    ax.text(frames[outlier_tilek_nkpts], tilek_nkpts[outlier_tilek_nkpts], '{:d}, {:d}'.format(k, frames[outlier_tilek_nkpts]), fontsize=fsmark)
+        outliers = reformat_outliers_data(outliers_nkpts, self.shape)
         ax.set_ylabel('# of Key-Points')
         ax.set_xlabel('Frame')
         ax.text(0.2, 1.04, Sample_ID, fontsize = fs, transform=ax.transAxes)
         ax.grid(True)
         if save_png:
+            ax.text(-0.12, -0.17, save_fname, fontsize=5, transform=ax.transAxes)
             fig.savefig(save_fname, dpi=dpi)
-        return ouliers
+        return outliers
     
 
     def determine_transformations_SIFT(self, **kwargs):
