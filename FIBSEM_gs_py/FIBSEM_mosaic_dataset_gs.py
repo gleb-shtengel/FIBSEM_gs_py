@@ -1216,6 +1216,8 @@ def generate_outliers_report(outliers, fls, **kwargs):
         vmin, vmax = get_min_max_thresholds(img_binned, disp_res=False)
         fx = 5
         fy = fx / sx * sy
+        if verbose:
+            print('Outlier Frame: {:d} Tile: {:d}  '.format(*outlier),outlier_fnm)
         fig, ax = plt.subplots(1,1, figsize=(fx, fy))
         ax.imshow(img_binned, vmin = vmin, vmax=vmax, cmap='Greys')
         ax.set_title('Frame: {:d} Tile: {:d}  '.format(*outlier) + outlier_fnm, fontsize=6)
