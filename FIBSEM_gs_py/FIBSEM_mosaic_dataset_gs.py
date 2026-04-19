@@ -1187,11 +1187,23 @@ def generate_outliers_report(outliers, fls, **kwargs):
 
     kwargs:
     -----------
+    save_outlier_thumbnails : bool
+        If True (default), outlier RawImageA thumbnails will be saved
+    data_dir : path
+        data directory
+    outliers_thumbnails_folder : str
+        sub-directory name (will be created inside data_dir). Default is 'outliers_thumbnails'
     bin_factor : int
         Binnin factor. Default = 10
 
     verbose : bool
     '''
+    save_outlier_thumbnails = kwargs.get('save_outlier_thumbnails', True)
+    data_dir = kwargs.get("data_dir", '')
+    outliers_thumbnails_folder = kwargs.get('outliers_thumbnails_folder', 'outliers_thumbnails')
+    if save_outlier_thumbnails:
+        save_folder = os.path.join(data_dir, outliers_thumbnails_folder)
+        os.makedirs(save_folder, exist_ok=True)
     bin_factor = kwargs.get('bin_factor', 10)
     verbose = kwargs.get('verbose', True)
 
@@ -1207,6 +1219,10 @@ def generate_outliers_report(outliers, fls, **kwargs):
         fig, ax = plt.subplots(1,1, figsize=(fx, fy))
         ax.imshow(img_binned, vmin = vmin, vmax=vmax, cmap='Greys')
         ax.set_title('Frame: {:d} Tile: {:d}  '.format(*outlier) + outlier_fnm, fontsize=6)
+        if save_outlier_thumbnails:
+            thumbnail_fnm_short = os.path.splitext(os.path.split(outlier_fnm)[-1])[0]+'_thumbnail.png'
+            thumbnail_fnm = os.path.join(save_folder, thumbnail_fnm_short)
+            fig.savefig(thumbnail_fnm, dpi=300)
 
     
 def analyze_minmax_outliers_montage_xlsx(minmax_xlsx_file, **kwargs):
