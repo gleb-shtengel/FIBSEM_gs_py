@@ -38,7 +38,7 @@ except:
 
 from dask.distributed import Client
 from dask.distributed import as_completed
-from IPython.display import IFrame
+from IPython.display import IFrame, display
 from ClusterWrap.clusters import janelia_lsf_cluster
 
 from scipy.signal import savgol_filter
@@ -817,6 +817,8 @@ def generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs):
     if save_png:
         axs[2].text(-0.12, -0.17, save_fname, fontsize = 5, transform=axs[2].transAxes)
         fig.savefig(save_fname, dpi=dpi)
+    display(fig)
+    plt.close(fig)
     return save_fname
 
 
@@ -915,6 +917,8 @@ def generate_report_SEM_param_mosaic_stack_xlsx(FIBSEM_Data_xlsx, **kwargs):
         else:
             save_fname = 'Image not saved'
         save_fnames.append(save_fname) 
+        display(fig)
+        plt.close(fig)
     return save_fnames
 
 
@@ -1031,13 +1035,14 @@ def generate_report_SEM_param_mosaic_layer_xlsx(FIBSEM_Data_xlsx, **kwargs):
                    colLoc='center',
                    bbox = [0.02, 0, 0.96, 1.0],
                    zorder=10)
-        
     if save_png:
         save_fname = kwargs.get('save_fname', os.path.join(data_dir, FIBSEM_Data_xlsx.replace('.xlsx',fname_repl_suffix+'_frame{:d}.png'.format(frame_id))))
         axs[-1].text(-0.12, -0.07, save_fname, fontsize = 4, transform=axs[-1].transAxes)
         fig.savefig(save_fname, dpi=dpi)
     else:
         save_fname = 'Image not saved'
+    display(fig)
+    plt.close(fig)
     return save_fname
 
 
@@ -1161,6 +1166,8 @@ def generate_report_data_minmax_montage_xlsx(minmax_xlsx_file, **kwargs):
     if save_png:
         axs[2].text(-0.12, -0.17, save_fname, fontsize = 5, transform=axs[2].transAxes)
         fig.savefig(save_fname, dpi=dpi)
+    display(fig)
+    plt.close(fig)
     return save_fname
 
 
@@ -1195,8 +1202,10 @@ def generate_outliers_report(outliers, fls, **kwargs):
         sub-directory name (will be created inside data_dir). Default is 'outliers_thumbnails'
     bin_factor : int
         Binnin factor. Default = 10
-
-    verbose : bool
+    dpi : int
+        DPI for PNG. Default is 150.
+    verbose : boolean
+        Display intermediate results. Default is False.
     '''
     save_outlier_thumbnails = kwargs.get('save_outlier_thumbnails', True)
     data_dir = kwargs.get("data_dir", '')
@@ -1206,6 +1215,7 @@ def generate_outliers_report(outliers, fls, **kwargs):
         os.makedirs(save_folder, exist_ok=True)
     bin_factor = kwargs.get('bin_factor', 10)
     verbose = kwargs.get('verbose', True)
+    dpi = kwargs.get('dpi', 150)
 
     for outlier in tqdm(outliers, desc='Building Outlier Report'):
         outlier_fnm = fls[*outlier]
@@ -1219,12 +1229,16 @@ def generate_outliers_report(outliers, fls, **kwargs):
         if verbose:
             print('Outlier Frame: {:d} Tile: {:d}  '.format(*outlier),outlier_fnm)
         fig, ax = plt.subplots(1,1, figsize=(fx, fy))
+        fig.subplots_adjust(left=0.01, bottom=0.01, right=0.99, top=0.96, wspace=0.05, hspace=0.05)
         ax.imshow(img_binned, vmin = vmin, vmax=vmax, cmap='Greys')
         ax.set_title('Frame: {:d} Tile: {:d}  '.format(*outlier) + outlier_fnm, fontsize=6)
+        ax.axis(False)
         if save_outlier_thumbnails:
             thumbnail_fnm_short = os.path.splitext(os.path.split(outlier_fnm)[-1])[0]+'_thumbnail.png'
             thumbnail_fnm = os.path.join(save_folder, thumbnail_fnm_short)
-            fig.savefig(thumbnail_fnm, dpi=300)
+            fig.savefig(thumbnail_fnm, dpi=dpi)
+        display(fig)
+        plt.close(fig)
 
     
 def analyze_minmax_outliers_montage_xlsx(minmax_xlsx_file, **kwargs):
@@ -1344,6 +1358,8 @@ def analyze_minmax_outliers_montage_xlsx(minmax_xlsx_file, **kwargs):
     if save_png:
         axs[1].text(-0.12, -0.17, save_fname, fontsize = 5, transform=axs[1].transAxes)
         fig.savefig(save_fname, dpi=dpi)
+    display(fig)
+    plt.close(fig)
     return outliers_min, outliers_max
 
 
@@ -2447,6 +2463,8 @@ class FIBSEM_mosaic_dataset:
         if save_png:
             ax.text(-0.12, -0.17, save_fname, fontsize=5, transform=ax.transAxes)
             fig.savefig(save_fname, dpi=dpi)
+        display(fig)
+        plt.close(fig)
         return outliers
     
 
@@ -3671,6 +3689,8 @@ class FIBSEM_mosaic_dataset:
                                #bbox = [0.45, 1.02, 2.8, 0.55],
                                zorder=10)
             fig.savefig(snapshot_fname, dpi=dpi)
+            display(fig)
+            plt.close(fig)
         
         if save_to_dat:
             if verbose:
@@ -3744,6 +3764,8 @@ class FIBSEM_mosaic_dataset:
                 else:
                     image_fname_loc = imf1 + '_' + self.DetA.strip('\x00') + imf2
                 fig.savefig(image_fname_loc, dpi=dpi)
+                display(fig)
+                plt.close(fig)
 
         return layer_mosaics, layer_id
 
