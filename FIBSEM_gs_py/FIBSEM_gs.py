@@ -1411,7 +1411,8 @@ def Perform_2D_fit(img, estimator, **kwargs):
     
     img_binned = img[0:ysz//bins*bins, 0:xsz//bins*bins].astype(np.float32).reshape(ysz//bins, bins, xsz//bins, bins).sum(3).sum(1)/bins/bins
     if len(Analysis_ROIs)>0:
-            Analysis_ROIs_binned = [[ind//bins for ind in Analysis_ROI] for Analysis_ROI in Analysis_ROIs]
+        #Analysis_ROIs_binned = [[ind//bins for ind in Analysis_ROI] for Analysis_ROI in Analysis_ROIs]
+        Analysis_ROIs_binned = [ [Analysis_ROI[0]//bins, (Analysis_ROI[1] + bins - 1)//bins,  Analysis_ROI[2]//bins, (Analysis_ROI[3] + bins - 1)//bins] for Analysis_ROI in Analysis_ROIs]
     else: 
         Analysis_ROIs_binned = []
     vmin, vmax = get_min_max_thresholds(img_binned, disp_res=False)
@@ -1434,33 +1435,13 @@ def Perform_2D_fit(img, estimator, **kwargs):
         xb_1d = xb.ravel()
         yb_1d = yb.ravel()
 
-    img_binned_1D = img_binned.ravel()
     X_binned = np.vstack((xb.ravel(), yb.ravel())).T
     X = np.vstack((xb_1d, yb_1d)).T
     
-    ysz, xsz = img.shape
-    yf, xf = np.indices(img.shape)
-    xf_1d = xf.ravel()/bins
-    yf_1d = yf.ravel()/bins
-    Xf = np.vstack((xf_1d, yf_1d)).T
-
-    model = make_pipeline(PolynomialFeatures(degree), estimator)
-
     ymean = np.mean(yb_1d)
-    model.fit(X, img_1D)
-    '''
-    if ignore_Y:
-        ymean = np.mean(yb_1d)
-        yb_1d_flat = yb_1d*0.0+ymean
-        X_yflat = np.vstack((xb_1d, yb_1d_flat)).T
-        model.fit(X_yflat, img_1D)
-
-    else:
-        model.fit(X, img_1D)
-    '''
-
     model = make_pipeline(PolynomialFeatures(degree), estimator)
     model.fit(X, img_1D)
+
     if hasattr(model[-1], 'estimator_'):
         if ignore_Y:
             if degree == 2:
@@ -1472,8 +1453,8 @@ def Perform_2D_fit(img, estimator, **kwargs):
             if degree == 4:
                 # Estimator coeff. inds:  0  1  2  3    4    5    6    7      8      9    10   11      12       13    14
                 # Estimator coefficients (1  x  y x^2  x*y  y^2  x^3  x^2*y  x*y^2  y^3  x^4  x^3*y  x^2*y^2  x*y^3  y^4)
-                model[-1].estimator_.coef_[0] = model[-1].estimator_.coef_[0] + model[-1].estimator_.coef_[2]*ymean + model[-1].estimator_.coef_[5]*ymean*ymean
-                + model[-1].estimator_.coef_[9]*ymean*ymean*ymean + model[-1].estimator_.coef_[14]*ymean*ymean*ymean*ymean
+                model[-1].estimator_.coef_[0] = (model[-1].estimator_.coef_[0] + model[-1].estimator_.coef_[2]*ymean + model[-1].estimator_.coef_[5]*ymean*ymean
+                    + model[-1].estimator_.coef_[9]*ymean*ymean*ymean + model[-1].estimator_.coef_[14]*ymean*ymean*ymean*ymean)
                 model[-1].estimator_.coef_[1] = model[-1].estimator_.coef_[1] + model[-1].estimator_.coef_[4]*ymean + model[-1].estimator_.coef_[8]*ymean*ymean + model[-1].estimator_.coef_[13]*ymean*ymean*ymean
                 model[-1].estimator_.coef_[3] = model[-1].estimator_.coef_[3] + model[-1].estimator_.coef_[7]*ymean + model[-1].estimator_.coef_[12]*ymean*ymean
                 model[-1].estimator_.coef_[6] = model[-1].estimator_.coef_[6] + model[-1].estimator_.coef_[11]*ymean
@@ -1513,8 +1494,8 @@ def Perform_2D_fit(img, estimator, **kwargs):
             if degree == 4:
                 # Estimator coeff. inds:  0  1  2  3    4    5    6    7      8      9    10   11      12       13    14
                 # Estimator coefficients (1  x  y x^2  x*y  y^2  x^3  x^2*y  x*y^2  y^3  x^4  x^3*y  x^2*y^2  x*y^3  y^4)
-                model[-1].coef_[0] = model[-1].coef_[0] + model[-1].coef_[2]*ymean + model[-1].coef_[5]*ymean*ymean
-                + model[-1].coef_[9]*ymean*ymean*ymean + model[-1].coef_[14]*ymean*ymean*ymean*ymean
+                model[-1].coef_[0] =(model[-1].coef_[0] + model[-1].coef_[2]*ymean + model[-1].coef_[5]*ymean*ymean
+                    + model[-1].coef_[9]*ymean*ymean*ymean + model[-1].coef_[14]*ymean*ymean*ymean*ymean)
                 model[-1].coef_[1] = model[-1].coef_[1] + model[-1].coef_[4]*ymean + model[-1].coef_[8]*ymean*ymean + model[-1].coef_[13]*ymean*ymean*ymean
                 model[-1].coef_[3] = model[-1].coef_[3] + model[-1].coef_[7]*ymean + model[-1].coef_[12]*ymean*ymean
                 model[-1].coef_[6] = model[-1].coef_[6] + model[-1].coef_[11]*ymean
@@ -1543,10 +1524,13 @@ def Perform_2D_fit(img, estimator, **kwargs):
         coefs = model[-1].coef_
         intercept = model[-1].intercept_
     img_fit_1d = model.predict(X)
-    scr = model.score(X, img_1D)
     mse = mean_squared_error(img_fit_1d, img_1D)
     img_fit = model.predict(X_binned).reshape(yszb, xszb)
     if calc_corr:
+        yf, xf = np.indices(img.shape)
+        xf_1d = xf.ravel()/bins
+        yf_1d = yf.ravel()/bins
+        Xf = np.vstack((xf_1d, yf_1d)).T
         img_correction_array = np.mean(img_fit_1d) / model.predict(Xf).reshape(ysz, xsz)
     else:
         img_correction_array = img * 0.0
@@ -1558,45 +1542,45 @@ def Perform_2D_fit(img, estimator, **kwargs):
         fig, axs = plt.subplots(2,2, figsize = (12, 8))
         axs[0, 0].imshow(img_binned, cmap='Greys', vmin=vmin, vmax=vmax)
         axs[0, 0].grid(True)
-        axs[0, 0].plot([Xsect//bins, Xsect//bins], [0, yszb], 'lime', linewidth = 0.5)
-        axs[0, 0].plot([0, xszb], [Ysect//bins, Ysect//bins], 'cyan', linewidth = 0.5)
+        axs[0, 0].plot([Xsect//bins, Xsect//bins], [-0.5, yszb-0.5], 'lime', linewidth = 0.5)
+        axs[0, 0].plot([-0.5, xszb-0.5], [Ysect//bins, Ysect//bins], 'cyan', linewidth = 0.5)
         if len(Analysis_ROIs_binned)>0:
             col_ROIs = 'yellow'
             axs[0, 0].text(0.3, 0.9, 'with Analysis ROIs', color=col_ROIs, transform=axs[0, 0].transAxes)
             for Analysis_ROI_binned in Analysis_ROIs_binned:
-            #Analysis_ROI : list of [left, right, top, bottom]
                 xi, xa, yi, ya = Analysis_ROI_binned
                 ROI_patch = patches.Rectangle((xi,yi), np.abs(xa-xi)-2, np.abs(ya-yi)-2, linewidth=0.75, edgecolor=col_ROIs,facecolor='none')
                 axs[0, 0].add_patch(ROI_patch)
-
-        axs[0, 0].set_xlim((0, xszb))
-        axs[0, 0].set_ylim((yszb, 0))
+        axs[0, 0].set_xlim((-0.5, xszb-0.5))
+        axs[0, 0].set_ylim((yszb-0.5, -0.5))
         axs[0, 0].set_title('{:d}-x Binned Raw:'.format(bins) + image_name)
 
         axs[0, 1].imshow(img_fit, cmap='Greys', vmin=vmin, vmax=vmax)
         axs[0, 1].grid(True)
-        axs[0, 1].plot([Xsect//bins, Xsect//bins], [0, yszb], 'lime', linewidth = 0.5)
-        axs[0, 1].plot([0, xszb], [Ysect//bins, Ysect//bins], 'cyan', linewidth = 0.5)
-        axs[0, 1].set_xlim((0, xszb))
-        axs[0, 1].set_ylim((yszb,0))
+        axs[0, 1].plot([Xsect//bins, Xsect//bins], [-0.5, yszb-0.5], 'lime', linewidth = 0.5)
+        axs[0, 1].plot([-0.5, xszb-0.5], [Ysect//bins, Ysect//bins], 'cyan', linewidth = 0.5)
+        axs[0, 1].set_xlim((-0.5, xszb-0.5))
+        axs[0, 1].set_ylim((yszb-0.5,-0.5))
         axs[0, 1].set_title('{:d}-x Binned Fit: '.format(bins) + image_name)
 
         axs[1, 0].plot(img[Ysect, :],'b', label = image_name, linewidth =0.5)
-        axs[1, 0].plot(xb[0,:]*bins, img_binned[Ysect//bins, :],'cyan', label = 'Binned '+ image_name)
-        axs[1, 0].plot(xb[0,:]*bins, img_fit[Ysect//bins, :], 'yellow', linewidth=4, linestyle='--', label = 'Fit: '+ image_name)
+        axs[1, 0].plot(xb[0,:]*bins+bins//2, img_binned[Ysect//bins, :],'cyan', label = 'Binned '+ image_name)
+        axs[1, 0].plot(xb[0,:]*bins+bins//2, img_fit[Ysect//bins, :], 'yellow', linewidth=4, linestyle='--', label = 'Fit: '+ image_name)
         axs[1, 0].legend()
         axs[1, 0].grid(True)
         axs[1, 0].set_xlabel('X-coordinate')
 
         axs[1, 1].plot(img[:, Xsect],'g', label = image_name, linewidth =0.5)
-        axs[1, 1].plot(yb[:, 0]*bins, img_binned[:, Xsect//bins],'lime', label = 'Binned '+image_name)
-        axs[1, 1].plot(yb[:, 0]*bins, img_fit[:, Xsect//bins], 'yellow', linewidth=4, linestyle='--', label = 'Fit: '+ image_name)
+        axs[1, 1].plot(yb[:, 0]*bins+bins//2, img_binned[:, Xsect//bins],'lime', label = 'Binned '+image_name)
+        axs[1, 1].plot(yb[:, 0]*bins+bins//2, img_fit[:, Xsect//bins], 'yellow', linewidth=4, linestyle='--', label = 'Fit: '+ image_name)
         axs[1, 1].legend()
         axs[1, 1].grid(True)
         axs[1, 1].set_xlabel('Y-coordinate')
         if save_res_png:
             fig.savefig(res_fname, dpi=dpi)
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   results saved into the file: '+res_fname)
+        display(fig)
+        plt.close(fig)
     return intercept, coefs, mse, img_correction_array
 
 
