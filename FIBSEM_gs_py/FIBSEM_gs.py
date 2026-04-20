@@ -1328,6 +1328,8 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         if save_res_png:
             fig.savefig(res_fname, dpi=dpi)
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   results saved into the file: '+res_fname)
+        display(fig)
+        plt.close(fig)
     return mean_vals, var_vals, I0, SNR0, SNR1, popt, result
 
 
