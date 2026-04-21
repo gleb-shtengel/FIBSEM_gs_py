@@ -363,7 +363,12 @@ def create_zarr3_store(
     cur_nx, cur_ny, cur_nz = nx, ny, nz
     for level in range(n_pyramid_levels):
         lvl_inner  = (min(cx,  cur_nx), min(cy,  cur_ny), min(cz,  cur_nz))
-        lvl_shards = (min(shx, cur_nx), min(shy, cur_ny), min(shz, cur_nz))
+        lix, liy, liz = lvl_inner
+        lvl_shards = (
+            max(lix, (min(shx, cur_nx) // lix) * lix),
+            max(liy, (min(shy, cur_ny) // liy) * liy),
+            max(liz, (min(shz, cur_nz) // liz) * liz),
+        )
 
         root.create_array(
             f"s{level}",
