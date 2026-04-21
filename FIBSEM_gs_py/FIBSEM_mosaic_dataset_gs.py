@@ -2412,14 +2412,17 @@ class FIBSEM_mosaic_dataset:
         '''
         sigma_thr = kwargs.get('sigma_thr', 6.0)
         nxny = self.n_tiles_per_layer
-        data_dir = kwargs.get("data_dir", '')
+        if hasattr(self, 'data_dir'):
+            data_dir = kwargs.get("data_dir", self.data_dir)
+        else:
+            data_dir = kwargs.get("data_dir", '')
         verbose = kwargs.get('verbose', False)
         save_png = kwargs.get('save_png', True)
         dpi = kwargs.get('dpi', 300)
         mark_outliers = kwargs.get('mark_outliers', True)
         fsmark = 6
         if save_png:
-            save_fname = kwargs.get('save_fname', os.path.join(data_dir, 'nkpts_Outliers.png'))
+            save_fname = kwargs.get('save_fname', os.path.join(data_dir, 'Nkpts_Outliers.png'))
         else:
             save_fname = 'Image not saved'
         if verbose:
@@ -3388,8 +3391,8 @@ class FIBSEM_mosaic_dataset:
             if k == tile_id:
                 axs[0].plot(frame_inds, tile_positions_xk, color=my_col, marker='x', markersize=4, label='Tile {:d}, X-shift'.format(tile_id))
                 axs[1].plot(frame_inds, tile_positions_yk, color=my_col, marker='x', markersize=4, label='Tile {:d}, Y-shift'.format(tile_id))
-                axs[2].plot(frame_inds, tile_positions_xk, color='red', label='Tile {:d}, X-shift'.format(tile_id))
-                axs[2].plot(frame_inds, tile_positions_yk, color='blue', label='Tile {:d}, Y-shift'.format(tile_id))
+                axs[2].plot(frame_inds, tile_positions_xk, color='red', linewidth = 0.25, label='Tile {:d}, X-shift'.format(tile_id))
+                axs[2].plot(frame_inds, tile_positions_yk, color='blue', linewidth = 0.25, label='Tile {:d}, Y-shift'.format(tile_id))
             else:
                 axs[0].plot(frame_inds, tile_positions_xk, color=my_col, linewidth = 0.25)
                 axs[1].plot(frame_inds, tile_positions_yk, color=my_col, linewidth = 0.25)
