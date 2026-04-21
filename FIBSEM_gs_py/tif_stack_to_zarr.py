@@ -293,7 +293,7 @@ def create_zarr_store(
     Returns the root zarr.Group.
     """
     compressor = _make_compressor(zarr_compressor, zarr_compressor_level)
-    root = zarr.open_group(output_zarr_path, mode="w" if overwrite else "w-")
+    root = zarr.open_group(output_zarr_path, mode="w" if overwrite else "w-", zarr_format=2)
 
     cur_nz, cur_ny, cur_nx = nz, ny, nx
     for level in range(n_pyramid_levels):
