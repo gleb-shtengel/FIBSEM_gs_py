@@ -80,7 +80,7 @@ import numpy as np
 import zarr
 # zarr v3 codecs — requires zarr-python ≥ 3.0
 try:
-    from zarr.codecs import ShardingCodec, ZstdCodec, BytesCodec
+    from zarr.codecs import ZstdCodec
     _HAS_ZARR3_CODECS = True
 except ImportError:
     _HAS_ZARR3_CODECS = False
@@ -344,12 +344,12 @@ def create_zarr3_store(
     Create an empty OME-ZARR v3 store with XYZ axis order, sharding, and ZstdCodec.
 
     Arrays are stored under paths 's0', 's1', … with shape (nx, ny, nz)
-    (XYZ order), ShardingCodec (shard_xyz outer, chunk_xyz inner), BytesCodec,
-    and ZstdCodec.  Returns the root zarr.Group.
+    (XYZ order), with shard_xyz outer shards and chunk_xyz inner chunks.
+    Returns the root zarr.Group.
     """
     if not _HAS_ZARR3_CODECS:
         raise ImportError(
-            "zarr >= 3 with ShardingCodec/ZstdCodec is required for zarr_format=3. "
+            "zarr >= 3 with ZstdCodec is required for zarr_format=3. "
             "Install with: pip install 'zarr>=3'"
         )
 
@@ -365,34 +365,16 @@ def create_zarr3_store(
         lvl_inner  = (min(cx,  cur_nx), min(cy,  cur_ny), min(cz,  cur_nz))
         lvl_shards = (min(shx, cur_nx), min(shy, cur_ny), min(shz, cur_nz))
 
-        codecs = [
-            ShardingCodec(
-                chunk_shape=lvl_inner,
-                codecs=[BytesCodec(), ZstdCodec(level=zstd_level)],
-            )
-        ]
-        try:
-           root.require_dataset(
-                f"s{level}",
-                shape=(cur_nx, cur_ny, cur_nz),
-                chunks=lvl_shards,
-                dtype=dtype,
-                codecs=codecs,
-                fill_value=0,
-                overwrite=overwrite,
-            )
-        except TypeError:
-            # zarr v3: compressor kwarg replaced by codecs
-            from numcodecs.compat import ensure_ndarray
-            root.require_dataset(
-                f"s{level}",
-                shape=(cur_nx, cur_ny, cur_nz),
-                chunks=lvl_shards,
-                dtype=dtype,
-                codecs=codecs,
-                fill_value=0,
-                overwrite=overwrite,
-            )
+        root.create_array(
+            f"s{level}",
+            shape=(cur_nx, cur_ny, cur_nz),
+            chunks=lvl_inner,                        # inner chunk shape
+            shards=lvl_shards,                       # shard shape
+            dtype=dtype,
+            compressors=[ZstdCodec(level=zstd_level)],
+            fill_value=0,
+            overwrite=overwrite,
+        )
         print(f"  Level s{level}: shape=({cur_nx}, {cur_ny}, {cur_nz})  "
               f"shards={lvl_shards}  inner_chunks={lvl_inner}")
         cur_nx //= downsample_factor
@@ -1639,7 +1621,7 @@ def tif_stack_to_zarr(
     use_DASK, status_update_address = check_DASK(client)
     t0 = time.time()
 
-    if not tif_files:
+    if len(tif_files) == 0:
         raise ValueError("tif_files is empty")
 
     nz = len(tif_files)
