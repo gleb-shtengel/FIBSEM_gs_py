@@ -372,7 +372,7 @@ def create_zarr3_store(
             )
         ]
        try:
-            root.require_dataset(
+           root.require_dataset(
                 f"s{level}",
                 shape=(cur_nx, cur_ny, cur_nz),
                 chunks=lvl_shards,
