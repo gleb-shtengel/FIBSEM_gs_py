@@ -371,7 +371,7 @@ def create_zarr3_store(
                 codecs=[BytesCodec(), ZstdCodec(level=zstd_level)],
             )
         ]
-       try:
+        try:
            root.require_dataset(
                 f"s{level}",
                 shape=(cur_nx, cur_ny, cur_nz),
