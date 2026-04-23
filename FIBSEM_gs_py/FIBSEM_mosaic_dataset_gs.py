@@ -4208,7 +4208,7 @@ class FIBSEM_mosaic_dataset:
                 fls_layer = self.fls[layer_id].ravel()
                 tr_matr_layer = self.tr_matr[layer_id]
                 #tif_fname = os.path.splitext(fnm_mosaic_stack)[0] + '_layer_{:d}.tif'.format(layer_id)
-                tif_fname = os.path.join(save_folder, os.path.splitext(os.path.split(fnm_mosaic_stack)[1])[0] + '_layer_{:d}.tif'.format(layer_id))
+                tif_fname = os.path.join(save_folder, os.path.splitext(os.path.split(fnm_mosaic_stack)[1])[0] + '_layer_{:06d}.tif'.format(layer_id))
                 if save_tif:
                     fnms_saved.append(tif_fname)
                 if hasattr(self, 'tile_scales') and perform_intensity_normalization:
