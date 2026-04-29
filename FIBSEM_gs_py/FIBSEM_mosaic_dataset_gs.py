@@ -61,6 +61,7 @@ from sklearn.pipeline import make_pipeline
 
 from FIBSEM_gs_py.FIBSEM_gs import (FIBSEM_frame,
                         ShiftTransform,
+                        RotationShiftTransform,
                         XScaleShiftTransform,
                         ScaleShiftTransform,
                         RegularizedAffineTransform,
@@ -2469,6 +2470,32 @@ class FIBSEM_mosaic_dataset:
         display(fig)
         plt.close(fig)
         return outliers
+
+
+    def get_interlayer_pairs_mask(self, tile_indices):
+        '''
+        Return the subset of self.index_pairs that are inter-layer pairs
+        for the specified intra-layer tile positions. ©G.Shtengel 04/2026 gleb.shtengel@gmail.com
+
+        Parameters:
+        -----------
+        tile_indices : array-like of int
+            Intra-layer tile indices (0 to n_tiles_per_layer-1) to include.
+
+        Returns:
+        --------
+        mask : 1D np.ndarray of bool, shape (N_pairs,)
+            Boolean mask over self.index_pairs selecting inter-layer pairs
+            for the specified intra-layer tile positions.
+        '''
+        tile_indices = np.asarray(tile_indices)
+        n = self.n_tiles_per_layer
+        pairs  = self.index_pairs            # shape (N_pairs, 2)
+        layer1 = pairs[:, 0] // n
+        layer2 = pairs[:, 1] // n
+        tile  = pairs[:, 0] % n
+        mask = (layer1 != layer2) & np.isin(tile, tile_indices)
+        return mask
     
 
     def determine_transformations_SIFT(self, **kwargs):
@@ -2490,10 +2517,13 @@ class FIBSEM_mosaic_dataset:
             Cropping value for cropping the image from the left side (used along with deformation_field or on its own). Default is 0 - no cropping.
         deformation_field : 3D array
             Deformation field for distortion corrections to be executed before SIFT. Default is np.nan - no distortion correction.
+        select_tiles : list 
+            List of tile ID's. Sefault is False or empty list.
         TransformType : object reference
             Transformation model used for determining the transformation matrix from Key-Point pairs. Default is object attribute.
             Choose from the following options:
                 ShiftTransform - only x-shift and y-shift
+                RotationShiftTransform - x-shift, y-shift, rotation
                 XScaleShiftTransform  -  x-scale, x-shift, y-shift
                 ScaleShiftTransform - x-scale, y-scale, x-shift, y-shift
                 AffineTransform -  full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift)
@@ -2553,6 +2583,7 @@ class FIBSEM_mosaic_dataset:
         else:
             DASK_client = kwargs.get('DASK_client', '')
             use_DASK, status_update_address = check_DASK(DASK_client, verbose = True)
+            select_tiles = kwargs.get('select_tiles', False)
             if hasattr(self, "DASK_client_retries"):
                 DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
             else:
@@ -2590,9 +2621,17 @@ class FIBSEM_mosaic_dataset:
             use_existing_data = kwargs.get('use_existing_data', False)
 
             params_SIFT = []
+
+            if select_tiles:
+                mask = self.get_interlayer_pairs_mask(select_tiles)
+                index_pairs = self.index_pairs[mask]
+                pair_margins = self.pair_margins[mask]
+            else:
+                index_pairs = self.index_pairs
+                pair_margins = self.pair_margins
             fnms_kpts = self.fnms_kpts.ravel()
 
-            for index_pair, pair_margins  in zip(tqdm(self.index_pairs, desc='Setting up SIFT parameter list', display=verbose), self.pair_margins):
+            for index_pair, pair_margin  in zip(tqdm(index_pairs, desc='Setting up SIFT parameter list', display=verbose), pair_margins):
                 dt_kwargs = {'ftype' : ftype,
                         'TransformType' : TransformType,
                         'l2_matrix' : l2_matrix,
@@ -2618,7 +2657,7 @@ class FIBSEM_mosaic_dataset:
                 dt_kwargs['fnm_matches'] = fnm_matches
                 index_loc0, index_loc1 = np.mod(index_pair, self.n_tiles_per_layer)
                 FirstPixels_delta = self.FirstPixels[index_loc1] - self.FirstPixels[index_loc0]
-                ymargin, xmargin = pair_margins
+                ymargin, xmargin = pair_margin
                 dt_kwargs['warp_matrix'] = np.array([[1, 0, -FirstPixels_delta[0]], [0, 1, -FirstPixels_delta[1]]], dtype=np.float32)
                 dt_kwargs['image_margins'] = (ymargin, xmargin)
                 dt_kwargs['image_shape'] = (self.YResolution, self.XResolution)
@@ -2636,25 +2675,27 @@ class FIBSEM_mosaic_dataset:
                 for param_SIFT in tqdm(params_SIFT, desc = 'Extracting Transformation Parameters: ', display=verbose):
                     transformations_results_3D.append(determine_transformations_files(param_SIFT))
             
-            for j, transformations_result  in enumerate(tqdm(transformations_results_3D, desc = 'Parsing the SIFT results', display = verbose)):
-                try:
-                    self.SIFT_transformation_matrices[j] = np.nan_to_num(transformations_result[0])
-                    self.SIFT_fnms_matches[j] = transformations_result[1]
-                    self.SIFT_nmatches[j] = len(transformations_result[2][0])
-                    self.SIFT_transformation_valid[j] = self.SIFT_nmatches[j] > SIFT_nmatches_min
-                    src_selected_ints, dst_selected_ints = transformations_result[3]
-                    self.SIFT_intensity_ratios[j] = np.mean(dst_selected_ints / src_selected_ints)
-
-                except Exception as e:
-                    if verbose:
-                        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   An error occurred: {}'.format(e))
-                        print('transformations_result:  ', transformations_result)
+            if select_tiles:
+                self.select_SIFT_transformation_matrices = np.array([np.nan_to_num(transformations_result[0]) for transformations_result in transformations_results_3D]).reshape((self.nz_tiles - 1, len(select_tiles)))
+            else:
+                for j, transformations_result  in enumerate(tqdm(transformations_results_3D, desc = 'Parsing the SIFT results', display = verbose)):
+                    try:
+                        self.SIFT_transformation_matrices[j] = np.nan_to_num(transformations_result[0])
+                        self.SIFT_fnms_matches[j] = transformations_result[1]
+                        self.SIFT_nmatches[j] = len(transformations_result[2][0])
+                        self.SIFT_transformation_valid[j] = self.SIFT_nmatches[j] > SIFT_nmatches_min
+                        src_selected_ints, dst_selected_ints = transformations_result[3]
+                        self.SIFT_intensity_ratios[j] = np.mean(dst_selected_ints / src_selected_ints)
+                    except Exception as e:
+                        if verbose:
+                            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   An error occurred: {}'.format(e))
+                            print('transformations_result:  ', transformations_result)
             
-            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intra-layer horisontal matches :', np.mean(self.SIFT_nmatches[0:self.nh]).astype(np.int64))
-            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intra-layer vertical matches :', np.mean(self.SIFT_nmatches[self.nh:self.nh+self.nv]).astype(np.int64))
-            if self.nl > 0:
-                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for inter-layer matches :', np.mean(self.SIFT_nmatches[self.nh+self.nv:]).astype(np.int64))
-            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   {:d} out of {:d} SIFT transformations are valid  (SIFT_nmatches > {:d})'.format(np.sum(self.SIFT_transformation_valid), self.C, SIFT_nmatches_min))
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intra-layer horisontal matches :', np.mean(self.SIFT_nmatches[0:self.nh]).astype(np.int64))
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intra-layer vertical matches :', np.mean(self.SIFT_nmatches[self.nh:self.nh+self.nv]).astype(np.int64))
+                if self.nl > 0:
+                    print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for inter-layer matches :', np.mean(self.SIFT_nmatches[self.nh+self.nv:]).astype(np.int64))
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   {:d} out of {:d} SIFT transformations are valid  (SIFT_nmatches > {:d})'.format(np.sum(self.SIFT_transformation_valid), self.C, SIFT_nmatches_min))
         return transformations_results_3D
 
 
