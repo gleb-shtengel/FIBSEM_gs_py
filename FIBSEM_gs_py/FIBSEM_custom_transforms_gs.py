@@ -565,6 +565,103 @@ class ScaleShiftTransform(ProjectiveTransform):
         return self.params[0:self.dimensionality, self.dimensionality]
 
 
+class RotationShiftTransform(ProjectiveTransform):
+    """
+    Rotation and shift (rigid) transformation. ©G.Shtengel gleb.shtengel@gmail.com
+
+    Has the following form::
+        X = cos(θ)*x - sin(θ)*y + tx
+        Y = sin(θ)*x + cos(θ)*y + ty
+    and the homogeneous transformation matrix is::
+        [[cos(θ)  -sin(θ)   tx]
+         [sin(θ)   cos(θ)   ty]
+         [0        0        1 ]]
+    No scale change is applied.
+
+    Parameters
+    ----------
+    matrix : (D+1, D+1) array, optional
+        Homogeneous transformation matrix. If provided, rotation and translation must be None.
+    rotation : float, optional
+        Rotation angle in counter-clockwise direction as radians. Only available for 2D.
+    translation : (tx, ty) as array, list or tuple, optional
+        Translation parameters. Only available for 2D.
+    dimensionality : int, optional
+        The dimensionality of the transform. Not used if other parameters are provided.
+
+    Attributes
+    ----------
+    params : (D+1, D+1) array
+        Homogeneous transformation matrix.
+
+    Raises
+    ------
+    ValueError
+        If both ``matrix`` and any of the other parameters are provided.
+    """
+
+    def __init__(self, matrix=None, rotation=None, translation=None, *, dimensionality=2):
+        params = (rotation is not None) or (translation is not None)
+        self._coeffs = range(dimensionality * (dimensionality + 1))
+
+        if params and matrix is not None:
+            raise ValueError("You cannot specify the transformation matrix and"
+                             " the implicit parameters at the same time.")
+        if params and dimensionality > 2:
+            raise ValueError('Parameter input is only supported in 2D.')
+        elif matrix is not None:
+            if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
+                raise ValueError("Invalid shape of transformation matrix.")
+            dimensionality = matrix.shape[0] - 1
+            self._coeffs = range(dimensionality * (dimensionality + 1))
+            self.params = matrix
+        elif params:  # note: 2D only
+            if rotation is None:
+                rotation = 0
+            if translation is None:
+                translation = (0, 0)
+            self.params = np.array([
+                [np.cos(rotation), -np.sin(rotation), 0],
+                [np.sin(rotation),  np.cos(rotation), 0],
+                [0,                 0,                 1]
+            ])
+            self.params[0:2, 2] = translation
+        else:
+            self.params = np.eye(dimensionality + 1)
+
+    def estimate(self, src, dst):
+        """
+        Parameters
+        ----------
+        src : (N, 2) array
+            Source coordinates.
+        dst : (N, 2) array
+            Destination coordinates.
+        Returns
+        -------
+        success : bool
+            True, if model estimation succeeds.
+        """
+        T = _umeyama(src.astype(float), dst.astype(float), estimate_scale=False)
+        if np.any(np.isnan(T)):
+            return False
+        self.params = T
+        return True
+
+    @property
+    def rotation(self):
+        if self.dimensionality != 2:
+            raise NotImplementedError(
+                'The rotation property is only implemented for 2D transforms.'
+            )
+        return np.arctan2(self.params[1, 0], self.params[0, 0])
+
+    @property
+    def translation(self):
+        return self.params[0:self.dimensionality, self.dimensionality]
+
+
+
 class RegularizedAffineTransform(ProjectiveTransform):
     """
     Regularized Affine transformation. ©G.Shtengel 11/2021 gleb.shtengel@gmail.com
