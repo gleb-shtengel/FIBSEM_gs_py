@@ -2653,7 +2653,10 @@ class FIBSEM_mosaic_dataset:
                 fname2 = fnms_kpts[index_pair[1]]
                 path_base, f1 = os.path.split(fname1)
                 _, f2 = os.path.split(fname2)
-                fnm_matches = os.path.join(path_base, f1.replace('_kpdes.bin', '_')+f2.replace('_kpdes.bin', '_matches.bin'))
+                if select_tiles:
+                    fnm_matches = os.path.join(path_base, f1.replace('_kpdes.bin', '_')+f2.replace('_kpdes.bin', '_select_tile_matches.bin'))
+                else:
+                    fnm_matches = os.path.join(path_base, f1.replace('_kpdes.bin', '_')+f2.replace('_kpdes.bin', '_matches.bin'))
                 dt_kwargs['fnm_matches'] = fnm_matches
                 index_loc0, index_loc1 = np.mod(index_pair, self.n_tiles_per_layer)
                 FirstPixels_delta = self.FirstPixels[index_loc1] - self.FirstPixels[index_loc0]
