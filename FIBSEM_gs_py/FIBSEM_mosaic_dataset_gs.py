@@ -2676,7 +2676,7 @@ class FIBSEM_mosaic_dataset:
                     transformations_results_3D.append(determine_transformations_files(param_SIFT))
             
             if select_tiles:
-                self.select_SIFT_transformation_matrices = np.array([np.nan_to_num(transformations_result[0]) for transformations_result in transformations_results_3D]).reshape((self.nz_tiles - 1, len(select_tiles)))
+                self.select_SIFT_transformation_matrices = np.array([np.nan_to_num(transformations_result[0]) for transformations_result in transformations_results_3D]).reshape((self.nz_tiles - 1, len(select_tiles), 3, 3))
             else:
                 for j, transformations_result  in enumerate(tqdm(transformations_results_3D, desc = 'Parsing the SIFT results', display = verbose)):
                     try:
