@@ -2625,7 +2625,7 @@ class FIBSEM_mosaic_dataset:
             if select_tiles:
                 mask = self.get_interlayer_pairs_mask(select_tiles)
                 index_pairs = self.index_pairs[mask]
-                pair_margins = self.pair_margins[mask]
+                pair_margins = np.array(self.pair_margins)[mask]
             else:
                 index_pairs = self.index_pairs
                 pair_margins = self.pair_margins
