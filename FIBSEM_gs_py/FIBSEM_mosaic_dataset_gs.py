@@ -126,11 +126,11 @@ def split_translation_int_fract(transformation_matrix):
         transformation_matrix_fract : (3, 3) float32 — matrix with fractional translations only
         dx, dy : int — integer translation components extracted from the matrix
     '''
-    transformation_matrix_fract = (transformation_matrix - np.floor(transformation_matrix)+ np.eye(3,3)).astype(np.float32)
-    #transformation_matrix_fract = (transformation_matrix - np.floor(transformation_matrix)).astype(np.float32)
-    dx, dy = (transformation_matrix_fract - transformation_matrix)[0:2, 2].astype(np.int32)
-    return transformation_matrix_fract, dx, dy
-
+    dx, dy = np.round(transformation_matrix[0:2, 2]).astype(np.int32)
+    delta_matrix = np.array([[0, 0, dx],
+                         [0, 0, dy],
+                         [0, 0,  0]])
+    return transformation_matrix - delta_matrix, dx, dy
 
 def combine_deformation_fields(DF1, DF2, interpolation=cv2.INTER_LINEAR):
     """
