@@ -1956,6 +1956,7 @@ class FIBSEM_mosaic_dataset:
         self.SIFT_fnms_matches = ['' for x in np.arange(self.C)]
         self.SIFT_nmatches = np.full(self.C, 0)
         self.SIFT_intensity_ratios = np.full(self.C, np.nan)
+        self.SIFT_Affine_r2norm = np.nan    # residual 2-norm from the affine bundle solve
         self.tile_I0s = np.zeros((self.nz_tiles, self.n_tiles_per_layer))
         self.tile_scales = np.ones((self.nz_tiles, self.n_tiles_per_layer))
 
@@ -3185,7 +3186,13 @@ class FIBSEM_mosaic_dataset:
         verbose : boolean
             Display intermediate results. Default is False.
         method : string
-            Options are: ['SIFT-ECC', 'SIFT', 'ECC']. Default is 'ECC'.  'SIFT-ECC' means - try SIFT first, and for the tiles that SIFT failed, try ECC.
+            Options are: ['SIFT-ECC', 'SIFT', 'ECC', 'SIFT-Affine']. Default is 'ECC'.
+            'SIFT-ECC' means - try SIFT first, and for the tiles that SIFT failed, try ECC.
+            'SIFT-Affine' performs a keypoint-based bundle adjustment that solves for a full
+            per-tile affine transform (scale, rotation, shear, and translation) using all
+            inlier SIFT keypoint matches.  Requires that determine_transformations_SIFT has
+            already been run with save_matches=True so that self.SIFT_fnms_matches is
+            populated.  The residual 2-norm is stored in self.SIFT_Affine_r2norm.
         subtract_linear_fit : [boolean, boolean]
             List of two Boolean values for two directions: X- and Y-. Default is [True, True].
             If True, the linear slopes along X- and Y- directions (respectively)
@@ -3203,7 +3210,7 @@ class FIBSEM_mosaic_dataset:
         initialize_transformation_first = kwargs.get('initialize_transformation_first', True)
         verbose = kwargs.get('verbose', False)
         method = kwargs.get('method', 'ECC')
-        valid_methods = ['SIFT-ECC', 'SIFT', 'ECC']
+        valid_methods = ['SIFT-ECC', 'SIFT', 'ECC', 'SIFT-Affine']
         subtract_linear_fit =  kwargs.get("subtract_linear_fit", [True, True])   # If True, the linear slope will be subtracted from the cumulative shifts.
         subtract_FOVtrend_from_fit = kwargs.get("subtract_FOVtrend_from_fit", [True, True])
 
@@ -3217,7 +3224,20 @@ class FIBSEM_mosaic_dataset:
             if verbose:
                 print('Method ' + method +' is not among valid methods: ', valid_methods)
             return np.nan
+
+        if method == 'SIFT-Affine':
+            # ------------------------------------------------------------------
+            # Keypoint-based bundle adjustment — full affine transform per tile.
+            # All per-tile tr_matr updates are handled inside _solve_affine_bundle;
+            # subtract_linear_fit post-processing and the return below are shared
+            # with the ShiftTransform paths.
+            # ------------------------------------------------------------------
+            valid_tile_flat = self._solve_affine_bundle(**kwargs)
+
         else:
+            # ------------------------------------------------------------------
+            # ShiftTransform paths: 'SIFT', 'ECC', 'SIFT-ECC'
+            # ------------------------------------------------------------------
             if method == 'SIFT':
                 self.SIFT_residual_error_x = np.full(self.C, np.nan)
                 self.SIFT_residual_error_y = np.full(self.C, np.nan)
@@ -3248,33 +3268,37 @@ class FIBSEM_mosaic_dataset:
                 # which tiles should have their tr_matr updated.
                 valid_constraint_mask = self.ECC_transformation_valid
 
-        res_x = res_x_all[0]
-        res_y = res_y_all[0]
-        positions = np.zeros((self.nz_tiles * self.n_tiles_per_layer, 2))
-        positions[:, 0] = res_x #- np.max(res_x)
-        positions[:, 1] = res_y #- np.max(res_y)
-        positions_3d = positions.reshape((self.nz_tiles, self.n_tiles_per_layer, 2))
+            res_x = res_x_all[0]
+            res_y = res_y_all[0]
+            positions = np.zeros((self.nz_tiles * self.n_tiles_per_layer, 2))
+            positions[:, 0] = res_x #- np.max(res_x)
+            positions[:, 1] = res_y #- np.max(res_y)
+            positions_3d = positions.reshape((self.nz_tiles, self.n_tiles_per_layer, 2))
 
-        # Determine which tiles appear in at least one valid pairwise constraint.
-        # self.index_pairs has shape (C, 2): each row holds the two flat tile
-        # indices for that constraint row in A_csr.  Collecting the unique indices
-        # from all valid rows gives exactly the tiles whose lsqr-solved positions
-        # are meaningful (i.e. anchored by real image data).
-        valid_tile_flat = np.unique(self.index_pairs[valid_constraint_mask])  # flat 1D tile indices
-        valid_z = valid_tile_flat // self.n_tiles_per_layer   # layer index
-        valid_t = valid_tile_flat  % self.n_tiles_per_layer   # within-layer tile index
+            # Determine which tiles appear in at least one valid pairwise constraint.
+            # self.index_pairs has shape (C, 2): each row holds the two flat tile
+            # indices for that constraint row in A_csr.  Collecting the unique indices
+            # from all valid rows gives exactly the tiles whose lsqr-solved positions
+            # are meaningful (i.e. anchored by real image data).
+            valid_tile_flat = np.unique(self.index_pairs[valid_constraint_mask])  # flat 1D tile indices
+            valid_z = valid_tile_flat // self.n_tiles_per_layer   # layer index
+            valid_t = valid_tile_flat  % self.n_tiles_per_layer   # within-layer tile index
 
-        # Update tr_matr only for tiles that had at least one valid constraint.
-        # Tiles with no valid constraints keep their existing tr_matr translations
-        # (i.e. the nominal/initialised positions), since the solver has no real
-        # data to constrain their positions and would otherwise write arbitrary values.
-        # dx and dy are average shifts of new positions relative to default positions.
-        dx = np.mean(self.tr_matr[valid_z, valid_t, 0, 2] - positions_3d[valid_z, valid_t, 0])
-        dy = np.mean(self.tr_matr[valid_z, valid_t, 1, 2] - positions_3d[valid_z, valid_t, 1])
+            # Update tr_matr only for tiles that had at least one valid constraint.
+            # Tiles with no valid constraints keep their existing tr_matr translations
+            # (i.e. the nominal/initialised positions), since the solver has no real
+            # data to constrain their positions and would otherwise write arbitrary values.
+            # dx and dy are average shifts of new positions relative to default positions.
+            dx = np.mean(self.tr_matr[valid_z, valid_t, 0, 2] - positions_3d[valid_z, valid_t, 0])
+            dy = np.mean(self.tr_matr[valid_z, valid_t, 1, 2] - positions_3d[valid_z, valid_t, 1])
 
-        self.tr_matr[valid_z, valid_t, 0, 2] = positions_3d[valid_z, valid_t, 0] + dx 
-        self.tr_matr[valid_z, valid_t, 1, 2] = positions_3d[valid_z, valid_t, 1] + dy
+            self.tr_matr[valid_z, valid_t, 0, 2] = positions_3d[valid_z, valid_t, 0] + dx
+            self.tr_matr[valid_z, valid_t, 1, 2] = positions_3d[valid_z, valid_t, 1] + dy
 
+        # ------------------------------------------------------------------
+        # Post-processing shared by ALL methods: subtract linear drift from
+        # the translation columns, then print a summary if verbose.
+        # ------------------------------------------------------------------
         if subtract_linear_fit[0]:
             Xshift_mean = np.mean((self.tr_matr[:, :, 0, 2] - self.tr_matr[0, :, 0, 2]), axis=1)
             fr = np.arange(0, len(Xshift_mean))
@@ -3302,6 +3326,221 @@ class FIBSEM_mosaic_dataset:
         # positive (x, y) pixel positions in canvas space.
         # tile_positions = -self.tr_matr[:, :, 0:2, 2]
         return -self.tr_matr[:, :, 0:2, 2]
+
+    def _solve_affine_bundle(self, **kwargs):
+        '''
+        Keypoint-based bundle adjustment that solves for a full affine transform
+        per tile.  Called internally by solve_stack_stitching when method='SIFT-Affine'.
+        ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
+
+        Parameterisation (Option-B / minimum-norm anchoring)
+        -----------------------------------------------------
+        Each tile k carries 6 unknowns representing the *deviation* from the
+        identity transform:
+            φ_k = [da_k, db_k, dtx_k,  dc_k, dd_k, dty_k]
+        so that the full tile-to-canvas affine is:
+            M_k = I + δ_k  =  [[1+da_k,    db_k,  dtx_k],
+                                [  dc_k,  1+dd_k,  dty_k],
+                                [     0,       0,      1]]
+
+        For every inlier match  p = [px, py]  in tile_i  ↔  q = [qx, qy]  in tile_j
+        the canvas-consistency condition  M_i @ p̃ = M_j @ q̃  expands to two linear
+        equations with a *non-zero* RHS:
+            x:  da_i·px + db_i·py + dtx_i − da_j·qx − db_j·qy − dtx_j  =  qx − px
+            y:  dc_i·px + dd_i·py + dty_i − dc_j·qx − dd_j·qy − dty_j  =  qy − py
+
+        This yields a sparse system  B φ = r  of shape  (2·M_total, 6·V)  which is
+        solved in one lsqr call.  lsqr's minimum-norm solution distributes deviations
+        from identity evenly across all tiles; no explicit anchor tile is needed.
+
+        After the solve the per-tile dtx / dty values are centred onto the nominally-
+        initialised tr_matr positions via a global dx/dy correction (the same approach
+        used by the ShiftTransform path).  The non-translation parameters (da, db, dc,
+        dd) are written directly — their minimum-norm values are already centred near 0.
+
+        Intra-layer pairs are weighted by sqrt(intralayer_weight) and inter-layer pairs
+        by sqrt(interlayer_weight), mirroring the ShiftTransform path.
+
+        Parameters
+        ----------
+        **kwargs forwarded from solve_stack_stitching:
+            verbose : bool, default False
+
+        Returns
+        -------
+        valid_tile_flat : 1-D int ndarray
+            Flat tile indices (k = layer * n_tiles_per_layer + tile_in_layer) that
+            appear in at least one valid match pair.  Used by the caller for the
+            verbose tile-count summary.
+
+        Side effects
+        ------------
+        self.tr_matr[valid_z, valid_t]   updated with solved affine matrices
+        self.SIFT_Affine_r2norm          set to the lsqr residual 2-norm
+        '''
+        verbose  = kwargs.get('verbose', False)
+        n        = self.n_tiles_per_layer
+        V        = self.nz_tiles * n
+        w_sqrt_intra = np.sqrt(self.intralayer_weight)
+        w_sqrt_inter = np.sqrt(self.interlayer_weight)
+
+        # ------------------------------------------------------------------ #
+        # 1.  Identify valid pairs and pre-count total matches                #
+        # ------------------------------------------------------------------ #
+        valid_pair_indices = np.where(self.SIFT_transformation_valid)[0]
+        if len(valid_pair_indices) == 0:
+            if verbose:
+                print('  _solve_affine_bundle: no valid SIFT matches found.')
+            return np.array([], dtype=int)
+
+        M_total = int(self.SIFT_nmatches[valid_pair_indices].sum())
+        n_rows  = 2 * M_total    # two equations (x and y) per match
+        n_cols  = 6 * V          # six unknowns per tile
+
+        # ------------------------------------------------------------------ #
+        # 2.  Build sparse COO arrays (vectorised per pair, no per-match loop)#
+        #                                                                      #
+        # Each match contributes 12 non-zero entries total:                   #
+        #   tile_i: 3 entries in the x-row + 3 entries in the y-row = 6      #
+        #   tile_j: 3 entries in the x-row + 3 entries in the y-row = 6      #
+        # ------------------------------------------------------------------ #
+        nnz_max = 12 * M_total
+        B_row  = np.empty(nnz_max, dtype=np.int64)
+        B_col  = np.empty(nnz_max, dtype=np.int64)
+        B_data = np.empty(nnz_max, dtype=np.float64)
+        rhs    = np.zeros(n_rows,  dtype=np.float64)
+
+        ptr  = 0    # write pointer into B_row / B_col / B_data
+        mptr = 0    # next free row index in the equation system
+
+        for j in valid_pair_indices:
+            fnm = self.SIFT_fnms_matches[j]
+            try:
+                with open(fnm, 'rb') as fh:
+                    match_data = pickle.load(fh)
+            except Exception:
+                if verbose:
+                    print(f'  _solve_affine_bundle: could not load match file for pair {j}: {fnm}')
+                continue
+
+            src_pts, dst_pts = match_data[1]   # each (M, 2), full tile-local coords
+            M = len(src_pts)
+            if M == 0:
+                continue
+
+            px = src_pts[:, 0].astype(np.float64)   # (M,)
+            py = src_pts[:, 1].astype(np.float64)
+            qx = dst_pts[:, 0].astype(np.float64)
+            qy = dst_pts[:, 1].astype(np.float64)
+
+            tile_i, tile_j = self.index_pairs[j]
+            is_inter = (int(tile_i) // n) != (int(tile_j) // n)
+            w  = w_sqrt_inter if is_inter else w_sqrt_intra
+
+            x_rows = mptr + np.arange(M, dtype=np.int64) * 2   # row indices for x-equations
+            y_rows = x_rows + 1                                  # row indices for y-equations
+            ones   = np.ones(M, dtype=np.float64)
+            ci     = int(tile_i) * 6    # column base for tile_i  (φ_i starts at col ci)
+            cj     = int(tile_j) * 6    # column base for tile_j
+
+            # -- tile_i x-row: columns ci+0,ci+1,ci+2  ←  da_i·px + db_i·py + dtx_i
+            for k_off, vals in enumerate([px, py, ones]):
+                B_row [ptr:ptr+M] = x_rows
+                B_col [ptr:ptr+M] = ci + k_off
+                B_data[ptr:ptr+M] = w * vals
+                ptr += M
+
+            # -- tile_i y-row: columns ci+3,ci+4,ci+5  ←  dc_i·px + dd_i·py + dty_i
+            for k_off, vals in enumerate([px, py, ones]):
+                B_row [ptr:ptr+M] = y_rows
+                B_col [ptr:ptr+M] = ci + 3 + k_off
+                B_data[ptr:ptr+M] = w * vals
+                ptr += M
+
+            # -- tile_j x-row: columns cj+0,cj+1,cj+2  ←  −(da_j·qx + db_j·qy + dtx_j)
+            for k_off, vals in enumerate([qx, qy, ones]):
+                B_row [ptr:ptr+M] = x_rows
+                B_col [ptr:ptr+M] = cj + k_off
+                B_data[ptr:ptr+M] = -w * vals
+                ptr += M
+
+            # -- tile_j y-row: columns cj+3,cj+4,cj+5  ←  −(dc_j·qx + dd_j·qy + dty_j)
+            for k_off, vals in enumerate([qx, qy, ones]):
+                B_row [ptr:ptr+M] = y_rows
+                B_col [ptr:ptr+M] = cj + 3 + k_off
+                B_data[ptr:ptr+M] = -w * vals
+                ptr += M
+
+            # -- RHS: deviation from identity means measured relative displacement
+            rhs[x_rows] = w * (qx - px)
+            rhs[y_rows] = w * (qy - py)
+
+            mptr += 2 * M
+
+        # Trim pre-allocated arrays to the number of entries actually written
+        # (some pairs might have been skipped due to missing files or M==0).
+        B_row  = B_row [:ptr]
+        B_col  = B_col [:ptr]
+        B_data = B_data[:ptr]
+        n_rows_actual = mptr
+
+        if n_rows_actual == 0:
+            if verbose:
+                print('  _solve_affine_bundle: no match equations could be built.')
+            return np.array([], dtype=int)
+
+        # ------------------------------------------------------------------ #
+        # 3.  Solve  B φ = r  (minimum-norm least-squares)                    #
+        # ------------------------------------------------------------------ #
+        B_csr = csr_matrix((B_data, (B_row, B_col)), shape=(n_rows_actual, n_cols))
+        res   = lsqr(B_csr, rhs[:n_rows_actual])
+        phi   = res[0]                     # shape (6·V,)
+        self.SIFT_Affine_r2norm = res[4]   # weighted residual 2-norm
+
+        if verbose:
+            print(f'  _solve_affine_bundle: solved {n_rows_actual} equations for {n_cols} unknowns; '
+                  f'r2norm = {self.SIFT_Affine_r2norm:.4g}')
+
+        # ------------------------------------------------------------------ #
+        # 4.  Reconstruct tr_matr from φ                                      #
+        #                                                                      #
+        # φ_k = [da_k, db_k, dtx_k,  dc_k, dd_k, dty_k]                      #
+        # M_k = [[1+da_k,   db_k,  dtx_k],                                    #
+        #        [  dc_k, 1+dd_k,  dty_k],                                    #
+        #        [     0,      0,      1]]                                     #
+        # ------------------------------------------------------------------ #
+        phi_3d = phi.reshape(V, 6)   # (V, 6) — one row per flat tile index
+
+        # Determine which tiles appeared in at least one valid match pair.
+        valid_tile_flat = np.unique(self.index_pairs[self.SIFT_transformation_valid])
+        valid_z = valid_tile_flat // n
+        valid_t = valid_tile_flat  % n
+
+        # Extract solved deviations for the constrained tiles (vectorised).
+        da_arr  = phi_3d[valid_tile_flat, 0]
+        db_arr  = phi_3d[valid_tile_flat, 1]
+        dtx_arr = phi_3d[valid_tile_flat, 2]
+        dc_arr  = phi_3d[valid_tile_flat, 3]
+        dd_arr  = phi_3d[valid_tile_flat, 4]
+        dty_arr = phi_3d[valid_tile_flat, 5]
+
+        # Centre the solved translations onto the nominal (initialised) tr_matr
+        # positions — exactly as done in the ShiftTransform path (dx/dy correction).
+        # The minimum-norm solve yields dtx/dty values close to 0; adding dx/dy
+        # shifts them to match the expected canvas positions.
+        dx = np.mean(self.tr_matr[valid_z, valid_t, 0, 2] - dtx_arr)
+        dy = np.mean(self.tr_matr[valid_z, valid_t, 1, 2] - dty_arr)
+
+        # Write full affine matrices for all constrained tiles (vectorised).
+        self.tr_matr[valid_z, valid_t, 0, 0] = 1.0 + da_arr
+        self.tr_matr[valid_z, valid_t, 0, 1] = db_arr
+        self.tr_matr[valid_z, valid_t, 0, 2] = dtx_arr + dx
+        self.tr_matr[valid_z, valid_t, 1, 0] = dc_arr
+        self.tr_matr[valid_z, valid_t, 1, 1] = 1.0 + dd_arr
+        self.tr_matr[valid_z, valid_t, 1, 2] = dty_arr + dy
+        # Row 2 is [0, 0, 1] — already set by initialize_transformation_first.
+
+        return valid_tile_flat
 
     def solve_intensity_normalization(self, **kwargs):
         '''
