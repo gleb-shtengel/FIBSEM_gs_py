@@ -130,7 +130,7 @@ def split_translation_int_fract(transformation_matrix):
     delta_matrix = np.array([[0, 0, dx],
                          [0, 0, dy],
                          [0, 0,  0]])
-    return transformation_matrix - delta_matrix, dx, dy
+    return transformation_matrix + delta_matrix, dx, dy
 
 def combine_deformation_fields(DF1, DF2, interpolation=cv2.INTER_LINEAR):
     """
