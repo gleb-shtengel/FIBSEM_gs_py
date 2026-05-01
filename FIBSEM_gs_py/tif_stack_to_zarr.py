@@ -25,24 +25,13 @@ testing or when a single node is fast enough).
 
 ARCHITECTURE
 ------------
-Two modes are available, selected by the strip_y parameter in tif_stack_to_zarr():
-
-MODE 1 — Full-slab (default, strip_y=None):
-    Each Z-slab (chunk_z consecutive slices) is one independent unit of work:
-        write_slab_to_zarr(output_zarr_path, tif_files, z_start, z_end)
-            1. Reads chunk_z TIF files in parallel (ThreadPoolExecutor)
-            2. Writes the slab to zarr[f's{level}']
-    RAM per worker: chunk_z × ny × nx × itemsize  (e.g. ~55 GB for 4 GB TIF files)
-
-MODE 2 — Y-strip / memmap (strip_y=<int>):
-    Each (Z-slab, Y-strip) pair is one independent unit of work:
-        write_strip_to_zarr(output_zarr_path, tif_files, z_start, z_end, y_start, y_end)
-            1. Opens each TIF via tifffile.memmap (zero-copy file mapping)
-            2. Reads ONLY rows [y_start, y_end) from each file into RAM
-            3. Writes the sub-block to zarr[z_start:z_end, y_start:y_end, :]
-    RAM per worker: chunk_z × strip_y × nx × itemsize  (e.g. ~1 GB for strip_y=1024)
-    Requires uncompressed TIF files. Automatically falls back to Mode 1 if memmap
-    is not supported by the file format.
+Each (Z-slab, Y-strip) pair is one independent unit of work:
+    write_strip_to_zarr(output_zarr_path, tif_files, z_start, z_end, y_start, y_end)
+        1. Opens each TIF via tifffile.memmap (zero-copy file mapping)
+        2. Reads ONLY rows [y_start, y_end) from each file into RAM
+        3. Writes the sub-block to zarr[z_start:z_end, y_start:y_end, :]
+RAM per worker: chunk_z × strip_y × nx × itemsize  (e.g. ~1 GB for strip_y=1024)
+Requires uncompressed TIF files.
 
 Multiple workers can write to the same zarr store simultaneously because
 zarr chunks are independent files and each job writes a non-overlapping region.
@@ -254,73 +243,7 @@ def create_zarr_store(
 
 
 # ---------------------------------------------------------------------------
-# Slab writer  — the unit of work executed on each Dask worker
-# ---------------------------------------------------------------------------
-
-def write_slab_to_zarr(
-    output_zarr_path: str,
-    tif_files: list,
-    z_start: int,
-    z_end: int,
-    n_read_threads: int = 8,
-    level: int = 0,
-) -> dict:
-    """
-    Read TIF files [z_start, z_end) and write them into zarr level `level`.
-
-    Designed to run on a Dask worker (or directly).  Fully self-contained:
-    opens the zarr store itself, reads TIFs in parallel via threads, writes
-    the slab in one call (zarr handles XY chunking internally).
-
-    Parameters
-    ----------
-    output_zarr_path    : path to existing .zarr store
-    tif_files      : full ordered list of TIF paths for the entire volume
-    z_start, z_end : half-open Z-slice range for this slab
-    n_read_threads : threads for parallel TIF reading within this worker
-    level          : pyramid level to write into (0 = full resolution)
-
-    Returns
-    -------
-    dict  {z_start, z_end, elapsed_s, mb_s}
-    """
-    import os, time
-    import numpy as np
-    import zarr
-
-    try:
-        import tifffile as _tiff
-    except ImportError:
-        import skimage.external.tifffile as _tiff
-
-    def _read(path):
-        img = _tiff.imread(os.path.normpath(path))
-        return img[..., 0] if img.ndim == 3 else img
-
-    t0 = time.time()
-    slab_files = tif_files[z_start:z_end]
-    if not slab_files:
-        return {"z_start": z_start, "z_end": z_end, "elapsed_s": 0.0, "mb_s": 0.0}
-
-    from concurrent.futures import ThreadPoolExecutor, as_completed as _as_completed
-    n = len(slab_files)
-    results = [None] * n
-    with ThreadPoolExecutor(max_workers=min(n_read_threads, n)) as pool:
-        futs = {pool.submit(_read, f): i for i, f in enumerate(slab_files)}
-        for fut in _as_completed(futs):
-            results[futs[fut]] = fut.result()
-    slab = np.stack(results, axis=0)
-
-    zarr.open(output_zarr_path, mode="r+")[f"s{level}"][z_start:z_end, :, :] = slab
-
-    elapsed = time.time() - t0
-    mb = slab.nbytes / 1e6
-    del slab
-    return {"z_start": z_start, "z_end": z_end, "elapsed_s": elapsed, "mb_s": mb / elapsed}
-
-
-# ---------------------------------------------------------------------------
-# Strip writer  — memory-efficient alternative using tifffile.memmap
+# Strip writer  — uses tifffile.memmap for memory-efficient Y-strip reads
 # ---------------------------------------------------------------------------
 
 def write_strip_to_zarr(
@@ -337,8 +260,7 @@ def write_strip_to_zarr(
     Read a Y-strip from TIF files [z_start, z_end) using tifffile.memmap and
     write the resulting sub-block into zarr level `level`.
 
-    Unlike write_slab_to_zarr, only rows [y_start, y_end) are loaded from each
-    TIF file, so per-worker RAM is:
+    Only rows [y_start, y_end) are loaded from each TIF file, so per-worker RAM is:
         (z_end - z_start) × (y_end - y_start) × nx × itemsize
 
     Requires uncompressed (or single-strip) TIF files so that tifffile.memmap
@@ -801,6 +723,426 @@ def _print_neuroglancer_info(
 
 
 # ---------------------------------------------------------------------------
+# OME-ZARR v2 → v3 converter
+# ---------------------------------------------------------------------------
+
+def _convert_shard_worker(
+    src_path: str,
+    dst_path: str,
+    arr_path: str,
+    src_slices: tuple,
+    dst_slices: tuple,
+    perm,           # None  or  list[int] — axis permutation src→dst
+) -> dict:
+    """
+    Worker executed on a DASK node (or locally).
+    Reads one shard-sized region from a zarr v2 array and writes it
+    to the corresponding region in the zarr v3 array, optionally
+    transposing the data.
+
+    Parameters
+    ----------
+    src_path   : path to the source zarr v2 root store
+    dst_path   : path to the destination zarr v3 root store
+    arr_path   : relative path to the array inside both stores (e.g. 's0')
+    src_slices : tuple of slice objects — region to READ  (source axis order)
+    dst_slices : tuple of slice objects — region to WRITE (dest   axis order)
+    perm       : None → no transpose; list[int] → axes permutation (np.transpose)
+
+    Returns
+    -------
+    dict  {'arr_path', 'dst_slices', 'nbytes', 'elapsed_s'}
+    """
+    import time
+    import numpy as np
+    import zarr
+
+    t0 = time.time()
+
+    src_grp = zarr.open_group(str(src_path), mode='r')
+    dst_grp = zarr.open_group(str(dst_path), mode='r+')
+
+    data = np.asarray(src_grp[arr_path][src_slices])   # read shard region
+
+    if perm is not None:
+        data = data.transpose(perm)
+
+    dst_grp[arr_path][dst_slices] = data
+
+    elapsed = time.time() - t0
+    return {
+        'arr_path' : arr_path,
+        'dst_slices': str(dst_slices),
+        'nbytes'   : data.nbytes,
+        'elapsed_s': elapsed,
+    }
+
+
+def convert_ome_zarr_v2_to_v3(
+    src_path: str,
+    dst_path: str,
+    client=None,
+    chunk_size: tuple = (32, 32, 32),
+    shard_size: tuple = (1024, 1024, 1024),
+    axis_order: str = 'xyz',
+    transpose_codec: bool = True,
+    compression: str = 'zstd',
+    compression_level: int = 3,
+    overwrite: bool = True,
+    DASK_client_retries: int = 3,
+    verbose: bool = True,
+) -> zarr.Group:
+    """
+    Convert an OME-ZARR v2 store to ZARR v3 format using DASK.
+    ©G.Shtengel 2026  gleb.shtengel@gmail.com
+
+    All pyramid levels (s0, s1, …) present in the source are converted.
+    Supports optional axis reordering (e.g. ZYX source → XYZ output),
+    zarr v3 sharding, TransposeCodec (F-order), and configurable compression.
+
+    Requires zarr >= 3.0.
+
+    Parameters
+    ----------
+    src_path         : Path to the source OME-ZARR v2 store.
+    dst_path         : Path for the new ZARR v3 store (created fresh).
+    client           : dask.distributed.Client or None (local execution).
+    chunk_size       : Inner (logical) chunk shape in *output* axis order.
+                       Default (32, 32, 32).
+    shard_size       : Shard (physical file) shape in *output* axis order.
+                       Must be an integer multiple of chunk_size in every
+                       dimension.  Default (1024, 1024, 1024).
+    axis_order       : Axis order of the OUTPUT store, e.g. 'xyz' or 'zyx'.
+                       The source axis order is read from the OME-ZARR
+                       multiscales metadata; if it differs, data are
+                       transposed and coordinate-transform values reordered.
+                       Default 'xyz'.
+    transpose_codec  : If True, adds a TransposeCodec (F-order, i.e. axes
+                       reversed) to the inner codec chain of the zarr v3
+                       sharded array.  This stores bytes in column-major
+                       order inside each inner chunk for efficient random
+                       access along the first output axis.  Default True.
+    compression      : Compression codec name for inner chunks.
+                       'zstd' (default), 'blosc', 'gzip', or None.
+    compression_level: Compression level (codec-dependent).  Default 3.
+    overwrite        : Overwrite dst_path if it already exists.  Default True.
+    DASK_client_retries : Retry count for failed DASK tasks.  Default 3.
+    verbose          : Print progress.  Default True.
+
+    Returns
+    -------
+    zarr.Group
+        The opened (and fully populated) destination v3 root store.
+
+    Notes
+    -----
+    Sharding is a zarr v3 feature: each *shard* is a single file on disk that
+    contains (shard_size / chunk_size) inner chunks in each dimension.  With
+    shard_size=(1024,1024,1024) and chunk_size=(32,32,32) each shard file holds
+    32³ = 32 768 inner chunks, reducing the number of on-disk files by ~33 000×
+    compared to an un-sharded store with the same inner-chunk size.
+
+    The task granularity for DASK is one *shard* per submitted task, keeping
+    the task graph small regardless of the total number of inner chunks.
+    """
+    # ------------------------------------------------------------------ #
+    # 0.  Imports — zarr ≥ 3.0 required                                   #
+    # ------------------------------------------------------------------ #
+    import math
+    from dask.distributed import as_completed as dask_as_completed
+
+    # Build the zarr v3 inner-codec pipeline
+    def _make_v3_compressor():
+        if compression == 'zstd':
+            from zarr.codecs import ZstdCodec
+            return ZstdCodec(level=compression_level)
+        if compression in ('blosc', 'lz4'):
+            from zarr.codecs import BloscCodec
+            return BloscCodec(cname='lz4', clevel=compression_level,
+                              shuffle='bitshuffle')
+        if compression == 'gzip':
+            from zarr.codecs import GzipCodec
+            return GzipCodec(level=compression_level)
+        return None   # no compression
+
+    # ------------------------------------------------------------------ #
+    # 1.  Open source (zarr 3.x reads v2 natively)                        #
+    # ------------------------------------------------------------------ #
+    if verbose:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')
+              + '   Opening source OME-ZARR v2 store: ' + str(src_path))
+    src = zarr.open_group(str(src_path), mode='r')
+    src_attrs = dict(src.attrs)
+
+    # ------------------------------------------------------------------ #
+    # 2.  Determine axis ordering and permutation                          #
+    # ------------------------------------------------------------------ #
+    # Source axis order from OME-ZARR metadata (fall back to 'zyx')
+    src_axis_order = 'zyx'
+    if 'multiscales' in src_attrs:
+        axes = src_attrs['multiscales'][0].get('axes', [])
+        if axes:
+            src_axis_order = ''.join(ax['name'] for ax in axes)
+
+    dst_axis_order = axis_order.lower()
+    if len(dst_axis_order) != len(src_axis_order):
+        raise ValueError(
+            f'axis_order "{dst_axis_order}" has {len(dst_axis_order)} axes but '
+            f'source has {len(src_axis_order)} axes ({src_axis_order}).')
+
+    # perm[i] = which source axis becomes output axis i
+    # e.g.  src='zyx', dst='xyz'  →  perm=[2,1,0]
+    perm = None
+    if dst_axis_order != src_axis_order:
+        try:
+            perm = [src_axis_order.index(ax) for ax in dst_axis_order]
+        except ValueError as exc:
+            raise ValueError(
+                f'axis_order "{dst_axis_order}" contains axes not present in '
+                f'source "{src_axis_order}": {exc}') from exc
+    ndim = len(src_axis_order)
+
+    if verbose:
+        print(f'  Source axis order : {src_axis_order}')
+        print(f'  Output axis order : {dst_axis_order}')
+        if perm is not None:
+            print(f'  Transposition perm: {perm}')
+        else:
+            print('  No transposition needed.')
+
+    # ------------------------------------------------------------------ #
+    # 3.  Walk source to collect arrays                                    #
+    # ------------------------------------------------------------------ #
+    arrays_info = []   # [(relative_path, zarr.Array), ...]
+
+    def _walk(grp, prefix):
+        for key in sorted(grp.keys()):
+            child = grp[key]
+            child_path = f'{prefix}/{key}' if prefix else key
+            if isinstance(child, zarr.Array):
+                arrays_info.append((child_path, child))
+            elif isinstance(child, zarr.Group):
+                _walk(child, child_path)
+
+    _walk(src, '')
+
+    if verbose:
+        print(f'  Found {len(arrays_info)} array(s):')
+        for p, a in arrays_info:
+            out_shape = tuple(a.shape[i] for i in perm) if perm else a.shape
+            print(f'    [{p}]  src_shape={a.shape}  dst_shape={out_shape}'
+                  f'  dtype={a.dtype}')
+
+    # ------------------------------------------------------------------ #
+    # 4.  Build updated OME-ZARR metadata                                  #
+    # ------------------------------------------------------------------ #
+    dst_attrs = dict(src_attrs)   # start from a copy
+
+    if perm is not None and 'multiscales' in src_attrs:
+        ms = [dict(m) for m in src_attrs['multiscales']]
+        for m in ms:
+            # Reorder axes list
+            if 'axes' in m:
+                m['axes'] = [m['axes'][i] for i in perm]
+            # Reorder coordinate-transform values in every dataset entry
+            if 'datasets' in m:
+                new_datasets = []
+                for ds in m['datasets']:
+                    new_ds = dict(ds)
+                    new_cts = []
+                    for ct in ds.get('coordinateTransformations', []):
+                        new_ct = dict(ct)
+                        for key in ('scale', 'translation'):
+                            if key in new_ct:
+                                new_ct[key] = [new_ct[key][i] for i in perm]
+                        new_cts.append(new_ct)
+                    new_ds['coordinateTransformations'] = new_cts
+                    new_datasets.append(new_ds)
+                m['datasets'] = new_datasets
+            # Reorder top-level coordinateTransformations if present
+            if 'coordinateTransformations' in m:
+                new_cts = []
+                for ct in m['coordinateTransformations']:
+                    new_ct = dict(ct)
+                    for key in ('scale', 'translation'):
+                        if key in new_ct:
+                            new_ct[key] = [new_ct[key][i] for i in perm]
+                    new_cts.append(new_ct)
+                m['coordinateTransformations'] = new_cts
+        dst_attrs['multiscales'] = ms
+
+    # ------------------------------------------------------------------ #
+    # 5.  Create destination zarr v3 store                                 #
+    # ------------------------------------------------------------------ #
+    if verbose:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')
+              + '   Creating destination ZARR v3 store: ' + str(dst_path))
+
+    if overwrite and os.path.exists(str(dst_path)):
+        shutil.rmtree(str(dst_path))
+
+    dst = zarr.open_group(str(dst_path), mode='w', zarr_format=3)
+    dst.attrs.update(dst_attrs)
+    if verbose:
+        print('  Root OME-ZARR metadata written.')
+
+    # Prepare the zarr v3 compressor object (built once, reused per level)
+    v3_compressor = _make_v3_compressor()
+    v3_order = 'F' if transpose_codec else 'C'
+
+    # ------------------------------------------------------------------ #
+    # 6.  Pre-allocate all destination arrays                              #
+    # ------------------------------------------------------------------ #
+    for arr_path, src_arr in arrays_info:
+        src_shape = src_arr.shape   # in source axis order
+
+        # Output shape after optional axis transposition
+        dst_shape = tuple(src_shape[i] for i in perm) if perm else src_shape
+
+        # Clamp chunk / shard sizes to array dimensions
+        use_chunks = tuple(min(chunk_size[i], dst_shape[i]) for i in range(ndim))
+        use_shards = tuple(min(shard_size[i], dst_shape[i]) for i in range(ndim))
+
+        # Navigate / create parent groups in dst
+        parts      = arr_path.split('/')
+        dst_parent = dst
+        for part in parts[:-1]:
+            dst_parent = dst_parent.require_group(part)
+
+        cmp_kwargs = {}
+        if v3_compressor is not None:
+            cmp_kwargs['compressors'] = [v3_compressor]
+
+        dst_parent.create_array(
+            name   = parts[-1],
+            shape  = dst_shape,
+            dtype  = src_arr.dtype,
+            chunks = use_chunks,
+            shards = use_shards,
+            order  = v3_order,
+            fill_value = 0,
+            overwrite  = True,
+            **cmp_kwargs,
+        )
+
+        if verbose:
+            print(f'  Pre-allocated [{arr_path}]  dst_shape={dst_shape}'
+                  f'  chunks={use_chunks}  shards={use_shards}'
+                  f'  order={v3_order}  compression={compression}')
+
+        # Copy array-level attributes
+        arr_attrs = dict(src_arr.attrs)
+        if arr_attrs:
+            dst[arr_path].attrs.update(arr_attrs)
+
+    # Copy attributes on intermediate groups
+    def _copy_group_attrs(src_grp, dst_grp_local):
+        for key in src_grp.keys():
+            child = src_grp[key]
+            if isinstance(child, zarr.Group):
+                dst_child = dst_grp_local.require_group(key)
+                g_attrs   = dict(child.attrs)
+                if g_attrs:
+                    dst_child.attrs.update(g_attrs)
+                _copy_group_attrs(child, dst_child)
+
+    _copy_group_attrs(src, dst)
+
+    # ------------------------------------------------------------------ #
+    # 7.  Transfer data — one DASK task per output shard                   #
+    # ------------------------------------------------------------------ #
+    for arr_path, src_arr in arrays_info:
+        src_shape = src_arr.shape
+        dst_shape = tuple(src_shape[i] for i in perm) if perm else src_shape
+
+        use_chunks = tuple(min(chunk_size[i], dst_shape[i]) for i in range(ndim))
+        use_shards = tuple(min(shard_size[i], dst_shape[i]) for i in range(ndim))
+
+        # Build list of all shard regions (output coordinates)
+        shard_starts = [
+            list(range(0, dst_shape[d], use_shards[d]))
+            for d in range(ndim)
+        ]
+        import itertools
+        shard_grid = list(itertools.product(*shard_starts))
+        n_shards   = len(shard_grid)
+
+        if verbose:
+            print(f'\n{time.strftime("%Y/%m/%d  %H:%M:%S")}'
+                  f'   [{arr_path}]  {n_shards} shard(s) to write …')
+
+        t0 = time.time()
+
+        def _make_shard_params(shard_origin):
+            # dst_slices: region in the output array (destination axis order)
+            dst_slices = tuple(
+                slice(shard_origin[d],
+                      min(shard_origin[d] + use_shards[d], dst_shape[d]))
+                for d in range(ndim)
+            )
+            # src_slices: corresponding region in the source array (source axis order)
+            # perm[d] = source dim for output dim d  →  inverse: iperm[s] = output dim for source dim s
+            if perm is not None:
+                iperm = [0] * ndim
+                for d, s in enumerate(perm):
+                    iperm[s] = d
+                src_slices = tuple(dst_slices[iperm[s]] for s in range(ndim))
+            else:
+                src_slices = dst_slices
+            return src_slices, dst_slices
+
+        params_list = [_make_shard_params(origin) for origin in shard_grid]
+
+        if client is not None:
+            futures = [
+                client.submit(
+                    _convert_shard_worker,
+                    str(src_path), str(dst_path), arr_path,
+                    src_sl, dst_sl, perm,
+                    pure=False, retries=DASK_client_retries,
+                )
+                for src_sl, dst_sl in params_list
+            ]
+            n_done   = 0
+            n_failed = 0
+            report_every = max(1, n_shards // 20)
+            for fut in dask_as_completed(futures):
+                try:
+                    fut.result()
+                    n_done += 1
+                except Exception as exc:
+                    n_failed += 1
+                    if verbose:
+                        print(f'    WARN: shard failed — {exc}')
+                if verbose and n_done % report_every == 0:
+                    elapsed = time.time() - t0
+                    print(f'    {n_done}/{n_shards} shards done'
+                          f'  ({elapsed:.0f} s elapsed)')
+        else:
+            # Local (sequential) fallback
+            for k, (src_sl, dst_sl) in enumerate(params_list):
+                _convert_shard_worker(
+                    str(src_path), str(dst_path), arr_path,
+                    src_sl, dst_sl, perm,
+                )
+                if verbose and (k + 1) % max(1, n_shards // 20) == 0:
+                    print(f'    {k+1}/{n_shards} shards done')
+
+        if verbose:
+            elapsed = time.time() - t0
+            total_bytes = (np.prod(dst_shape)
+                           * np.dtype(src_arr.dtype).itemsize)
+            print(f'  [{arr_path}] done in {elapsed:.1f} s'
+                  f'  ({total_bytes / elapsed / 1e9:.2f} GB/s)')
+
+    if verbose:
+        print(f'\n{time.strftime("%Y/%m/%d  %H:%M:%S")}'
+              f'   Conversion complete → {dst_path}')
+
+    return dst
+
+
+# ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
 
@@ -819,7 +1161,7 @@ def tif_stack_to_zarr(
     zarr_compressor: str = "blosc",
     zarr_compressor_level: int = 1,
     n_read_threads: int = 8,
-    strip_y: int = None,
+    strip_y: int = 1024,
     dataset_name: str = "volume",
     overwrite: bool = True,
     DASK_client_retries: int = 3,
@@ -850,14 +1192,10 @@ def tif_stack_to_zarr(
     zarr_compressor_level : 1 (fastest) … 9 (best ratio)
     n_read_threads   : threads per Dask worker for parallel TIF reading;
                        rule of thumb: min(n_cores_per_worker, worker_RAM_GB // 10)
-    strip_y          : Y-strip height in pixels for memory-efficient memmap mode.
-                       If None (default), the existing full-slab path is used
-                       (write_slab_to_zarr — reads entire TIF files, high RAM).
-                       If set to an integer (e.g. 1024), write_strip_to_zarr is used
-                       instead: each worker reads only strip_y rows from each TIF via
-                       tifffile.memmap, reducing RAM by a factor of ny / strip_y.
-                       Requires uncompressed TIF files. Falls back to full-slab mode
-                       automatically if memmap is not supported.
+    strip_y          : Y-strip height in pixels. Each worker reads only strip_y
+                       rows from each TIF via tifffile.memmap, so per-worker RAM is
+                       chunk_z × strip_y × nx × itemsize.
+                       Requires uncompressed TIF files.
                        Rule of thumb: strip_y = worker_RAM_GB * 1e9 // (chunk_z * nx * itemsize)
     dataset_name     : cosmetic name in OME metadata
     overwrite        : overwrite existing store
@@ -902,22 +1240,10 @@ def tif_stack_to_zarr(
     del probe
 
     n_slabs = math.ceil(nz / chunk_z)
-    slab_gb = chunk_z * ny * nx * dtype.itemsize / 1e9
-
-    # Probe memmap support if strip_y is requested
-    use_memmap = False
-    if strip_y is not None:
-        try:
-            _mm = tiff.memmap(tif_files[0])
-            if _mm is not None:
-                use_memmap = True
-                del _mm
-            else:
-                print("Warning: tifffile.memmap returned None for the first TIF "
-                      "— falling back to full-slab reads.")
-        except Exception as _e:
-            print(f"Warning: tifffile.memmap not supported ({_e}) "
-                  "— falling back to full-slab reads.")
+    sy = min(strip_y, ny)
+    n_strips_per_slab = math.ceil(ny / sy)
+    n_tasks = n_slabs * n_strips_per_slab
+    strip_gb = chunk_z * sy * nx * dtype.itemsize / 1e9
 
     print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Starting tif_stack_to_zarr')
     print(f"Volume (Z, Y, X)  : ({nz}, {ny}, {nx})")
@@ -926,18 +1252,10 @@ def tif_stack_to_zarr(
     print(f"Raw size          : {nz*ny*nx*dtype.itemsize/1e12:.2f} TB")
     print(f"Voxel size (Z,Y,X): {voxel_size_zyx}  [{voxel_unit}]")
     print(f"Origin     (Z,Y,X): {origin_zyx}  [{voxel_unit}]")
-    if use_memmap:
-        sy = min(strip_y, ny)
-        n_strips_per_slab = math.ceil(ny / sy)
-        n_tasks = n_slabs * n_strips_per_slab
-        strip_gb = chunk_z * sy * nx * dtype.itemsize / 1e9
-        print(f"Mode              : memmap strip  (strip_y={sy})")
-        print(f"Slabs             : {n_slabs}")
-        print(f"Strips per slab   : {n_strips_per_slab}  ({n_tasks} tasks total)")
-        print(f"RAM per task      : {strip_gb:.2f} GB")
-    else:
-        print(f"Mode              : full-slab")
-        print(f"Slabs             : {n_slabs}  ({slab_gb:.1f} GB RAM each)")
+    print(f"Mode              : memmap strip  (strip_y={sy})")
+    print(f"Slabs             : {n_slabs}")
+    print(f"Strips per slab   : {n_strips_per_slab}  ({n_tasks} tasks total)")
+    print(f"RAM per task      : {strip_gb:.2f} GB")
     if client is not None:
         info = client.scheduler_info()
         n_workers = len(info.get("workers", {}))
@@ -956,30 +1274,22 @@ def tif_stack_to_zarr(
         dataset_name=dataset_name, overwrite=overwrite,
     )
 
-    # Build slab list (used by both modes)
+    # Build slab list
     slabs = [
         (slab_idx * chunk_z, min((slab_idx + 1) * chunk_z, nz))
         for slab_idx in range(n_slabs)
     ]
 
-    # Build task list and choose worker function
-    if use_memmap:
-        sy = min(strip_y, ny)
-        tasks = [
-            (z_start, z_end, y_start, min(y_start + sy, ny))
-            for (z_start, z_end) in slabs
-            for y_start in range(0, ny, sy)
-        ]
-        n_tasks = len(tasks)
-        print()
-        print(time.strftime('%Y/%m/%d  %H:%M:%S') +
-              f'   Writing {n_tasks:,} strips to level s0 '
-              f'({n_slabs} Z-slabs × {math.ceil(ny / sy)} Y-strips) …')
-    else:
-        n_tasks = n_slabs
-        print()
-        print(time.strftime('%Y/%m/%d  %H:%M:%S') +
-              f'   Writing {n_slabs:,} slabs to level s0 …')
+    # Build task list (one task per (Z-slab, Y-strip) pair)
+    tasks = [
+        (z_start, z_end, y_start, min(y_start + sy, ny))
+        for (z_start, z_end) in slabs
+        for y_start in range(0, ny, sy)
+    ]
+    print()
+    print(time.strftime('%Y/%m/%d  %H:%M:%S') +
+          f'   Writing {n_tasks:,} strips to level s0 '
+          f'({n_slabs} Z-slabs × {math.ceil(ny / sy)} Y-strips) …')
 
     speeds = []
 
@@ -988,28 +1298,16 @@ def tif_stack_to_zarr(
         # re-run a task up to N times if it raises an exception, potentially
         # on a different worker each time.  Worker death is handled separately
         # and automatically by the scheduler regardless of this setting.
-        if use_memmap:
-            futures = [
-                client.submit(
-                    write_strip_to_zarr,
-                    output_zarr_path, tif_files, z_start, z_end, y_start, y_end,
-                    n_read_threads, 0,
-                    pure=False,
-                    retries=DASK_client_retries,
-                )
-                for z_start, z_end, y_start, y_end in tasks
-            ]
-        else:
-            futures = [
-                client.submit(
-                    write_slab_to_zarr,
-                    output_zarr_path, tif_files, z_start, z_end,
-                    n_read_threads, 0,
-                    pure=False,
-                    retries=DASK_client_retries,
-                )
-                for z_start, z_end in slabs
-            ]
+        futures = [
+            client.submit(
+                write_strip_to_zarr,
+                output_zarr_path, tif_files, z_start, z_end, y_start, y_end,
+                n_read_threads, 0,
+                pure=False,
+                retries=DASK_client_retries,
+            )
+            for z_start, z_end, y_start, y_end in tasks
+        ]
         n_done = 0
         for fut in as_completed(futures):
             result = fut.result()   # raises only after all retries are exhausted
@@ -1017,45 +1315,26 @@ def tif_stack_to_zarr(
             n_done += 1
             elapsed = time.time() - t0
             eta_s = (elapsed / n_done) * (n_tasks - n_done) if n_done else 0
-            if use_memmap:
-                print(time.strftime('%Y/%m/%d  %H:%M:%S') +
-                      f'     [{n_done:d}/{n_tasks:d}]  '
-                      f"z={result['z_start']}–{result['z_end']-1}  "
-                      f"y={result['y_start']}–{result['y_end']-1}  "
-                      f"{result['elapsed_s']:.1f}s  {result['mb_s']:.0f} MB/s  "
-                      f"ETA {eta_s/60:.1f} min")
-            else:
-                print(time.strftime('%Y/%m/%d  %H:%M:%S') +
-                      f'     [{n_done:d}/{n_tasks:d}]  '
-                      f"z={result['z_start']}–{result['z_end']-1}  "
-                      f"{result['elapsed_s']:.1f}s  {result['mb_s']:.0f} MB/s  "
-                      f"ETA {eta_s/60:.1f} min")
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') +
+                  f'     [{n_done:d}/{n_tasks:d}]  '
+                  f"z={result['z_start']}–{result['z_end']-1}  "
+                  f"y={result['y_start']}–{result['y_end']-1}  "
+                  f"{result['elapsed_s']:.1f}s  {result['mb_s']:.0f} MB/s  "
+                  f"ETA {eta_s/60:.1f} min")
     else:
         # Sequential fallback
-        if use_memmap:
-            for i, (z_start, z_end, y_start, y_end) in enumerate(tasks):
-                result = write_strip_to_zarr(
-                    output_zarr_path, tif_files, z_start, z_end,
-                    y_start, y_end, n_read_threads, 0,
-                )
-                speeds.append(result["mb_s"])
-                elapsed = time.time() - t0
-                eta_s = (elapsed / (i + 1)) * (n_tasks - i - 1)
-                print(f"  [{i+1}/{n_tasks}]  "
-                      f"z={z_start}–{z_end-1}  y={y_start}–{y_end-1}  "
-                      f"{result['elapsed_s']:.1f}s  {result['mb_s']:.0f} MB/s  "
-                      f"ETA {eta_s/60:.1f} min")
-        else:
-            for i, (z_start, z_end) in enumerate(slabs):
-                result = write_slab_to_zarr(
-                    output_zarr_path, tif_files, z_start, z_end, n_read_threads, 0,
-                )
-                speeds.append(result["mb_s"])
-                elapsed = time.time() - t0
-                eta_s = (elapsed / (i + 1)) * (n_slabs - i - 1)
-                print(f"  [{i+1}/{n_slabs}]  z={z_start}–{z_end-1}  "
-                      f"{result['elapsed_s']:.1f}s  {result['mb_s']:.0f} MB/s  "
-                      f"ETA {eta_s/60:.1f} min")
+        for i, (z_start, z_end, y_start, y_end) in enumerate(tasks):
+            result = write_strip_to_zarr(
+                output_zarr_path, tif_files, z_start, z_end,
+                y_start, y_end, n_read_threads, 0,
+            )
+            speeds.append(result["mb_s"])
+            elapsed = time.time() - t0
+            eta_s = (elapsed / (i + 1)) * (n_tasks - i - 1)
+            print(f"  [{i+1}/{n_tasks}]  "
+                  f"z={z_start}–{z_end-1}  y={y_start}–{y_end-1}  "
+                  f"{result['elapsed_s']:.1f}s  {result['mb_s']:.0f} MB/s  "
+                  f"ETA {eta_s/60:.1f} min")
 
     # Build pyramid from level s0
     if n_pyramid_levels > 1:
