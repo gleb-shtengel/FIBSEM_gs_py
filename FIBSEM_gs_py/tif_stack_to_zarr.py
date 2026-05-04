@@ -993,15 +993,36 @@ def convert_ome_zarr_v2_to_v3(
     # ------------------------------------------------------------------ #
     # 6.  Pre-allocate all destination arrays                              #
     # ------------------------------------------------------------------ #
+    def _resolve_chunks_shards(dst_shape):
+        """
+        Pick chunk/shard sizes that satisfy zarr v3 sharding rules:
+            shard_size must be an integer multiple of chunk_size.
+        Strategy:
+          - chunk = min(requested, dim)
+          - shard = ceil(requested / chunk) * chunk, capped at
+                    ceil(dim / chunk) * chunk so a shard never exceeds
+                    the array dim by more than (chunk-1) elements.
+        This keeps the user's requested chunk and shard sizes intact for
+        full-size axes, and gracefully shrinks them on small pyramid levels.
+        """
+        def _round_up(x, m):
+            return ((x + m - 1) // m) * m
+
+        use_chunks = tuple(min(chunk_size[i], dst_shape[i]) for i in range(ndim))
+        use_shards = tuple(
+            min(_round_up(shard_size[i], use_chunks[i]),
+                _round_up(dst_shape[i],  use_chunks[i]))
+            for i in range(ndim)
+        )
+        return use_chunks, use_shards
+
     for arr_path, src_arr in arrays_info:
         src_shape = src_arr.shape   # in source axis order
 
         # Output shape after optional axis transposition
         dst_shape = tuple(src_shape[i] for i in perm) if perm else src_shape
 
-        # Clamp chunk / shard sizes to array dimensions
-        use_chunks = tuple(min(chunk_size[i], dst_shape[i]) for i in range(ndim))
-        use_shards = tuple(min(shard_size[i], dst_shape[i]) for i in range(ndim))
+        use_chunks, use_shards = _resolve_chunks_shards(dst_shape)
 
         # Navigate / create parent groups in dst
         parts      = arr_path.split('/')
@@ -1055,8 +1076,7 @@ def convert_ome_zarr_v2_to_v3(
         src_shape = src_arr.shape
         dst_shape = tuple(src_shape[i] for i in perm) if perm else src_shape
 
-        use_chunks = tuple(min(chunk_size[i], dst_shape[i]) for i in range(ndim))
-        use_shards = tuple(min(shard_size[i], dst_shape[i]) for i in range(ndim))
+        use_chunks, use_shards = _resolve_chunks_shards(dst_shape)
 
         # Build list of all shard regions (output coordinates)
         shard_starts = [
