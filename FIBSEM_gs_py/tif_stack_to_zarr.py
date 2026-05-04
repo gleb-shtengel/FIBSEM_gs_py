@@ -1013,7 +1013,17 @@ def convert_ome_zarr_v2_to_v3(
 
     # Prepare the zarr v3 compressor object (built once, reused per level)
     v3_compressor = _make_v3_compressor()
-    v3_order = 'F' if transpose_codec else 'C'
+
+    # Build the F-order TransposeCodec (if requested).  In zarr v3 the
+    # TransposeCodec is an array→array filter applied inside each inner
+    # chunk; F-order corresponds to the axis-reversal permutation
+    # (ndim-1, ndim-2, …, 0).  The deprecated `order='F'` kwarg on
+    # create_array does NOT add this codec — it is silently ignored
+    # under v3 and triggers a ZarrRuntimeWarning.
+    transpose_filter = None
+    if transpose_codec:
+        from zarr.codecs import TransposeCodec
+        transpose_filter = TransposeCodec(order=tuple(range(ndim - 1, -1, -1)))
 
     # ------------------------------------------------------------------ #
     # 6.  Pre-allocate all destination arrays                              #
@@ -1055,9 +1065,11 @@ def convert_ome_zarr_v2_to_v3(
         for part in parts[:-1]:
             dst_parent = dst_parent.require_group(part)
 
-        cmp_kwargs = {}
+        codec_kwargs = {}
+        if transpose_filter is not None:
+            codec_kwargs['filters'] = [transpose_filter]
         if v3_compressor is not None:
-            cmp_kwargs['compressors'] = [v3_compressor]
+            codec_kwargs['compressors'] = [v3_compressor]
 
         dst_parent.create_array(
             name   = parts[-1],
@@ -1065,16 +1077,16 @@ def convert_ome_zarr_v2_to_v3(
             dtype  = src_arr.dtype,
             chunks = use_chunks,
             shards = use_shards,
-            order  = v3_order,
             fill_value = 0,
             overwrite  = True,
-            **cmp_kwargs,
+            **codec_kwargs,
         )
 
         if verbose:
+            tcodec_str = 'F (TransposeCodec)' if transpose_codec else 'C (none)'
             print(f'  Pre-allocated [{arr_path}]  dst_shape={dst_shape}'
                   f'  chunks={use_chunks}  shards={use_shards}'
-                  f'  order={v3_order}  compression={compression}')
+                  f'  layout={tcodec_str}  compression={compression}')
 
         # Copy array-level attributes
         arr_attrs = dict(src_arr.attrs)
