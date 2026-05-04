@@ -655,6 +655,7 @@ def generate_neuroglancer_link(
     viewer_url: str = "https://neuroglancer-demo.appspot.com/",
     serve_base_url: str = "https://s3.janelia.org/hess-lab/FIBSEM",
     display_axes_order: list = None,   # e.g. ["x", "y", "z"]
+    zarr_format: int = 2,              # 2 -> "|zarr2:",  3 -> "|zarr3:"
 ) -> str:
     """
     Generate a Neuroglancer link for a local or remote OME-ZARR store.
@@ -667,25 +668,32 @@ def generate_neuroglancer_link(
     serve_base_url  : base URL under which the zarr file is served, e.g.
                       "https://s3.janelia.org/hess-lab/FIBSEM" (default) or
                       "http://localhost:9000" for local serving
-    display_axes_order : list with axes order, e.g. ["x", "y", "z"]. Default is None (Z-Y-X, matching storage order).
+    display_axes_order : list with axes order, e.g. ["x", "y", "z"]. Default is None (storage order).
+    zarr_format     : 2 (OME-ZARR v2, ".zattrs") or 3 (ZARR v3, "zarr.json").
+                      Selects the Neuroglancer driver suffix:  |zarr2:  or  |zarr3:.
 
     Returns
     -------
     str — the full Neuroglancer URL
     """
+    if zarr_format not in (2, 3):
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+    driver = f"zarr{zarr_format}"
+
     name = os.path.basename(zarr_path.rstrip("/\\"))
     if layer_name is None:
         layer_name = name
-    # Neuroglancer pipe syntax: <http-url-to-zarr-root>/|zarr2:
-    # The zarr2 driver receives the root store URL and reads the OME-NGFF
-    # multiscales metadata directly from the store root.
+    # Neuroglancer pipe syntax: <http-url-to-zarr-root>/|zarr2:  (or |zarr3:)
+    # The driver receives the root store URL and reads the OME-NGFF
+    # multiscales metadata directly from the store root (.zattrs for v2,
+    # zarr.json for v3).
     source_url = f"{serve_base_url.rstrip('/')}/{name}/"
     layer_config = {
         # layers must be a JSON array, not an object
         "layers": [
             {
                 "type":   "image",
-                "source": f"{source_url}|zarr2:",
+                "source": f"{source_url}|{driver}:",
                 "tab":    "source",
                 "name":   layer_name,
             }
@@ -705,6 +713,7 @@ def _print_neuroglancer_info(
     layer_name: str = None,
     viewer_url: str = "https://neuroglancer-demo.appspot.com/",
     display_axes_order: list = None,
+    zarr_format: int = 2,
 ):
     name   = os.path.basename(zarr_path.rstrip("/\\"))
     parent = os.path.dirname(os.path.abspath(zarr_path))
@@ -712,12 +721,13 @@ def _print_neuroglancer_info(
         zarr_path, layer_name=layer_name,
         viewer_url=viewer_url, serve_base_url=serve_base_url,
         display_axes_order=display_axes_order,
+        zarr_format=zarr_format,
     )
     print("\n" + "=" * 60)
-    print("Neuroglancer — how to view")
+    print(f"Neuroglancer — how to view (zarr v{zarr_format})")
     print("=" * 60)
     print(f"  Serve:  python -m http.server 9000 --directory {parent}")
-    print(f"  Source: {serve_base_url.rstrip('/')}/{name}/|zarr2:")
+    print(f"  Source: {serve_base_url.rstrip('/')}/{name}/|zarr{zarr_format}:")
     print(f"\n  Link:   {link}")
     print("=" * 60)
 
@@ -791,6 +801,11 @@ def convert_ome_zarr_v2_to_v3(
     overwrite: bool = True,
     DASK_client_retries: int = 3,
     verbose: bool = True,
+    neuroglancer_serve_base_url: str = "https://s3.janelia.org/hess-lab/FIBSEM",
+    neuroglancer_viewer_url: str = "https://neuroglancer-demo.appspot.com/",
+    neuroglancer_display_axes_order: list = None,   # default: derived from axis_order
+    neuroglancer_layer_name: str = None,
+    print_neuroglancer_info: bool = True,
 ) -> zarr.Group:
     """
     Convert an OME-ZARR v2 store to ZARR v3 format using DASK.
@@ -828,11 +843,21 @@ def convert_ome_zarr_v2_to_v3(
     overwrite        : Overwrite dst_path if it already exists.  Default True.
     DASK_client_retries : Retry count for failed DASK tasks.  Default 3.
     verbose          : Print progress.  Default True.
+    neuroglancer_serve_base_url : Base URL where the dst .zarr will be served
+                       (e.g. an S3 bucket or a local http.server URL).  Used
+                       only to build the Neuroglancer link.
+    neuroglancer_viewer_url : Neuroglancer viewer URL (default: public demo).
+    neuroglancer_display_axes_order : List, e.g. ["x","y","z"].  If None,
+                       defaults to list(axis_order) so the display order
+                       matches the storage order.
+    neuroglancer_layer_name : Layer name in the Neuroglancer state
+                       (default: zarr filename).
+    print_neuroglancer_info : If True, print serving instructions + link.
 
     Returns
     -------
-    zarr.Group
-        The opened (and fully populated) destination v3 root store.
+    dict
+        {"dst": zarr.Group, "dst_path": str, "neuroglancer_link": str}
 
     Notes
     -----
@@ -1159,7 +1184,37 @@ def convert_ome_zarr_v2_to_v3(
         print(f'\n{time.strftime("%Y/%m/%d  %H:%M:%S")}'
               f'   Conversion complete → {dst_path}')
 
-    return dst
+    # ------------------------------------------------------------------ #
+    # 8.  Neuroglancer link  (zarr3 driver, axes match output axis_order)  #
+    # ------------------------------------------------------------------ #
+    if neuroglancer_display_axes_order is None:
+        # Default to the output axis order one character at a time, e.g.
+        # axis_order='xyz' -> ["x","y","z"]. Override via the parameter.
+        neuroglancer_display_axes_order = list(axis_order.lower())
+
+    ng_link = generate_neuroglancer_link(
+        dst_path,
+        layer_name         = neuroglancer_layer_name,
+        viewer_url         = neuroglancer_viewer_url,
+        serve_base_url     = neuroglancer_serve_base_url,
+        display_axes_order = neuroglancer_display_axes_order,
+        zarr_format        = 3,
+    )
+    if print_neuroglancer_info:
+        _print_neuroglancer_info(
+            dst_path,
+            serve_base_url     = neuroglancer_serve_base_url,
+            layer_name         = neuroglancer_layer_name,
+            viewer_url         = neuroglancer_viewer_url,
+            display_axes_order = neuroglancer_display_axes_order,
+            zarr_format        = 3,
+        )
+
+    return {
+        "dst": dst,
+        "dst_path": str(dst_path),
+        "neuroglancer_link": ng_link,
+    }
 
 
 # ---------------------------------------------------------------------------
