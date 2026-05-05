@@ -5183,7 +5183,7 @@ def generate_report_data_minmax_xlsx(minmax_xlsx_file, **kwargs):
     fnm_reg = saved_kwargs.get("fnm_reg", 'Registration_file.mrc')
     Sample_ID = saved_kwargs.get("Sample_ID", '')
     thr_min = saved_kwargs.get("thr_min", 0.0)
-    thr_max = saved_kwargs.get("thr_min", 0.0)
+    thr_max = saved_kwargs.get("thr_max", 0.0)
     fit_params_saved = saved_kwargs.get("fit_params", ['SG', 101, 3])
     fit_params = kwargs.get("fit_params", fit_params_saved)
     preserve_scales =  saved_kwargs.get("preserve_scales", True)  # If True, the transformation matrix will be adjusted using the settings defined by fit_params below
@@ -11658,6 +11658,10 @@ class FIBSEM_dataset:
             CDF threshold for determining the maximum data value. Default is 1e-3.
         nbins : int
             Number of histogram bins for building the PDF and CDF. Default is 256.
+        thr_min : float
+            CDF threshold for determining the minimum data value. Default 1e-3.
+        thr_max : float
+            CDF threshold for determining the maximum data value. Default 1e-3.
         U8_conversion : str
             Range selection for U8 conversion. Options are: 'global', 'sliding', and 'local'. Default is 'local'.
         fit_params : list
