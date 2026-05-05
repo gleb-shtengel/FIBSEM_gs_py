@@ -4,7 +4,7 @@ The main features of this workflow:
 -   Performs image flattening to correct for non-uniform detector sensitivity.
 -   Allows various transformation models for stack registration (Rigid Translation, Translation and Scale, Similarity Transformation, Affine Transformation, as well as Regularized Affine Transformation).
 -   Allows for evaluation of the registration quality using various metrics (Normalized Sum of Absolute Differences, Normalized Cross-Correlation, Normalized Mutual Information, Fourier Shell Correlation).
--   The resulting registered stack can be saved as a single MRC or HDF5 file (the registered stack is a DASK array, so extending it to Zarr or N5 should also be straightforward).
+-   The resulting registered stack can be saved as a single MRC or HDF5 file or as a sharded OME-ZARR (v2 or v3) store viewable in Neuroglancer.
 -   Can be performed on a single workstation (with decent number of cores and memory). A month-long FIB-SEM acquisition takes about 2-3 days to process.
 
 ## "Register_FIB-SEM_stack_DASK_v4_example1.ipynb" - Example Python Notebook for perfroming FIB-SEM stack registration of cultured cell sample.
@@ -44,27 +44,27 @@ Or install the repository from github (you will need to have Git app installed f
 pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
 ```
 
-## General Help Functions
+## General Help Functions  (FIBSEM_help_functions_gs.py)
     get_spread(data, window=501, porder=3)
-        Calculates spread - standard deviation of the (signal - Sav-Gol smoothed signal)
+        Calculates spread - standard deviation of the (signal - Sav-Gol smoothed signal).
     get_min_max_thresholds(image, **kwargs)
         Determines the data range (min and max) with given fractional thresholds for cumulative distribution.
     radial_profile(data, center)
-        Calculates radially average profile of the 2D array (used for FRC and auto-correlation)
+        Calculates radially average profile of the 2D array (used for FRC and auto-correlation).
     radial_profile_select_angles(data, center, **kwargs)
         Calculates radially average profile of the 2D array (used for FRC) within a select range of angles (astart = 89, astop = 91, symm=4).
     build_kernel_FFT_zero_destreaker_radii_angles(data, **kwargs)
         Builds a de-streaking kernel to zero FFT data within a select range of angles.
-    build_kernel_FFT_zero_destreaker_XY(data, **kwargs):
+    build_kernel_FFT_zero_destreaker_XY(data, **kwargs)
         Builds a de-streaking kernel to zero FFT data within a select ranges of x and y.
-    build_kernel_FFT_destreaker_autodetect(data, **kwargs):
+    build_kernel_FFT_destreaker_autodetect(data, **kwargs)
         Builds a de-streaking kernel to zero FFT data within a select range of angles by comparing the absolute value of FFT to radially averaged FFT profile. 
     smooth(x, window_len=11, window='hanning')
         smooth the data using a window with requested size.
     add_scale_bar(ax, **kwargs)
         Add a scale bar to the existing plot.
 
-## Single Frame Image Processing Functions
+## Single Frame Image Processing Functions  (FIBSEM_gs.py)
     Single_Image_SNR(img, **kwargs)
         Estimates SNR based on a single image.
         Calculates SNR of a single image base on auto-correlation analysis after [1].   
@@ -75,10 +75,10 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
         Analyses the noise statistics of the EM data image.
     Perform_2D_fit(img, estimator, **kwargs)
         Bin the image and then perform 2D polynomial fit on the binned image.
-    calculate_gradent_map(img, ** kwargs):
+    calculate_gradent_map(img, ** kwargs)
         Computes 2D Gradient of the image.
 
-## Two-Frame Image Processing Functions
+## Two-Frame Image Processing Functions  (FIBSEM_gs.py)
     check_registration(img0, img1, **kwargs)
         Debugging tool. Perform SIFT registration check on two images. Will perform SIFT, and then report Residual Errors and plot residual error histograms
     mutual_information_2d(x, y, sigma=1, bin=256, normalized=False)
@@ -92,7 +92,7 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
         Perform Fourier Shell Correlation to determine the image resolution, after [1].
         [1] M. van Heela, and M. Schatzb, "Fourier shell correlation threshold criteria," Journal of Structural Biology 151, 250-262 (2005)
 
-## MRC stack Functions
+## MRC stack Functions  (FIBSEM_gs.py)
     analyze_mrc_stack_registration(mrc_filename, **kwargs)
         Read MRC stack and analyze registration - calculate NSAD, NCC, and MI.
     show_eval_box_mrc_stack(mrc_filename, **kwargs)
@@ -105,44 +105,136 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
         Read MRC stack, destreak the data by performing FFT, multiplying it by kernel, and performing inverse FFT, and save it.
     smooth_mrc_stack_with_kernel(mrc_filename, smooth_kernel, data_min, data_max, **kwargs)
         Read MRC stack, smooth the data by performing 2D-convolution with smooth_kernel, and save the data.
-    merge_tiff_files_mrc_stack(fls_tiff, **kwargs):
+    merge_tiff_files_mrc_stack(fls_tiff, **kwargs)
         Bins and crops a stack tiff files (frames) along X-, Y-, or Z-directions and saves them into MRC or HDF5 file.
-    mrc_stack_estimate_resolution_blobs_2D(mrc_filename, **kwargs):
+    mrc_stack_estimate_resolution_blobs_2D(mrc_filename, **kwargs)
         Estimate transitions in the images inside mrc_stack, uses select_blobs_LoG_analyze_transitions(frame_eval, **kwargs).
-    mrc_stack_plot_2D_blob_examples(results_xlsx, **kwargs):
+    mrc_stack_plot_2D_blob_examples(results_xlsx, **kwargs)
         Generates a figure with blob examples based on xlsx file created by mrc_stack_estimate_resolution_blobs_2D.
 
-## TIF stack Functions
+## TIF stack Functions  (FIBSEM_gs.py)
     analyze_tif_stack_registration(tif_filename, DASK_client, **kwargs)
         Read TIF stack and analyze registration - calculate NSAD, NCC, and MI.
     show_eval_box_tif_stack(tif_filename, **kwargs)
         Read TIF stack and display the eval box for each frame from the list.
 
-## Helper Functions for analysis of transformation matrix produced by FiJi-based workflow
-    read_transformation_matrix_from_xf_file(xf_filename)
-        Reads transformation matrix created by FiJi-based workflow from *.xf file
-    analyze_transformation_matrix(transformation_matrix, xf_filename)
-        Analyzes the transformation matrix created by FiJi-based workflow
+## TIF to OME-ZARR Conversion Functions  (tif_stack_to_zarr.py)
+    tif_stack_to_zarr(tif_files, output_zarr_path, client=None, **kwargs)
+        Main entry point. Convert an ordered list of TIF files into an OME-ZARR (OME-NGFF v0.4)
+        store, parallelised over a Dask client. Each (Z-slab, Y-strip) pair is one independent
+        task that reads only the needed rows via tifffile.memmap, so per-worker RAM stays bounded.
+        After s0 is written, downsampled pyramid levels (s1, s2, …) are built one chunk per
+        Dask task. Output is compatible with Neuroglancer (zarr2:// source).
+    create_zarr_store(output_zarr_path, nz, ny, nx, dtype, **kwargs)
+        Create an empty OME-ZARR v2 store with all pyramid levels (s0, s1, …) pre-allocated and
+        OME-NGFF v0.4 multiscales metadata written.
+    write_ome_zarr_metadata(root_store, n_levels, **kwargs)
+        Write OME-NGFF v0.4 multiscales metadata (paths 's0','s1',…) with per-level scale and
+        translation coordinate transformations. Compatible with Neuroglancer.
+    write_strip_to_zarr(output_zarr_path, tif_files, z_start, z_end, y_start, y_end, **kwargs)
+        Worker function that reads a Y-strip [y_start, y_end) from TIF files [z_start, z_end)
+        via tifffile.memmap and writes the resulting sub-block into a zarr level. Used as the
+        unit of parallel work in tif_stack_to_zarr; safe to run on multiple workers concurrently
+        because every task writes a non-overlapping region.
+    finalize_pyramid(output_zarr_path, n_pyramid_levels, downsample_factor, **kwargs)
+        Build downsampled pyramid levels (s1, s2, …) from s0 in an existing OME-ZARR store.
+        One independent Dask task per output zarr chunk, so no large graph is serialised to the
+        scheduler.
+    rechunk_s0(zarr_path, chunk_z, chunk_y, chunk_x, client=None, **kwargs)
+        Rechunk the s0 array of an OME-ZARR store in place via a temporary store.  Useful when
+        s0 was written with chunk_z=1 (for safe concurrent writes) and needs to be converted to
+        the target chunking for downstream use. Each chunk copy is one Dask task; peak extra
+        disk use is ~1× the size of s0.
+    convert_ome_zarr_v2_to_v3(src_path, dst_path, client=None, **kwargs)
+        Convert an OME-ZARR v2 store to ZARR v3 with sharding, optional axis reordering
+        (e.g. ZYX → XYZ), an F-order TransposeCodec on the inner chunks, and a configurable
+        compressor (zstd / blosc / gzip). All pyramid levels in the source are converted; one
+        Dask task per output shard keeps the task graph small. Returns
+        {"dst": zarr.Group, "dst_path": str, "neuroglancer_link": str}.
+        Default chunk_size=(32,32,32), shard_size=(1024,1024,1024), axis_order='xyz',
+        transpose_codec=True, compression='zstd'. Requires zarr ≥ 3.0.
+    generate_neuroglancer_link(zarr_path, **kwargs)
+        Build a Neuroglancer URL for a local or remote OME-ZARR store. Pass zarr_format=2 (default,
+        emits "|zarr2:") for a v2 store, or zarr_format=3 (emits "|zarr3:") for a v3 store.
+        Optional display_axes_order (e.g. ["x","y","z"]) controls Neuroglancer's display dim order.
 
-## Helper Functions for Results Presentation
-    read_kwargs_xlsx(file_xlsx, kwargs_sheet_name, **kwargs)
+## Helper Functions for analysis of transformation matrix produced by FiJi-based workflow  (FIBSEM_gs.py)
+    read_transformation_matrix_from_xf_file(xf_filename)
+        Reads transformation matrix created by FiJi-based workflow from *.xf file.
+    analyze_transformation_matrix(transformation_matrix, xf_filename)
+        Analyzes the transformation matrix created by FiJi-based workflow.
+
+## Mosaic / Montage Helper Functions  (FIBSEM_mosaic_dataset_gs.py)
+    build_weight_array(shape, **kwargs)
+        Build a 2D weight array (e.g. cosine taper) used for blending overlapping tiles when
+        assembling a montage.
+    split_translation_int_fract(transformation_matrix)
+        Split a transformation matrix into a large integer-pixel shift plus a small fractional
+        residual transformation. The integer part can be applied by indexing (no resampling),
+        leaving only the small residual to be handled with sub-pixel interpolation.
+    combine_deformation_fields(DF1, DF2, interpolation=cv2.INTER_LINEAR)
+        Compose two deformation fields: DFjoint = DF2 ∘ DF1 (apply DF1 first, then DF2).
+    transform_tile(tile_params, deformation_field, **kwargs)
+        Apply the full per-tile transformation chain (left_crop → nonlinear deformation field
+        → affine transformation matrix) and return the warped tile, ready to be added to a
+        montage.
+    remap_tile(img, deformation_field, **kwargs)
+        Wrapper around cv2.remap that works around its SHRT_MAX (32 767 px) image-size limit
+        by tiling the input internally. Used by transform_tile to apply deformation fields to
+        large mosaic tiles.
+    overlay_montage_grid(ax, montage_object, **kwargs)
+        Overlay tile-boundary lines on an existing matplotlib axis showing a montage image –
+        useful for visually inspecting tile placement and overlap.
+    find_Transform_ECC(img1, img2, **kwargs)
+        Determine the 2D transformation between two images using cv2.findTransformECC, run only
+        on the overlapping bands of the two images (much faster than running on the full
+        images).  Used for tile-pair alignment when SIFT keypoints are scarce.
+    find_Transform_ECC_DASK(params, deformation_field)
+        Dask-friendly wrapper of find_Transform_ECC. The deformation field is passed once as a
+        shared_data future since it is the same for every tile pair.
+    assemble_layer(params, deformation_field, **kwargs)
+        Worker function that assembles a single mosaic layer (one Z-pane) from per-tile
+        transformation matrices. Called by assemble_layer_mosaic and save_stack.
+
+## Mosaic Reporting Functions  (FIBSEM_mosaic_dataset_gs.py)
+    generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs)
+        Generate a report plot of mill-rate evaluation from a montage XLSX summary file.
+    generate_report_SEM_param_mosaic_stack_xlsx(FIBSEM_Data_xlsx, **kwargs)
+        Generate a report plot of SEM parameters (working distance, EHT, scan rate, etc.) vs
+        frame, across the whole mosaic stack.
+    generate_report_SEM_param_mosaic_layer_xlsx(FIBSEM_Data_xlsx, **kwargs)
+        Generate a report plot of SEM parameters per mosaic layer.
+    generate_report_data_minmax_montage_xlsx(minmax_xlsx_file, **kwargs)
+        Generate a report plot of per-frame data Min/Max values from a montage XLSX summary file.
+    analyze_minmax_outliers_montage_xlsx(minmax_xlsx_file, **kwargs)
+        Detect outlier frames (anomalous Min/Max) from a montage XLSX summary file and emit a
+        report.
+    generate_outliers_report(outliers, fls, **kwargs)
+        Generate a quick summary figure of potential outlier frames flagged by upstream analysis
+        (e.g. analyze_minmax_outliers_montage_xlsx).
+    reformat_outliers_data(outliers, shape)
+        Utility that reshapes a flat outlier list into a 2D (ny_tiles × nx_tiles) layout.
+
+## Helper Functions for Results Presentation  (FIBSEM_gs.py)
+    read_kwargs_xlsx(file_xlsx, kwargs_sheet_name, **kwargs)  [in FIBSEM_help_functions_gs.py]
         Reads (SIFT processing) kwargs from XLSX file and returns them as dictionary.
     generate_report_mill_rate_xlsx(Mill_Rate_Data_xlsx, **kwargs)
         Generate Report Plot for mill rate evaluation from XLSX spreadsheet file.
-    generate_report_ScanRate_EHT_xlsx(ScanRate_EHT_Data_xlsx, **kwargs):
+    generate_report_ScanRate_EHT_xlsx(ScanRate_EHT_Data_xlsx, **kwargs)
         Generate Report Plot for Scan Rate and EHT from XLSX spreadsheet file.
-    generate_report_FOV_center_shift_xlsx(FOV_center_shift_xlsx, **kwargs):
+    generate_report_FOV_center_shift_xlsx(FOV_center_shift_xlsx, **kwargs)
         Generate Report Plot for FOV center shift from XLSX spreadsheet file.
-    generate_report_data_minmax_xlsx(minmax_xlsx_file, **kwargs):
+    generate_report_data_minmax_xlsx(minmax_xlsx_file, **kwargs)
         Generate Report Plot for data Min-Max from XLSX spreadsheet file.
     generate_report_transf_matrix_from_xlsx(transf_matrix_xlsx_file, *kwargs)
         Generate Report Plot for Transformation Matrix from XLSX spreadsheet file.
     generate_report_from_xls_registration_summary(file_xlsx, **kwargs)
         Generate Report Plot for FIB-SEM data set registration from XLSX spreadsheet file.
-    plot_registrtion_quality_xlsx(data_files, labels, **kwargs):
+    plot_registrtion_quality_xlsx(data_files, labels, **kwargs)
         Read and plot together multiple registration quality summaries (generated by the FIBSEM_dataset.transform_and_save method or by analyze_mrc_stack_registration function).
 
-## class FIBSEM_frame:
+
+## class FIBSEM_frame  (FIBSEM_gs.py)
     A class representing single FIB-SEM data frame. ©G.Shtengel 10/2021 gleb.shtengel@gmail.com.
     Contains the info/settings on a single FIB-SEM data frame and the procedures that can be performed on it.
 
@@ -185,26 +277,27 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
         Save the detector images into TIF file (s).
     get_image_min_max(image_name = 'ImageA', thr_min = 1.0e-4, thr_max = 1.0e-3, nbins=256, disp_res = False)
         Calculates the data range of the EM data.
-    RawImageA_8bit_thresholds(thr_min = 1.0e-3, thr_max = 1.0e-3, data_min = -1, data_max = -1, nbins=256):
+    RawImageA_8bit_thresholds(thr_min = 1.0e-3, thr_max = 1.0e-3, data_min = -1, data_max = -1, nbins=256)
         Convert the Image A into 8-bit array.
-    RawImageB_8bit_thresholds(thr_min = 1.0e-3, thr_max = 1.0e-3, data_min = -1, data_max = -1, nbins=256):
+    RawImageB_8bit_thresholds(thr_min = 1.0e-3, thr_max = 1.0e-3, data_min = -1, data_max = -1, nbins=256)
         Convert the Image B into 8-bit array.
-    save_snapshot(**kwargs):
+    save_snapshot(**kwargs)
         Builds an image that contains both the Detector A and Detector B (if present) images as well as a table with important FIB-SEM parameters.
-    analyze_noise_ROIs(Noise_ROIs, Hist_ROI ,**kwargs):
-        Analyses the noise statistics in the selected ROI's of the EM data. (Calls Single_Image_Noise_ROIs(img, Noise_ROIs, Hist_ROI, **kwargs):). This function is somewhat obsolete. When possible – use a method analyze_noise_statistics(**kwargs):, which calls Single_Image_Noise_Statistics(img, **kwargs):. That is a more powerful and accurate way of analysing the noise distribution.
-    analyze_noise_statistics(**kwargs):
-        Analyses the noise statistics of the EM data image. (Calls Single_Image_Noise_Statistics(img, **kwargs):).
-    analyze_SNR_autocorr(**kwargs):
-        Estimates SNR using auto-correlation analysis of a single image. (Calls Single_Image_SNR(img, **kwargs):).
-    show_eval_box(**kwargs):
+    analyze_noise_ROIs(Noise_ROIs, Hist_ROI ,**kwargs)
+        Analyses the noise statistics in the selected ROI's of the EM data. (Calls Single_Image_Noise_ROIs(img, Noise_ROIs, Hist_ROI, **kwargs)). This function is somewhat obsolete. When possible – use a method analyze_noise_statistics(**kwargs), which calls Single_Image_Noise_Statistics(img, **kwargs). That is a more powerful and accurate way of analysing the noise distribution.
+    analyze_noise_statistics(**kwargs)
+        Analyses the noise statistics of the EM data image. (Calls Single_Image_Noise_Statistics(img, **kwargs)).
+    analyze_SNR_autocorr(**kwargs)
+        Estimates SNR using auto-correlation analysis of a single image. (Calls Single_Image_SNR(img, **kwargs)).
+    show_eval_box(**kwargs)
         Show the box used for evaluating the noise.
-    determine_field_fattening_parameters(**kwargs):
+    determine_field_fattening_parameters(**kwargs)
         Perfrom 2D polynomial fit (calls Perform_2D_fit(Img, estimator, **kwargs)) and determine the field-flattening parameters.
-    flatten_image(**kwargs):
+    flatten_image(**kwargs)
         Flatten the image(s). Image flattening parameters must be pre-determined (determine_field_fattening_parameters).
 
-## class FIBSEM_dataset: 
+
+## class FIBSEM_dataset  (FIBSEM_gs.py)
     A class representing a FIB-SEM data set. ©G.Shtengel 10/2021 gleb.shtengel@gmail.com.
     Contains the info/settings on the FIB-SEM dataset and the procedures that can be performed on it.
 
@@ -220,10 +313,10 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
         file type (0 - Shan Xu's .dat, 1 - tif)
     fnm_reg : str
         filename for the final registed dataset
-    threshold_min : float
-        CDF threshold for determining the minimum data value
-    threshold_max : float
-        CDF threshold for determining the maximum data value
+    thr_min : float
+        CDF threshold for determining the minimum data value. Default 1e-3.
+    thr_max : float
+        CDF threshold for determining the maximum data value. Default 1e-3.
     nbins : int
         number of histogram bins for building the PDF and CDF
     U8_conversion : str
@@ -271,11 +364,6 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
         If True, the BF Matcher is used for keypont matching, otherwise FLANN will be used
     save_matches : boolean
         If True, matches will be saved into individual files
-    kp_max_num : int
-        Max number of key-points to be matched.
-        Key-points in every frame are indexed (in descending order) by the strength of the response.
-        Only kp_max_num is kept for further processing.
-        Set this value to -1 if you want to keep ALL keypoints (may take forever to process!)
     save_res_png  : boolean
         Save PNG images of the intermediate processing statistics and final registration quality check
     dtp : Data Type
@@ -316,7 +404,7 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
             fractional ratio of Image B to be used for constructing the fuksed image:
             ImageFused = ImageA * (1.0-ImgB_fraction) + ImageB * ImgB_fraction
     evaluation_box : list of 4 int
-            evaluation_box = [left, width, top, height] boundaries of the box used for evaluating the image registration.
+            evaluation_box = [top, height, left, width] boundaries of the box used for evaluating the image registration.
             if evaluation_box is not set or evaluation_box = [0, 0, 0, 0], the entire image is used.
 
     Methods:
@@ -333,10 +421,10 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
         Determine transformation matrices for sequential frame pairs.
     process_transformation_matrix(**kwargs)
         Calculate cumulative transformation matrix.
-    calculate_residual_deformation_fields(**kwargs):
+    calculate_residual_deformation_fields(**kwargs)
         Calculates residual deformation fields for transformation IN ADDITION to that determined by transformation_matrix (above).
     save_parameters(**kwargs)
-        Save transformation attributes and parameters (including transformation matrices)
+        Save transformation attributes and parameters (including transformation matrices).
     check_for_nomatch_frames(thr_npt, **kwargs)
         Check for frames with low number of Key-Point matches, exclude them and re-calculate the cumulative transformation matrix.
     transform_and_save(**kwargs)
@@ -351,8 +439,7 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
         Estimate transitions in the image, uses select_blobs_LoG_analyze_transitions(**kwargs).
 
 
-## class FIBSEM_mosaic_dataset: 
-    '''
+## class FIBSEM_mosaic_dataset  (FIBSEM_mosaic_dataset_gs.py)
     A class representing a stack of FIB-SEM mosaics (montages) - multiple z-panes consisting of multiple tiles.
     Contains the info/settings on the FIB-SEM montage and the procedures that can be performed on it.
     ©G.Shtengel 01/2026 gleb.shtengel@gmail.com.
@@ -378,37 +465,40 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
         Weight for pairwise constraints for tiles between adjacent Z-layers.(100–10000 typical).
     add_reverse_edges : bool, default False
         If True, adds both (i->j) and (j->i) with same weight (increases robustness).
-    anchor_ids : list or array of indices of the anchor tiles.
-
 
     Methods:
     ----------
-    save_parameters(**kwargs):
-        Save transformation attributes and parameters (including transformation matrices)
-
+    find_tile_pairs(layer_id, tile_ids, **kwargs)
+        Identify intra-layer and inter-layer tile pairs that share an overlap region for a given
+        layer / tile set. Used as input to transformation determination and to bundle solving.
+    save_parameters(**kwargs)
+        Save transformation attributes and parameters (including transformation matrices).
     evaluate_FIBSEM_statistics(**kwargs)
         Evaluates parameters of FIBSEM data set (data Min/Max, Working Distance, Milling Y Voltage, FOV center positions).
-
-    extract_keypoints(**kwargs):
-        Extract Key-Points and Descriptors
-
-    determine_transformations_SIFT(self, **kwargs)
+    extract_keypoints(**kwargs)
+        Extract Key-Points and Descriptors.
+    analyze_kpt_statistics(**kwargs)
+        Report per-tile-pair keypoint match statistics produced by extract_keypoints /
+        determine_transformations_SIFT (counts, residual errors, drop reasons).
+    determine_transformations_SIFT(**kwargs)
         Determine transformation matrices for frame pairs using SIFT. 
-
     SIFT_evaluation(index_pair, pair_margins, **kwargs)
         Evaluate SIFT performance on a given index_pair.
-
     determine_transformations_ECC(**kwargs)
         Determine transformation matrices for frame pairs using ECC. Uses find_Transform_ECC(img1, img2, **kwargs).
-
     solve_stack_stitching(**kwargs)
         Solve mosaic stack stitching (perform bundle optimization).
-
+    solve_intensity_normalization(**kwargs)
+        Solve a global per-tile intensity correction (gain / offset) so that overlapping tile
+        regions match in mean / contrast across the whole stack.
     generate_transformation_report(**kwargs)
         Generate Report Plot for transformation summary.
-
     assemble_layer_mosaic(layer_id, **kwargs)
         Assemble layer mosaic based on transformation matrices for each tile. Options to save snapshot, save mosaic as FIBSEM_frame (dat file) or save images as JPG or PNG.
-
+    determine_mosaic_flattening_parameters(**kwargs)
+        Perform a 2D polynomial fit to characterise per-tile detector non-uniformity.
+        (analogous to FIBSEM_frame.determine_field_fattening_parameters but at the mosaic level).
+    flatten_layer_mosaic(layer_mosaics, **kwargs)
+        Apply previously-determined flattening parameters to assembled layer mosaics.
     save_stack(**kwargs)
         Assemble all layers based on transformation matrices for each tile and save them into stack.
