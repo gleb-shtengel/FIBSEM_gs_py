@@ -1935,7 +1935,7 @@ def Two_Image_FSC(img1, img2, **kwargs):
         FSC_bw : float
             the value of FSC determined as an intersection of smoothed data threshold
         
-    [1]. M. van Heela, and M. Schatzb, "Fourier shell correlation threshold criteria," Journal of Structural Biology 151, 250-262 (2005)
+    [1]. M. van Heel, and M. Schatz, "Fourier shell correlation threshold criteria," Journal of Structural Biology 151, 250-262 (2005)
     '''   
     SNRt = kwargs.get("SNRt", 0.1)
     smooth_aperture = kwargs.get("smooth_aperture", 20)

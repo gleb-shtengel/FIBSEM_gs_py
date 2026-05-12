@@ -90,7 +90,7 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
         [3] M. Radermacher, T. Ruiz, On cross-correlations, averages and noise in electron microscopy. Acta Crystallogr. Sect. F Struct. Biol. Commun. 75, 12–18 (2019).
     Two_Image_FSC(img1, img2, **kwargs)
         Perform Fourier Shell Correlation to determine the image resolution, after [1].
-        [1] M. van Heela, and M. Schatzb, "Fourier shell correlation threshold criteria," Journal of Structural Biology 151, 250-262 (2005)
+        [1] M. van Heel, and M. Schatz, "Fourier shell correlation threshold criteria," Journal of Structural Biology 151, 250-262 (2005)
 
 ## MRC stack Functions  (FIBSEM_gs.py)
     analyze_mrc_stack_registration(mrc_filename, **kwargs)
