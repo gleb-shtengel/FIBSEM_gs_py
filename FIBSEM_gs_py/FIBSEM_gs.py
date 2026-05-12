@@ -1040,7 +1040,20 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     7. Perform free linear fit of the variance vs. intensity. SNR0 is calculated as <S^2>/<N^2>.
     8. Perform linear fit with forced zero Intercept (DarkCount) of the variance vs. intensity. SNR1 is calculated <S^2>/<N^2>.
     9. Analyze contrast as (Ihigh - Ilow) / ((Ihigh + Ilow)/2 - DarkCount).
-    <p></p>10. (Gradient) filtering allows for more accurate determination of I0, but often excludes points of high signal, thus biasing SNR analysis. Once we determined the I0 and slope of the detector curve, we can estimate what the real SNR for all points fouls be.
+    10. SNR is reported in two variants for each fit (free fit -> SNR0, DarkCount fit -> SNR1):
+    - "filtered" (SNR0f, SNR1f): computed over the same pixels that survived the (gradient)
+      filter used to determine I0. These are the pixels where the noise estimate is clean
+      (no gradient-driven variance), so they give a true <S^2>/<N^2>. The downside is that
+      filtering also removes high-intensity / high-gradient regions, so the reported SNR is
+      biased low relative to the real image.
+    - "all pixels" (SNR0a, SNR1a): computed over every pixel, including those excluded by
+      the filter. Since we cannot trust the measured noise variance at high-gradient pixels,
+      the noise term is estimated from the detector calibration we just derived: in the
+      rescaled coordinates (signal divided by the fit slope), Poisson statistics give
+      <N^2> = <S>, so <S^2>/<N^2> = <S^2>/<S>. This recovers an SNR estimate that includes
+      bright regions, at the cost of assuming Poisson noise.
+    Use SNR?f when you trust the filter mask and want a measurement-only number; use SNR?a
+    when you want a Poisson-corrected estimate over the whole image.
 
     Parameters:
     ----------
@@ -1086,9 +1099,23 @@ def Single_Image_Noise_Statistics(img, **kwargs):
 
     Returns:
     ----------
-    mean_vals, var_vals, I0, SNR0, SNR1, popt, result
-        mean_vals and var_vals are the Mean Intensity and Noise Variance values for Step5, I0 is zero intercept (should be close to DarkCount)
-        SNR0 and SNR1 are SNR's (Step 7 and 8 respectively)
+    dict : Dictionary with the following keys:
+        'mean_vals'    : 1D array — per-bin mean of smoothed intensity (Step 5).
+        'var_vals'     : 1D array — per-bin variance of noise image (Step 5).
+        'I0'           : float    — intercept of free linear fit (Step 7); should be close to DarkCount.
+        'popt'         : 1D array — [slope, intercept] of free linear fit (Step 7).
+        'Slope_header' : float    — slope of forced-intercept fit using DarkCount (Step 8).
+        'SNR0f'        : float — <S^2>/<N^2> from free linear fit, filtered pixels only.
+                            True measured SNR over the filter-passing subset.
+        'SNR0a'        : float — <S^2>/<S> from free linear fit, all pixels.
+                            Poisson-corrected SNR including filter-excluded pixels.
+        'SNR1f'        : float — <S^2>/<N^2> from DarkCount-fixed fit, filtered pixels only.
+        'SNR1a'        : float — <S^2>/<S> from DarkCount-fixed fit, all pixels.
+        'I_peak'       : float    — intensity at peak of smoothed histogram.
+        'contrast'     : float    — (Ihigh-Ilow)/((Ihigh+Ilow)/2 - I0); np.nan if not requested.
+        'Ilow'         : float    — low contrast threshold (np.nan if not requested).
+        'Ihigh'        : float    — high contrast threshold (np.nan if not requested).
+        'result'       : 2D array — raw (mean, var) per histogram bin (includes NaN rows).
     '''
     st = 1.0/np.sqrt(2.0)
     def_kernel = np.array([[st, 1.0, st],[1.0,1.0,1.0], [st, 1.0, st]]).astype(np.float32)
@@ -1105,6 +1132,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         perform_contrast_analysis = False
     else:
         perform_contrast_analysis = True
+    contrast = Ilow = Ihigh = np.nan
     disp_res = kwargs.get("disp_res", True)
     disp_res_SNR0 = kwargs.get("disp_res_SNR0", True)
     disp_res_SNR1 = kwargs.get("disp_res_SNR1", True)
@@ -1312,11 +1340,13 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         print('')
         print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Used Dark Count Offset: {:.2f}'.format(DarkCount))
         print('Slope of linear fit with header offset: {:.2f}'.format(Slope_header))
-        print('Fit w DarkCount  : SNR1f <S'+'2'.translate(SUP)+'>/<N'+'2'.translate(SUP)+'> (filtered) = {:.2f}'.format(SNR1f))
+        print('Fit w DarkCount  : SNR1f <S²>/<N²> (filtered) = {:.2f}'.format(SNR1f))
+        print('Fit w DarkCount  : SNR1a <S²>/<S> (all pts.) = {:.2f}'.format(SNR1a))
         print('')
         print('Free Fit Offset: {:.2f}'.format(I0))
         print('Slope of Free Fit: {:.2f}'.format(popt[0]))
-        print('Free Fit         : SNR0f <S'+'2'.translate(SUP)+'>/<N'+'2'.translate(SUP)+'> (filtered) = {:.2f}'.format(SNR0f))
+        print('Free Fit         : SNR0f <S²>/<N²> (filtered) = {:.2f}'.format(SNR0f))
+        print('Free Fit         : SNR0a <S²>/<S> (all pts.) = {:.2f}'.format(SNR0a))
         print('')
         if perform_contrast_analysis:
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Data range: I_contrast_low = {:.2f}, I_contrast_high = {:.2f}'.format(Ilow, Ihigh))
@@ -1335,25 +1365,40 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         if disp_res_SNR0:
             txt1 = 'Zero Int, Free Fit:    ' +'$I_{0}$' +'={:.1f}'.format(I0)
             axs[3].text(0.35, 0.27, txt1, transform=axs[3].transAxes, color='blue', fontsize=fs+1)
-            txt2f = 'SNR0 <$S^2$>/<$N^2$> filtered = {:.2f}'.format(SNR0f)
+            txt2f = 'SNR0 filt. <$S^2$>/<$N^2$> = '+'{:.2f}'.format(SNR0f)
             axs[3].text(0.35, 0.22, txt2f, transform=axs[3].transAxes, color='blue', fontsize=fs+1)
-            txt2a = 'SNR0 <$S^2$>/<$N^2$> all pts. = {:.2f}'.format(SNR0a)
+            txt2a = 'SNR0 all pts. <$S^2$>/<$S$> = '+'{:.2f}'.format(SNR0a)
             axs[3].text(0.35, 0.17, txt2a, transform=axs[3].transAxes, color='blue', fontsize=fs+1)
         
         if disp_res_SNR1:
             txt3 = 'Zero Int, Dark Cnt.:    ' +'$I_{0}$' +'={:.1f}'.format(DarkCount)
-            axs[3].text(0.35, 0.17, txt3, transform=axs[3].transAxes, color='magenta', fontsize=fs+1)
-            txt4f = 'SNR1 <$S^2$>/<$N^2$> filtered = {:.2f}'.format(SNR1f)
-            axs[3].text(0.35, 0.12, txt4f, transform=axs[3].transAxes, color='magenta', fontsize=fs+1)
-            txt4f = 'SNR1 <$S^2$>/<$N^2$> all. pts = {:.2f}'.format(SNR1a)
+            axs[3].text(0.35, 0.12, txt3, transform=axs[3].transAxes, color='magenta', fontsize=fs+1)
+            txt4f = 'SNR1 filt. <$S^2$>/<$N^2$> = '+'{:.2f}'.format(SNR1f)
             axs[3].text(0.35, 0.07, txt4f, transform=axs[3].transAxes, color='magenta', fontsize=fs+1)
+            txt4a = 'SNR1 all pts. <$S^2$>/<$S$> = '+'{:.2f}'.format(SNR1a)
+            axs[3].text(0.35, 0.02, txt4a, transform=axs[3].transAxes, color='magenta', fontsize=fs+1)
 
         if save_res_png:
             fig.savefig(res_fname, dpi=dpi)
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   results saved into the file: '+res_fname)
         display(fig)
         plt.close(fig)
-    return mean_vals, var_vals, I0, SNR0f, SNR1f, popt, result
+    return {
+        'mean_vals':    mean_vals,
+        'var_vals':     var_vals,
+        'I0':           I0,
+        'popt':         popt,
+        'Slope_header': Slope_header,
+        'SNR0f':        SNR0f,
+        'SNR0a':        SNR0a,
+        'SNR1f':        SNR1f,
+        'SNR1a':        SNR1a,
+        'I_peak':       I_peak,
+        'contrast':     contrast,
+        'Ilow':         Ilow,
+        'Ihigh':        Ihigh,
+        'result':       result,
+    }
 
 
 def Perform_2D_fit(img, estimator, **kwargs):
@@ -7740,10 +7785,22 @@ class FIBSEM_frame:
 
         Returns:
         ----------
-        mean_vals, var_vals, I0, SNR0, SNR1, popt, result
-            mean_vals and var_vals are the Mean Intensity and Noise Variance values for Step 5
-            I0 is zero intercept (should be close to DarkCount),
-            SNR0, SNR1 are Peak and Dynamic SNR's (Step 7 and 8)
+        results : dict
+            Dictionary with the following keys:
+                'mean_vals'    : 1D array — per-bin mean of smoothed intensity (Step 5).
+                'var_vals'     : 1D array — per-bin variance of noise image (Step 5).
+                'I0'           : float    — intercept of free linear fit (Step 7); should be close to DarkCount.
+                'popt'         : 1D array — [slope, intercept] of free linear fit (Step 7).
+                'Slope_header' : float    — slope of forced-intercept fit using DarkCount (Step 8).
+                'SNR0f'        : float    — <S^2>/<N^2> from free fit, filtered pixels.
+                'SNR0a'        : float    — <S^2>/<S> from free fit, all pixels.
+                'SNR1f'        : float    — <S^2>/<N^2> from DarkCount fit, filtered pixels.
+                'SNR1a'        : float    — <S^2>/<S> from DarkCount fit, all pixels.
+                'I_peak'       : float    — intensity at peak of smoothed histogram.
+                'contrast'     : float    — (Ihigh-Ilow)/((Ihigh+Ilow)/2 - I0); np.nan if not requested.
+                'Ilow'         : float    — low contrast threshold (np.nan if not requested).
+                'Ihigh'        : float    — high contrast threshold (np.nan if not requested).
+                'result'       : 2D array — raw (mean, var) per histogram bin (includes NaN rows).
         '''
         image_name = kwargs.get("image_name", 'RawImageA')
         res_fname_default = os.path.splitext(self.fname)[0] + '_Noise_Analysis_' + image_name + '.png'
@@ -7802,10 +7859,25 @@ class FIBSEM_frame:
                             'Notes' : Notes,
                             'dpi' : dpi}
 
-            mean_vals, var_vals, I0, SNR0, SNR1, popt, result =  Single_Image_Noise_Statistics(ImgEM, **noise_kwargs)
+            results = Single_Image_Noise_Statistics(ImgEM, **noise_kwargs)
         else:
-            mean_vals, var_vals, I0, SNR0, SNR1, popt, result = [], [], 0.0, 0.0, 0.0, np.array((0.0, 0.0)), [] 
-        return mean_vals, var_vals, I0, SNR0, SNR1, popt, result
+            results = {
+                'mean_vals':    np.array([]),
+                'var_vals':     np.array([]),
+                'I0':           0.0,
+                'popt':         np.array((0.0, 0.0)),
+                'Slope_header': 0.0,
+                'SNR0f':        0.0,
+                'SNR0a':        0.0,
+                'SNR1f':        0.0,
+                'SNR1a':        0.0,
+                'I_peak':       0.0,
+                'contrast':     np.nan,
+                'Ilow':         np.nan,
+                'Ihigh':        np.nan,
+                'result':       np.array([]),
+            }
+        return results
     
 
     def analyze_SNR_autocorr(self, **kwargs):
