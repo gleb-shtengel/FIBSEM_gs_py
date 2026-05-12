@@ -99,6 +99,20 @@ except:
     raise RuntimeError("Unable to load FIBSEM_resolution_gs")
 
 
+###############################################
+# Superscript and Subscript gnerators
+###############################################
+SUP = str.maketrans(
+    "0123456789+-=()abcdefghijklmnoprstuvwxyz",
+    "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ᵃᵇᶜᵈᵉᶠᵍʰⁱʲᵏˡᵐⁿᵒᵖʳˢᵗᵘᵛʷˣʸᶻ"
+)
+
+SUB = str.maketrans(
+    "0123456789+-=()aehijklmnoprstuvx",
+    "₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎ₐₑₕᵢⱼₖₗₘₙₒₚᵣₛₜᵤᵥₓ"
+)
+
+
 ################################################
 # The two functions below are a patch on skimage.measure.ransac
 ################################################
@@ -1026,6 +1040,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     7. Perform free linear fit of the variance vs. intensity. SNR0 is calculated as <S^2>/<N^2>.
     8. Perform linear fit with forced zero Intercept (DarkCount) of the variance vs. intensity. SNR1 is calculated <S^2>/<N^2>.
     9. Analyze contrast as (Ihigh - Ilow) / ((Ihigh + Ilow)/2 - DarkCount).
+    <p></p>10. (Gradient) filtering allows for more accurate determination of I0, but often excludes points of high signal, thus biasing SNR analysis. Once we determined the I0 and slope of the detector curve, we can estimate what the real SNR for all points fouls be.
 
     Parameters:
     ----------
@@ -1280,24 +1295,28 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         axs[3].set_ylim(ylim3)
     
     img_smoothed_filtered_resc = (img_smoothed_filtered - I0)/popt[0]
+    img_smoothed_all_resc = (img_smoothed - I0)/popt[0]
     imdiff_filtered_resc = imdiff_filtered / popt[0]
-    SNR0 = np.mean(img_smoothed_filtered_resc*img_smoothed_filtered_resc)/np.var(imdiff_filtered_resc)
+    SNR0f = np.mean(img_smoothed_filtered_resc*img_smoothed_filtered_resc)/np.var(imdiff_filtered_resc)
+    SNR0a = np.mean(img_smoothed_all_resc*img_smoothed_all_resc)/np.mean(img_smoothed_all_resc)
     if perform_contrast_analysis:
         contrast  = (Ihigh - Ilow)/((Ilow + Ihigh)/2.0-I0)
     
     img_smoothed_filtered_resc1 = (img_smoothed_filtered - DarkCount)/Slope_header
+    img_smoothed_all_resc1 = (img_smoothed - DarkCount)/Slope_header
     imdiff_filtered_resc1 = imdiff_filtered / Slope_header
-    SNR1 = np.mean(img_smoothed_filtered_resc1*img_smoothed_filtered_resc1)/np.var(imdiff_filtered_resc1)
+    SNR1f = np.mean(img_smoothed_filtered_resc1*img_smoothed_filtered_resc1)/np.var(imdiff_filtered_resc1)
+    SNR1a = np.mean(img_smoothed_all_resc1*img_smoothed_all_resc1)/np.mean(img_smoothed_all_resc1)
     
     if disp_res:
         print('')
         print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Used Dark Count Offset: {:.2f}'.format(DarkCount))
         print('Slope of linear fit with header offset: {:.2f}'.format(Slope_header))
-        print('Fit w DarkCount  : SNR1 <S^2>/<N^2> = {:.2f}'.format(SNR1))
+        print('Fit w DarkCount  : SNR1f <S'+'2'.translate(SUP)+'>/<N'+'2'.translate(SUP)+'> (filtered) = {:.2f}'.format(SNR1f))
         print('')
         print('Free Fit Offset: {:.2f}'.format(I0))
         print('Slope of Free Fit: {:.2f}'.format(popt[0]))
-        print('Free Fit         : SNR0 <S^2>/<N^2> = {:.2f}'.format(SNR0))
+        print('Free Fit         : SNR0f <S'+'2'.translate(SUP)+'>/<N'+'2'.translate(SUP)+'> (filtered) = {:.2f}'.format(SNR0f))
         print('')
         if perform_contrast_analysis:
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Data range: I_contrast_low = {:.2f}, I_contrast_high = {:.2f}'.format(Ilow, Ihigh))
@@ -1315,22 +1334,26 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         
         if disp_res_SNR0:
             txt1 = 'Zero Int, Free Fit:    ' +'$I_{0}$' +'={:.1f}'.format(I0)
-            axs[3].text(0.35, 0.17, txt1, transform=axs[3].transAxes, color='blue', fontsize=fs+1)
-            txt2 = 'SNR0 <$S^2$>/<$N^2$> = {:.2f}'.format(SNR0)
-            axs[3].text(0.35, 0.12, txt2, transform=axs[3].transAxes, color='blue', fontsize=fs+1)
+            axs[3].text(0.35, 0.27, txt1, transform=axs[3].transAxes, color='blue', fontsize=fs+1)
+            txt2f = 'SNR0 <$S^2$>/<$N^2$> filtered = {:.2f}'.format(SNR0f)
+            axs[3].text(0.35, 0.22, txt2f, transform=axs[3].transAxes, color='blue', fontsize=fs+1)
+            txt2a = 'SNR0 <$S^2$>/<$N^2$> all pts. = {:.2f}'.format(SNR0a)
+            axs[3].text(0.35, 0.17, txt2a, transform=axs[3].transAxes, color='blue', fontsize=fs+1)
         
         if disp_res_SNR1:
             txt3 = 'Zero Int, Dark Cnt.:    ' +'$I_{0}$' +'={:.1f}'.format(DarkCount)
-            axs[3].text(0.35, 0.07, txt3, transform=axs[3].transAxes, color='magenta', fontsize=fs+1)
-            txt4 = 'SNR1 <$S^2$>/<$N^2$> = {:.2f}'.format(SNR1)
-            axs[3].text(0.35, 0.02, txt4, transform=axs[3].transAxes, color='magenta', fontsize=fs+1)
+            axs[3].text(0.35, 0.17, txt3, transform=axs[3].transAxes, color='magenta', fontsize=fs+1)
+            txt4f = 'SNR1 <$S^2$>/<$N^2$> filtered = {:.2f}'.format(SNR1f)
+            axs[3].text(0.35, 0.12, txt4f, transform=axs[3].transAxes, color='magenta', fontsize=fs+1)
+            txt4f = 'SNR1 <$S^2$>/<$N^2$> all. pts = {:.2f}'.format(SNR1a)
+            axs[3].text(0.35, 0.07, txt4f, transform=axs[3].transAxes, color='magenta', fontsize=fs+1)
 
         if save_res_png:
             fig.savefig(res_fname, dpi=dpi)
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   results saved into the file: '+res_fname)
         display(fig)
         plt.close(fig)
-    return mean_vals, var_vals, I0, SNR0, SNR1, popt, result
+    return mean_vals, var_vals, I0, SNR0f, SNR1f, popt, result
 
 
 def Perform_2D_fit(img, estimator, **kwargs):
