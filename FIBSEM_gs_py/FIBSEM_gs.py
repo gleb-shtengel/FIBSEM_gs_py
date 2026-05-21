@@ -9284,7 +9284,33 @@ def determine_transformations_files(params_dsf):
             print('File 1 loaded: # of kpts={:d}, # of desc={:d}, # of kpt_ints={:d}'.format(len(kpp1s), len(des1s), len(kpt_ints1s)))
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   File 2: ', fnm_2)
             print('File 2 loaded: # of kpts={:d}, # of desc={:d}, # of kpt_ints={:d}'.format(len(kpp2s), len(des2s), len(kpt_ints2s)))
-        if 'image_margins' in kwargs:
+        if 'overlap_bounds' in kwargs:
+            x_min_a, x_max_a, y_min_a, y_max_a, \
+            x_min_b, x_max_b, y_min_b, y_max_b = kwargs['overlap_bounds']
+            # filter keypoints to the exact overlap rectangle in each tile's local coords
+            kp1 = []
+            des1 = []
+            kpt_ints1 = []
+            for kpp1i, des1i, kpt_ints1i in zip(kpp1s, des1s, kpt_ints1s):
+                kp1i = list_to_kp(kpp1i)
+                if x_min_a <= kp1i.pt[0] < x_max_a and y_min_a <= kp1i.pt[1] < y_max_a:
+                    kp1.append(kp1i)
+                    des1.append(des1i)
+                    kpt_ints1.append(kpt_ints1i)
+            kp2 = []
+            des2 = []
+            kpt_ints2 = []
+            for kpp2i, des2i, kpt_ints2i in zip(kpp2s, des2s, kpt_ints2s):
+                kp2i = list_to_kp(kpp2i)
+                if x_min_b <= kp2i.pt[0] < x_max_b and y_min_b <= kp2i.pt[1] < y_max_b:
+                    kp2.append(kp2i)
+                    des2.append(des2i)
+                    kpt_ints2.append(kpt_ints2i)
+            des1 = np.array(des1, dtype=np.float32) if len(des1) > 0 else np.empty((0, 128), dtype=np.float32)
+            des2 = np.array(des2, dtype=np.float32) if len(des2) > 0 else np.empty((0, 128), dtype=np.float32)
+            kpt_ints1 = np.array(kpt_ints1) if len(kpt_ints1) > 0 else np.empty(0, dtype=np.float32)
+            kpt_ints2 = np.array(kpt_ints2) if len(kpt_ints2) > 0 else np.empty(0, dtype=np.float32)
+        elif 'image_margins' in kwargs:                          # ← was `if`, now `elif`
             ymargin, xmargin =  kwargs['image_margins']
             ysz, xsz = kwargs['image_shape']
             # if margins are provided, apply margin filtering of kpts
@@ -9306,13 +9332,13 @@ def determine_transformations_files(params_dsf):
                         kp2.append(kp2i)
                         des2.append(des2i)
                         kpt_ints2.append(kpt_ints2i)
-            des1 = np.array(des1)
-            des2 = np.array(des2)
-            kpt_ints1 = np.array(kpt_ints1)
-            kpt_ints2 = np.array(kpt_ints2)
-        else:
-            kp1 = [list_to_kp(kpp1) for kpp1 in kpp1s]     # this converts a list of lists to a list of keypoint objects to be used by a matcher later
-            kp2 = [list_to_kp(kpp2) for kpp2 in kpp2s]     # same for the second frame
+            des1 = np.array(des1, dtype=np.float32) if len(des1) > 0 else np.empty((0, 128), dtype=np.float32)
+            des2 = np.array(des2, dtype=np.float32) if len(des2) > 0 else np.empty((0, 128), dtype=np.float32)
+            kpt_ints1 = np.array(kpt_ints1) if len(kpt_ints1) > 0 else np.empty(0, dtype=np.float32)
+            kpt_ints2 = np.array(kpt_ints2) if len(kpt_ints2) > 0 else np.empty(0, dtype=np.float32)
+        else:                                                    # ← unchanged
+            kp1 = [list_to_kp(kpp1) for kpp1 in kpp1s]
+            kp2 = [list_to_kp(kpp2) for kpp2 in kpp2s]
             des1 = des1s
             des2 = des2s
             kpt_ints1 = kpt_ints1s
@@ -9322,8 +9348,10 @@ def determine_transformations_files(params_dsf):
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   File 1 with margin limits applied: # of kpts={:d}, # of desc={:d}, # of kpt_ints={:d}'.format(len(kp1), len(des1), len(kpt_ints1)))
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   File 2 with margin limits applied: # of kpts={:d}, # of desc={:d}, # of kpt_ints={:d}'.format(len(kp2), len(des2), len(kpt_ints2)))
 
-        # establish matches
-        if BFMatcher:    # if BFMatcher==True - use BF (Brute Force) matcher
+        # Skip matching if either tile has no keypoints in the overlap region
+        if len(kp1) < 2 or len(kp2) < 2:
+            matches = []
+        elif BFMatcher:    # if BFMatcher==True - use BF (Brute Force) matcher
             # This procedure uses BF (Brute-Force) Matcher.
             # BF matcher takes the descriptor of one feature in the first image and matches it with all other features
             # in second image using some distance calculation. The closest match in the second image is returned.
