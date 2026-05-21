@@ -1963,6 +1963,6 @@ def read_image_coordinates(filename):
               parts = line.split()
               if len(parts) < 4:
                   continue
-              key = parts[0]
+              key = parts[0].replace('\\', '/')
               coords[key] = (float(parts[1]), float(parts[2]), float(parts[3]))
       return coords
