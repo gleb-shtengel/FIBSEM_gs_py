@@ -139,7 +139,7 @@ def combine_deformation_fields(DF1, DF2, interpolation=cv2.INTER_LINEAR):
 
     Parameters:
         DF1: (YResolution, XResolution - left_crop, 2) float32 — local nonlinear warp, absolute coords in src_tile
-        DF2: (YResolution, XResolution - left_crop, 2) float32 — local shift (small enough to no violate CV2.remap SHRT_MAX limitation).
+        DF2: (YResolution, XResolution - left_crop, 2) float32 — local shift (small enough to not violate CV2.remap SHRT_MAX limitation).
         interpolation : int
             Interpolation type to be used. default is cv2.INTER_LINEAR
 
@@ -442,7 +442,7 @@ def find_Transform_ECC(img1, img2, **kwargs):
         Parts of images to be used. It is assumed that img1 is to the left and above of the img2.
         Subsets img1[-ymargin:, -xmargin:] and  img2[0:ymargin, 0:xmargin] will be used for correlation.
         Default is full images, so image_margins = (ymargin, xmargin) = img1.shape
-    warp_matrix : 3x2 initial guess of the transf matrix.
+    warp_matrix : 3x2 initial guess of the transformation matrix.
         Default is np.array([[1, 0, 0], [0, 1, 0]], dtype=np.float32)
     motion : target transformation.
         Default is cv2.MOTION_TRANSLATION
@@ -503,15 +503,15 @@ def find_Transform_ECC_DASK(params, deformation_field):
     kwargs:
     interpolation : int
         Interpolation type as defined in CV2. Default is cv2.INTER_LINEAR.
-    fill_value = 0.0
-        Fill value for outside pixels in cv2.remap. Default is 0.
+    fill_value : float
+        Fill value for outside pixels in cv2.remap. Default is 0.0.
     image_margins : tuple of 2 ints
         Parts of images to be used. It is assumed that img1 is to the left and above of the img2.
         Subsets img1[-ymargin:, -xmargin:] and  img2[0:ymargin, 0:xmargin] will be used for correlation.
         Default is full images, so image_margins = (ymargin, xmargin) = img1.shape
     left_crop : int 
         Cropping value for cropping the image from the left side (used along with deformation_field or on its own). Default is 0 - no cropping.
-    warp_matrix : 3x2 initial guess of the transf matrix.
+    warp_matrix : 3x2 initial guess of the transformation matrix.
         Default is np.array([[1, 0, 0], [0, 1, 0]], dtype=np.float32)
     motion : target transformation.
         Default is cv2.MOTION_TRANSLATION
@@ -628,6 +628,11 @@ def assemble_layer(params, deformation_field, **kwargs):
     mosaic_Scaling_offset : float
         Scaling offset for Raw images (e.g. Scaling[1,0]). Only used when flatten_mosaic=True.
         Set to 0.0 for ImageA/ImageB sources. Default is 0.0.
+    dtp : data type
+    U8_range : list [U8_min, U8_max]
+        Optional conversion range for uint8 output. Only used when dtp=np.uint8.
+        Data is clipped to [U8_min, U8_max] and rescaled to [0, 255] before casting.
+        Default is None (plain cast, data must already be in [0, 255]).
 
     Returns:
     ----------
@@ -676,7 +681,7 @@ def assemble_layer(params, deformation_field, **kwargs):
             for future in tqdm(as_completed(futures), total=len(futures), desc='Assembling ' + image_name + ' mosaic layer'):
                     tile_out, xi, yi = future.result()
                     _add_warped_to_mosaic(tile_out, xi, yi, layer_mosaic, layer_mosaic_weights, **kwargs_awp)
-                    future.cancel()
+                    #future.cancel()
         else:
             for tile_params in tqdm(tile_params_mult, desc = 'Building mosaic for layer_id={:d}'.format(layer_id), display = verbose):
                 if verbose:
@@ -701,7 +706,13 @@ def assemble_layer(params, deformation_field, **kwargs):
                 mosaic_correction_bins) + mosaic_Scaling_offset
 
         if save_tif:
-            tiff.imwrite(tif_fname, layer_mosaic.astype(dtp))
+            if dtp == np.uint8 and 'U8_range' in kwargs:
+                U8_min, U8_max = float(kwargs['U8_range'][0]), float(kwargs['U8_range'][1])
+                scale = 255.0 / max(U8_max - U8_min, 1e-6)
+                layer_out = np.clip((layer_mosaic - U8_min) * scale, 0, 255).astype(np.uint8)
+            else:
+                layer_out = layer_mosaic.astype(dtp)
+            tiff.imwrite(tif_fname, layer_out)
         if save_zarr:
             _zarr.open(output_zarr_path, mode='r+')['s0'][layer_id, :, :] = layer_mosaic
         if return_layer_array:
@@ -845,7 +856,7 @@ def generate_report_SEM_param_mosaic_stack_xlsx(FIBSEM_Data_xlsx, **kwargs):
     dpi : int
         DPI for PNG. Default is 300.
     save_fname : string
-        File name to save the PNG image. Default is os.path.join(data_dir, Mill_Rate_Data_xlsx.replace('.xlsx','_Mill_Rate.png')).
+        File name to save the PNG image. Default is os.path.join(data_dir, Mill_Rate_Data_xlsx.replace('.xlsx','_SEM_params[k].png')).
     verbose : boolean
         Display intermediate results. Default is False.
 
@@ -945,7 +956,7 @@ def generate_report_SEM_param_mosaic_layer_xlsx(FIBSEM_Data_xlsx, **kwargs):
     dpi : int
         DPI for PNG. Default is 300.
     save_fname : string
-        File name to save the PNG image. Default is os.path.join(data_dir, Mill_Rate_Data_xlsx.replace('.xlsx','_Mill_Rate.png')).
+        File name to save the PNG image. Default is os.path.join(data_dir, Mill_Rate_Data_xlsx.replace('.xlsx','_SEM_param.png')).
     verbose : boolean
         Display intermediate results. Default is False.
 
@@ -1202,7 +1213,7 @@ def generate_outliers_report(outliers, fls, **kwargs):
     outliers_thumbnails_folder : str
         sub-directory name (will be created inside data_dir). Default is 'outliers_thumbnails'
     bin_factor : int
-        Binnin factor. Default = 10
+        Binning factor. Default = 10
     dpi : int
         DPI for PNG. Default is 150.
     verbose : boolean
@@ -1254,7 +1265,7 @@ def analyze_minmax_outliers_montage_xlsx(minmax_xlsx_file, **kwargs):
     kwargs:
     -----------
     sigma_thr : float
-        Threshold (multiplied by sigma) for outlier determination. Default is 6.0 (6-sima outliers).
+        Threshold (multiplied by sigma) for outlier determination. Default is 6.0 (6-sigma outliers).
     mosaic_shape : tuple or list of 2 ints
         Mosaic shape (ny_tiles, nx_tiles). Default is (1,1).
     tile_id : tuple or list of 2 ints
@@ -1378,7 +1389,7 @@ class FIBSEM_mosaic_dataset:
         data directory (path)
     grid : str
         grid for default tiles positions. Default is 'rect' - rectilinear grid, typical for FIB-SEM. Another options is 'hex' - hexagonal, typical for MSEM
-    index_pairs : array of pairs of absolute (in 1D sense of fls.ravel()) tile indices. Auto-determined during initialization, depends of grid setting.
+    index_pairs : array of pairs of absolute (in 1D sense of fls.ravel()) tile indices. Auto-determined during initialization, depends on grid setting.
         if grid == 'rect':  index_pairs = np.array(col_ind).reshape((row, 2))
     Sample_ID : str
             Sample ID
@@ -1407,6 +1418,7 @@ class FIBSEM_mosaic_dataset:
         Transformation model used by SIFT for determining the transformation matrix from Key-Point pairs.
         Choose from the following options:
             ShiftTransform - only x-shift and y-shift
+            RotationShiftTransform - x-shift, y-shift, rotation
             XScaleShiftTransform  -  x-scale, x-shift, y-shift
             ScaleShiftTransform - x-scale, y-scale, x-shift, y-shift
             AffineTransform -  full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift)
@@ -1516,7 +1528,7 @@ class FIBSEM_mosaic_dataset:
     determine_transformations_SIFT(self, **kwargs)
         Determine transformation matrices for frame pairs using SIFT. 
 
-    SIFT_evaluation(index_pair, pair_margins, **kwargs)
+    SIFT_evaluation(index_pair, **kwargs)
         Evaluate SIFT performance on a given index_pair.
 
     determine_transformations_ECC(**kwargs)
@@ -1554,8 +1566,8 @@ class FIBSEM_mosaic_dataset:
             File type (0 - Shan Xu's .dat, 1 - tif).
         data_dir : str
             Data directory (path).
-        image_coordinates_file : str
-            Path to a whitespace-delimited text file specifying tile coordinates,
+        image_coordinates_files : List of str
+            Paths to a whitespace-delimited text files specifying tile coordinates,
             one tile per line: filename  X  Y  (additional columns ignored).
             X and Y are the stage coordinates of the tile's first pixel in pixel units;
             Tiles are matched to fls[0].ravel() by basename.
@@ -1589,7 +1601,7 @@ class FIBSEM_mosaic_dataset:
         U8_conversion : str
             Range selection for U8 conversion. Options are: 'global', 'sliding', and 'local'. Default is 'local'.
         left_crop : int
-            left image margine to be cropped off BEFORE distortion correction (via deformation field) is applied. Default is 0.
+            left image margin to be cropped off BEFORE distortion correction (via deformation field) is applied. Default is 0.
         deformation_field : 3D array
             Array with dimensions (YResolution, XResolution - left_crop, 2). Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
             Deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
@@ -1643,6 +1655,7 @@ class FIBSEM_mosaic_dataset:
             Transformation model used for determining the transformation matrix from Key-Point pairs.
             Choose from the following options (default is ShiftTransform):
                 ShiftTransform - only x-shift and y-shift
+                RotationShiftTransform - x-shift, y-shift, rotation
                 XScaleShiftTransform  -  x-scale, x-shift, y-shift
                 ScaleShiftTransform - x-scale, y-scale, x-shift, y-shift
                 AffineTransform -  full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift)
@@ -1690,15 +1703,15 @@ class FIBSEM_mosaic_dataset:
         self.fls = np.array(fls)
         fname0 = self.fls.ravel()[0]
 
-        # Try to auto-detect image coordinates file
-        image_coordinates_file_default = os.path.join(os.path.split(fname0)[0], 'image_coordinates.txt')
-        if os.path.exists(image_coordinates_file_default):
-            image_coordinates_file = kwargs.get('image_coordinates_file', image_coordinates_file_default)
+        # Try to auto-detect image coordinates files
+        image_coordinates_files_default = [os.path.join(os.path.split(os.path.split(fl.ravel()[0])[0])[0], 'full_image_coordinates.txt') for fl in self.fls]
+        if len(image_coordinates_files_default)>0 and os.path.exists(image_coordinates_files_default[0]):
+            image_coordinates_files = kwargs.get('image_coordinates_files', image_coordinates_files_default)
             if verbose:
-                print('Will use image coordinates file: ', image_coordinates_file)
+                print('Will use image coordinates files: ', image_coordinates_files[0], ', ... , ', image_coordinates_files[-1])
         else:
-            image_coordinates_file = kwargs.get('image_coordinates_file', '')
-        self.image_coordinates_file = image_coordinates_file
+            image_coordinates_files = kwargs.get('image_coordinates_files', '')
+        self.image_coordinates_files = image_coordinates_files
 
         # Try to auto-detect metadata file
         metadata_file_default = os.path.join(os.path.split(fname0)[0], 'metadata.txt')
@@ -1834,60 +1847,98 @@ class FIBSEM_mosaic_dataset:
         self.fnm_mosaic_stack = kwargs.get('fnm_mosaic_stack', fnm_mosaic_stack_default)
         self.dtp = kwargs.get("dtp", np.int16)
         self.nz_tiles = self.fls.shape[0]
+        L = self.nz_tiles 
         self.n_tiles_per_layer = len(self.fls[0].ravel())
         kwargs.update({'data_dir' : self.data_dir, 'fnm_mosaic_stack' : self.fnm_mosaic_stack, 'dtp' : self.dtp})
 
         w_sqrt_intra = np.sqrt(self.intralayer_weight)  # because LSQR minimizes ||W^{1/2} (Ax - b)||
         w_sqrt_inter = np.sqrt(self.interlayer_weight)
 
-        if image_coordinates_file: # user-defined grid with FirstPixels determined from the image_coordinates_file file
-            coord_dict = read_image_coordinates(image_coordinates_file)
-            FirstPixels = np.array([coord_dict[os.path.split(fl)[1]][0:2] for fl in self.fls[0].ravel()])
+        if len(image_coordinates_files)>0: # user-defined grid with FirstPixels determined from the image_coordinates_files files        
+            FirstPixels = np.zeros((L, self.n_tiles_per_layer, 3))
+            for j, fls_layer in enumerate(self.fls):
+                coord_dict = read_image_coordinates(image_coordinates_files[j])
+                for i, fl in enumerate(fls_layer.ravel()):
+                    p, p1 = os.path.split(fl)
+                    tail = '/'.join([os.path.split(p)[-1], p1])
+                    FirstPixels[j, i] = coord_dict[tail]
             self.FirstPixels = FirstPixels
             # Find all intra-layer neighbouring pairs by proximity.
             # Two tiles are neighbours if their bounding boxes overlap in both X and Y.
             # This naturally handles hexagonal layouts where each tile has 1 left/right
             # neighbour and up to 2 top/bottom neighbours.
         else:   # standard recti-linear grid with FirstPixels determined from the headers of .dat files
-            FirstPixels = []
+            FirstPixels_layer0 = []
             for fl in fls[0].ravel():
                 fr = FIBSEM_frame(fl, read_header_only=True)
-                FirstPixels.append([fr.FirstPixelX, fr.FirstPixelY])
-            self.FirstPixels = np.array(FirstPixels)
+                FirstPixels_layer0.append([fr.FirstPixelX, fr.FirstPixelY, 0])
+            FirstPixels_layer0 = np.array(FirstPixels_layer0)          # shape (n_tiles, 3)
+            self.FirstPixels = np.repeat(FirstPixels_layer0[np.newaxis, :, :], L, axis=0)
 
+        # Build intra-layer index pairs — vectorized
         intra_index_pairs_x = []
         intra_index_pairs_y = []
-        for i in range(self.n_tiles_per_layer):
-            for j in range(self.n_tiles_per_layer):
-                if i != j:
-                    dx = self.FirstPixels[j, 0] - self.FirstPixels[i, 0]
-                    dy = self.FirstPixels[j, 1] - self.FirstPixels[i, 1]
-                    dx_abs = np.abs(dx)
-                    dy_abs = np.abs(dy)
-                    if dx_abs < self.XResolution and dy_abs < self.YResolution and (dx_abs + dy_abs < self.diagonal_exclusion_threshold * (self.XResolution + self.YResolution)):
-                        if dx_abs > dy_abs:
-                            if dx < 0:
-                                intra_index_pairs_x.append((j, i))
-                            else:
-                                if self.add_reverse_edges:
-                                    intra_index_pairs_x.append((i, j))
-                        else:
-                            if dy < 0:
-                                intra_index_pairs_y.append((j, i))
-                            else:
-                                if self.add_reverse_edges:
-                                    intra_index_pairs_y.append((i, j))
-        intra_index_pairs_x = np.array(intra_index_pairs_x)
-        intra_index_pairs_y = np.array(intra_index_pairs_y)
-        L = self.nz_tiles                
-        nh = L * len(intra_index_pairs_x)              # Total number of left-right intra-layer pairs
-        self.nh = nh
-        nv = L * len(intra_index_pairs_y)              # Total number of up-down intra-layer pairs
-        self.nv = nv
-        if self.add_reverse_edges:
-            nl = (L - 1) * self.n_tiles_per_layer * 2
+        diag_thresh = self.diagonal_exclusion_threshold * (self.XResolution + self.YResolution)
+        for l in range(L):
+            x = self.FirstPixels[l, :, 0]                          # shape (N,)
+            y = self.FirstPixels[l, :, 1]
+            dx = x[np.newaxis, :] - x[:, np.newaxis]               # dx[i,j] = x[j] - x[i]
+            dy = y[np.newaxis, :] - y[:, np.newaxis]
+            dx_abs = np.abs(dx)
+            dy_abs = np.abs(dy)
+
+            overlap = (dx_abs < self.XResolution) & \
+                      (dy_abs < self.YResolution) & \
+                      (dx_abs + dy_abs < diag_thresh)
+            np.fill_diagonal(overlap, False)
+
+            # X-dominant pairs (dx_abs > dy_abs)
+            x_dom = overlap & (dx_abs > dy_abs)
+            ii, jj = np.where(x_dom & (dx < 0))                    # j is left of i → store (j, i)
+            pairs_x = np.column_stack([jj, ii]) if len(ii) > 0 else np.empty((0, 2), dtype=int)
+            if self.add_reverse_edges:
+                ii2, jj2 = np.where(x_dom & (dx > 0))
+                if len(ii2) > 0:
+                    pairs_x = np.vstack([pairs_x, np.column_stack([ii2, jj2])])
+
+            # Y-dominant pairs (dx_abs <= dy_abs)
+            y_dom = overlap & (dx_abs <= dy_abs)
+            ii, jj = np.where(y_dom & (dy < 0))                    # j is above i → store (j, i)
+            pairs_y = np.column_stack([jj, ii]) if len(ii) > 0 else np.empty((0, 2), dtype=int)
+            if self.add_reverse_edges:
+                ii2, jj2 = np.where(y_dom & (dy > 0))
+                if len(ii2) > 0:
+                    pairs_y = np.vstack([pairs_y, np.column_stack([ii2, jj2])])
+
+            intra_index_pairs_x.append(pairs_x)
+            intra_index_pairs_y.append(pairs_y)
+
+        # Build inter-layer index pairs
+        # When coordinates files are provided: full proximity search between adjacent layers.
+        # Otherwise: assume same tile index directly above/below.
+        inter_index_pairs = []   # list of (L-1) arrays, shape (n_inter_pairs_l, 2)
+                                  # columns: (tile_index_in_layer_l, tile_index_in_layer_l+1)
+        if len(image_coordinates_files) > 0:
+            for l in range(L - 1):
+                x_l  = self.FirstPixels[l,   :, 0]                 # shape (N,)
+                y_l  = self.FirstPixels[l,   :, 1]
+                x_l1 = self.FirstPixels[l+1, :, 0]
+                y_l1 = self.FirstPixels[l+1, :, 1]
+                dx_abs = np.abs(x_l1[np.newaxis, :] - x_l[:, np.newaxis])   # [i,j]: layer l tile i vs layer l+1 tile j
+                dy_abs = np.abs(y_l1[np.newaxis, :] - y_l[:, np.newaxis])
+                ii, jj = np.where((dx_abs < self.XResolution) & (dy_abs < self.YResolution))
+                inter_index_pairs.append(np.column_stack([ii, jj]) if len(ii) > 0 else np.empty((0, 2), dtype=int))
         else:
-            nl = (L - 1) * self.n_tiles_per_layer
+            for l in range(L - 1):
+                inter_index_pairs.append(
+                    np.array([(i, i) for i in range(self.n_tiles_per_layer)]))
+
+        nh = sum(len(intra_index_pairs_x[l]) for l in range(L))             # Total number of left-right intra-layer pairs
+        self.nh = nh
+        nv = sum(len(intra_index_pairs_y[l]) for l in range(L))              # Total number of up-down intra-layer pairs
+        self.nv = nv
+        n_inter_base = sum(len(inter_index_pairs[l]) for l in range(L - 1))
+        nl = n_inter_base * 2 if self.add_reverse_edges else n_inter_base
         self.nl = nl
         self.C = self.nh + self.nv + self.nl
         V = L * self.n_tiles_per_layer                     # Total number of tiles
@@ -1904,26 +1955,28 @@ class FIBSEM_mosaic_dataset:
 
         # Intra-layer adjacent pairs
         for l in range(L):
-            for i in range(len(intra_index_pairs_x)):    
-                idx1 = l * self.n_tiles_per_layer + intra_index_pairs_x[i, 0]
-                idx2 = l * self.n_tiles_per_layer + intra_index_pairs_x[i, 1]
+            for i in range(len(intra_index_pairs_x[l])):
+                idx1 = l * self.n_tiles_per_layer + intra_index_pairs_x[l][i, 0]
+                idx2 = l * self.n_tiles_per_layer + intra_index_pairs_x[l][i, 1]
                 row_ind.extend([row, row])
                 col_ind.extend([idx1, idx2])
                 data.extend([-w_sqrt_intra, w_sqrt_intra])
                 row += 1
         for l in range(L):
-            for i in range(len(intra_index_pairs_y)):    
-                idx1 = l * self.n_tiles_per_layer + intra_index_pairs_y[i, 0]
-                idx2 = l * self.n_tiles_per_layer + intra_index_pairs_y[i, 1]
+            for i in range(len(intra_index_pairs_y[l])):
+                idx1 = l * self.n_tiles_per_layer + intra_index_pairs_y[l][i, 0]
+                idx2 = l * self.n_tiles_per_layer + intra_index_pairs_y[l][i, 1]
                 row_ind.extend([row, row])
                 col_ind.extend([idx1, idx2])
                 data.extend([-w_sqrt_intra, w_sqrt_intra])
                 row += 1
         # Inter-layer adjacent pairs
         for l in range(L - 1):
-            for i in range(self.n_tiles_per_layer):
+            for k in range(len(inter_index_pairs[l])):
+                i = inter_index_pairs[l][k, 0]   # tile index in layer l
+                j = inter_index_pairs[l][k, 1]   # tile index in layer l+1
                 idx1 = l * self.n_tiles_per_layer + i
-                idx2 = (l + 1) * self.n_tiles_per_layer + i
+                idx2 = (l + 1) * self.n_tiles_per_layer + j
                 row_ind.extend([row, row])
                 col_ind.extend([idx1, idx2])
                 data.extend([-w_sqrt_inter, w_sqrt_inter])
@@ -1935,17 +1988,58 @@ class FIBSEM_mosaic_dataset:
                     row += 1
 
         self.index_pairs = np.array(col_ind).reshape((row, 2))   # absolute (in 1D sense) tile indices for each pair
-        if len(intra_index_pairs_x) > 0:
-            j1, j2 = intra_index_pairs_x[0]
-            self.Xoverlap = int(np.round(self.XResolution - np.abs(self.FirstPixels[j1, 0] - self.FirstPixels[j2, 0])))
-        else:
-            self.Xoverlap = 0
-        if len(intra_index_pairs_y) > 0:
-            i1, i2 = intra_index_pairs_y[0]
-            self.Yoverlap = int(np.round(self.YResolution - np.abs(self.FirstPixels[i1, 1] - self.FirstPixels[i2, 1])))
-        else:
-            self.Yoverlap = 0
-        self.pair_margins = [[self.YResolution, 2*self.Xoverlap] for x in np.arange(self.nh)] + [[2*self.Yoverlap, self.XResolution] for x in np.arange(self.nv)] + [[self.YResolution, self.XResolution] for x in np.arange(self.nl)]
+        Xoverlap_per_layer = []
+        Yoverlap_per_layer = []
+        for l in range(L):
+            if len(intra_index_pairs_x[l]) > 0:
+                j1, j2 = intra_index_pairs_x[l][0]
+                Xoverlap_per_layer.append(int(np.round(
+                    self.XResolution - np.abs(self.FirstPixels[l, j1, 0] - self.FirstPixels[l, j2, 0]))))
+            else:
+                Xoverlap_per_layer.append(0)
+            if len(intra_index_pairs_y[l]) > 0:
+                i1, i2 = intra_index_pairs_y[l][0]
+                Yoverlap_per_layer.append(int(np.round(
+                    self.YResolution - np.abs(self.FirstPixels[l, i1, 1] - self.FirstPixels[l, i2, 1]))))
+            else:
+                Yoverlap_per_layer.append(0)
+        # Scalar summaries for backward compatibility
+        self.Xoverlap = Xoverlap_per_layer[0] if Xoverlap_per_layer else 0
+        self.Yoverlap = Yoverlap_per_layer[0] if Yoverlap_per_layer else 0
+        pair_margins = []
+        for l in range(L):
+            for _ in intra_index_pairs_x[l]:
+                pair_margins.append([self.YResolution, 2 * Xoverlap_per_layer[l]])
+        for l in range(L):
+            for _ in intra_index_pairs_y[l]:
+                pair_margins.append([2 * Yoverlap_per_layer[l], self.XResolution])
+        for _ in range(self.nl):
+            pair_margins.append([self.YResolution, self.XResolution])
+        self.pair_margins = pair_margins
+
+        # Per-pair exact overlap rectangles derived from FirstPixels.
+        # Replaces the pair_margins assumption that img1 is always left/above img2.
+        # Works for rectangular grids and arbitrary layouts equally.
+        # Each entry: (x_min_a, x_max_a, y_min_a, y_max_a,
+        #              x_min_b, x_max_b, y_min_b, y_max_b)  — all in local pixel coords
+        pair_overlap_bounds = []
+        for abs_a, abs_b in self.index_pairs:
+            la = int(abs_a) // self.n_tiles_per_layer
+            ta = int(abs_a) % self.n_tiles_per_layer
+            lb = int(abs_b) // self.n_tiles_per_layer
+            tb = int(abs_b) % self.n_tiles_per_layer
+            dx = self.FirstPixels[lb, tb, 0] - self.FirstPixels[la, ta, 0]
+            dy = self.FirstPixels[lb, tb, 1] - self.FirstPixels[la, ta, 1]
+            x_ov = self.XResolution - abs(dx)
+            y_ov = self.YResolution - abs(dy)
+            x_min_a = max(0,  dx);  x_max_a = x_min_a + x_ov
+            y_min_a = max(0,  dy);  y_max_a = y_min_a + y_ov
+            x_min_b = max(0, -dx);  x_max_b = x_min_b + x_ov
+            y_min_b = max(0, -dy);  y_max_b = y_min_b + y_ov
+            pair_overlap_bounds.append((x_min_a, x_max_a, y_min_a, y_max_a,
+                                        x_min_b, x_max_b, y_min_b, y_max_b))
+        self.pair_overlap_bounds = pair_overlap_bounds
+
         self.A_csr = csr_matrix((data, (row_ind, col_ind)), shape=(self.C, V)) # sparse matrix
 
         eye3x3 = np.eye(3,3)
@@ -1972,8 +2066,8 @@ class FIBSEM_mosaic_dataset:
             print('Total number of inter-layer pairs: ', self.nl)
             print('Total number of pairwise transformations : {:d}'.format(self.C))
 
-        self.Xsize = int(np.round(np.max(self.FirstPixels[:, 0]) - np.min(self.FirstPixels[:, 0]) + self.XResolution))
-        self.Ysize = int(np.round(np.max(self.FirstPixels[:, 1]) - np.min(self.FirstPixels[:, 1]) + self.YResolution))
+        self.Xsize = int(np.round(np.max(self.FirstPixels[:, :, 0]) - np.min(self.FirstPixels[:, :, 0]) + self.XResolution))
+        self.Ysize = int(np.round(np.max(self.FirstPixels[:, :, 1]) - np.min(self.FirstPixels[:, :, 1]) + self.YResolution))
         
         # Initialize the translation matrix for each tile.
         # tr_matr stores translations as NEGATIVE pixel offsets (tr_matr[:,:,i,2] = -position_i),
@@ -1981,13 +2075,17 @@ class FIBSEM_mosaic_dataset:
         # coordinates to canvas coordinates: x_canvas = x_tile + tr_matr[0,2].
         # tile_positions is no longer stored separately — derive it on demand as
         # -tr_matr[:, :, 0:2, 2] whenever (positive) pixel positions are needed.
-        shifts_x = self.FirstPixels[:, 0] - np.min(self.FirstPixels[:, 0])
-        shifts_y = self.FirstPixels[:, 1] - np.min(self.FirstPixels[:, 1])
-        single_layer_default_tr_matr = np.repeat(eye3x3[np.newaxis, :, :], self.n_tiles_per_layer, axis=0)
-        single_layer_default_tr_matr[:, 0, 2] = - np.array(shifts_x).flatten()
-        single_layer_default_tr_matr[:, 1, 2] = - np.array(shifts_y).flatten()
-        self.single_layer_default_tr_matr = single_layer_default_tr_matr
-        self.tr_matr = np.repeat(self.single_layer_default_tr_matr[np.newaxis, :, :, :], L, axis=0)
+        # shifts are per-layer: each layer normalised to its own origin
+        shifts_x = self.FirstPixels[:, :, 0] - np.min(self.FirstPixels[:, :, 0], axis=1, keepdims=True)
+        shifts_y = self.FirstPixels[:, :, 1] - np.min(self.FirstPixels[:, :, 1], axis=1, keepdims=True)
+        # shape of shifts_x / shifts_y: (L, n_tiles_per_layer)
+
+        default_tr_matr = np.broadcast_to(eye3x3, (L, self.n_tiles_per_layer, 3, 3)).copy()
+        # shape: (L, n_tiles_per_layer, 3, 3)
+        default_tr_matr[:, :, 0, 2] = - shifts_x
+        default_tr_matr[:, :, 1, 2] = - shifts_y
+        self.default_tr_matr = default_tr_matr
+        self.tr_matr = default_tr_matr.copy()   # .copy() so solver writes don't corrupt default
 
         if memory_profiling:
             elapsed_time = elapsed_since(start_time)
@@ -2020,8 +2118,7 @@ class FIBSEM_mosaic_dataset:
                         print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Failed to restore the object parameters from dump filename: ', dump_filename)
                         print(str(ex2))
 
-
-    def find_tile_pairs(self, layer_id, tile_ids, **kwargs):
+    def find_tile_pairs(self, layer_id, tile_id, **kwargs):
         '''
         Searches self.index_pairs for all pairs containing the tile.
         Reports SIFT transformation records for each found pair. 
@@ -2040,8 +2137,8 @@ class FIBSEM_mosaic_dataset:
 
         Returns:
         ----------
-        result_df : pandas DataFrame
-            Contains these fields: Layer0, Tile0, Layer1, Tile1, SIFT x-shift, SIFT y-shift, SIFT nmatches, SIFT valid
+        res : pandas DataFrame
+            Contains these fields: 'Layer 0', 'Tile 0', 'Layer 1', 'Tile 1', 'SIFT x-shift', 'SIFT y-shift', 'SIFT nmatches', 'SIFT valid'
         '''
         verbose = kwargs.get('verbose', True)
         nl = self.n_tiles_per_layer
@@ -2258,7 +2355,7 @@ class FIBSEM_mosaic_dataset:
         thr_max : float
             CDF threshold for determining the maximum data value. Default is object attribute.
         left_crop : int
-            left image margine to be cropped off BEFORE distortion correction (via deformation field) is applied. Default is object attribute (or 0 if absent).
+            left image margin to be cropped off BEFORE distortion correction (via deformation field) is applied. Default is object attribute (or 0 if absent).
         deformation_field : 3D array
             Array with dimensions (YResolution, XResolution - left_crop, 2). Deformation field for distortion corrections to be executed. If is np.nan - no distortion correction.
             Deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
@@ -2393,7 +2490,7 @@ class FIBSEM_mosaic_dataset:
         kwargs:
         ----------
         sigma_thr : float
-            Threshold (multiplied by sigma) for outlier determination. Default is 6.0 (6-sima outliers).
+            Threshold (multiplied by sigma) for outlier determination. Default is 6.0 (6-sigma outliers).
         save_png : boolean
             If True (default), the plot is saved into PNG file.
         dpi : int
@@ -2510,10 +2607,6 @@ class FIBSEM_mosaic_dataset:
             Number of allowed automatic retries if a task fails. Default is object attribute.
         ftype : int
             File type (0 - Shan Xu's .dat, 1 - tif). Default is object attribute.
-        pair_margins : array of tuples of 2 ints
-            Parts of images to be used. It is assumed that first image (img1) in each target_pair is to the left and above of the second image (img2).
-            Subsets img1[-ymargin:, :] and  img2[0:ymargin, :] or img1[:, -xmargin:] and  img2[:, 0:xmargin] will be used for correlation.
-            Default is full images, so image_margins = (self.YResolution, self.XResolution)
         left_crop : int 
             Cropping value for cropping the image from the left side (used along with deformation_field or on its own). Default is 0 - no cropping.
         deformation_field : 3D array
@@ -2577,6 +2670,7 @@ class FIBSEM_mosaic_dataset:
                 Mean abs error of registration for all matched Key-Points.
         '''
         verbose = kwargs.get('verbose', False)
+
         if len(self.fnms_kpts) == 0:
             if verbose:
                 print('No data on individual key-point data files, perform key-point search')
@@ -2598,10 +2692,6 @@ class FIBSEM_mosaic_dataset:
                 deformation_field = kwargs.get('deformation_field', self.deformation_field)
             else:
                 deformation_field = kwargs.get('deformation_field', np.nan)
-            if hasattr(self, 'pair_margins'):
-                pair_margins = kwargs.get('pair_margins', self.pair_margins)
-            else:
-                pair_margins = kwargs.get('pair_margins', (self.YResolution, self.XResolution))
             TransformType = kwargs.get("TransformType", self.TransformType)
             l2_matrix = kwargs.get("l2_matrix", self.l2_matrix)
             targ_vector = kwargs.get("targ_vector", self.targ_vector)
@@ -2626,13 +2716,13 @@ class FIBSEM_mosaic_dataset:
             if select_tiles:
                 mask = self.get_interlayer_pairs_mask(select_tiles)
                 index_pairs = self.index_pairs[mask]
-                pair_margins = np.array(self.pair_margins)[mask]
+                pair_overlap_bounds = [self.pair_overlap_bounds[i] for i in np.where(mask)[0]]
             else:
                 index_pairs = self.index_pairs
-                pair_margins = self.pair_margins
+                pair_overlap_bounds = kwargs.get('pair_overlap_bounds', self.pair_overlap_bounds)
             fnms_kpts = self.fnms_kpts.ravel()
 
-            for index_pair, pair_margin  in zip(tqdm(index_pairs, desc='Setting up SIFT parameter list', display=verbose), pair_margins):
+            for index_pair, overlap_bounds in zip(tqdm(index_pairs, desc='Setting up SIFT parameter list', display=verbose), pair_overlap_bounds):
                 dt_kwargs = {'ftype' : ftype,
                         'TransformType' : TransformType,
                         'l2_matrix' : l2_matrix,
@@ -2659,12 +2749,14 @@ class FIBSEM_mosaic_dataset:
                 else:
                     fnm_matches = os.path.join(path_base, f1.replace('_kpdes.bin', '_')+f2.replace('_kpdes.bin', '_matches.bin'))
                 dt_kwargs['fnm_matches'] = fnm_matches
-                index_loc0, index_loc1 = np.mod(index_pair, self.n_tiles_per_layer)
-                FirstPixels_delta = self.FirstPixels[index_loc1] - self.FirstPixels[index_loc0]
-                ymargin, xmargin = pair_margin
-                dt_kwargs['warp_matrix'] = np.array([[1, 0, -FirstPixels_delta[0]], [0, 1, -FirstPixels_delta[1]]], dtype=np.float32)
-                dt_kwargs['image_margins'] = (ymargin, xmargin)
+                dt_kwargs['overlap_bounds'] = overlap_bounds   # (x_min_a, x_max_a, y_min_a, y_max_a,
+                                                                #  x_min_b, x_max_b, y_min_b, y_max_b)
                 dt_kwargs['image_shape'] = (self.YResolution, self.XResolution)
+                la, ta = int(index_pair[0]) // self.n_tiles_per_layer, int(index_pair[0]) % self.n_tiles_per_layer
+                lb, tb = int(index_pair[1]) // self.n_tiles_per_layer, int(index_pair[1]) % self.n_tiles_per_layer
+                dx = self.FirstPixels[lb, tb, 0] - self.FirstPixels[la, ta, 0]
+                dy = self.FirstPixels[lb, tb, 1] - self.FirstPixels[la, ta, 1]
+                dt_kwargs['warp_matrix'] = np.array([[1, 0, -dx], [0, 1, -dy]], dtype=np.float32)
                 param_SIFT = [fname1, fname2, dt_kwargs]
                 params_SIFT.append(param_SIFT)
                 if verbose:
@@ -2703,24 +2795,20 @@ class FIBSEM_mosaic_dataset:
         return transformations_results_3D
 
 
-    def SIFT_evaluation(self, index_pair, pair_margins, **kwargs):
+    def SIFT_evaluation(self, index_pair, **kwargs):
         '''
         Evaluate SIFT performance on a given index_pair. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
         
         Parameters:
         index_pair : tuple of 2 ints
             Pair of absolute (in 1D sense of fls.ravel()) tile indices.
-        pair_margins : tuples of 2 ints
-            Parts of images to be used. It is assumed that first image (img1) in each target_pair is to the left and above of the second image (img2).
-            Subsets img1[-ymargin:, :] and  img2[0:ymargin, :] or img1[:, -xmargin:] and  img2[:, 0:xmargin] will be used for correlation.
-            Default is full images, so image_margins = (self.YResolution, self.XResolution)
 
         kwargs:
         ----------
         ftype : int
             File type (0 - Shan Xu's .dat, 1 - tif). Default is object attribute.
         left_crop : int
-            left image margine to be cropped off BEFORE distortion correction (via deformation field) is applied. Default is object attribute (or 0 if absent).
+            left image margin to be cropped off BEFORE distortion correction (via deformation field) is applied. Default is object attribute (or 0 if absent).
         deformation_field : 3D array
             Deformation field for distortion corrections to be executed before SIFT. Default is image attribute (or np.nan if absent - no distortion correction).
             Deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
@@ -2777,7 +2865,7 @@ class FIBSEM_mosaic_dataset:
         save_res_png : boolean
             If True (Default), the results are saved into a PNG file.
         save_filename : str
-            A path for saving PNG data. Default is auto-generated as os.path.join(self.data_dir, os.path.split(fnm_matches)[1].replace('_matches.bin') + '_SIFT_test.png').
+            A path for saving PNG data. Default is auto-generated as os.path.join(self.data_dir, os.path.split(fnm_matches)[1].replace('_matches.bin', '_SIFT_test.png').
        
         Returns:
         ----------
@@ -2915,11 +3003,21 @@ class FIBSEM_mosaic_dataset:
             print('Key-point matches file:')
             print(fnm_matches)
         dt_kwargs['fnm_matches'] = fnm_matches
-        index_loc0, index_loc1 = np.mod(index_pair, self.n_tiles_per_layer)
-        FirstPixels_delta = self.FirstPixels[index_loc1] - self.FirstPixels[index_loc0]
-        ymargin, xmargin = pair_margins
-        dt_kwargs['warp_matrix'] = np.array([[1, 0, -FirstPixels_delta[0]], [0, 1, -FirstPixels_delta[1]]], dtype=np.float32)
-        dt_kwargs['image_margins'] = (ymargin, xmargin)
+        la = int(index_pair[0]) // self.n_tiles_per_layer
+        ta = int(index_pair[0]) % self.n_tiles_per_layer
+        lb = int(index_pair[1]) // self.n_tiles_per_layer
+        tb = int(index_pair[1]) % self.n_tiles_per_layer
+        dx = self.FirstPixels[lb, tb, 0] - self.FirstPixels[la, ta, 0]
+        dy = self.FirstPixels[lb, tb, 1] - self.FirstPixels[la, ta, 1]
+        dt_kwargs['warp_matrix'] = np.array([[1, 0, -dx], [0, 1, -dy]], dtype=np.float32)
+        pair_index = np.where((self.index_pairs == index_pair).all(axis=1))[0]
+        if len(pair_index) > 0:
+            overlap_bounds = self.pair_overlap_bounds[pair_index[0]]
+            dt_kwargs['overlap_bounds'] = overlap_bounds
+        else:
+            overlap_bounds = None
+            dt_kwargs['image_margins'] = (self.YResolution, self.XResolution)   # full image fallback
+
         dt_kwargs['image_shape'] = (self.YResolution, self.XResolution)
         param_SIFT = [fname1, fname2, dt_kwargs]
 
@@ -3024,7 +3122,12 @@ class FIBSEM_mosaic_dataset:
             axs[0].text(0.01, 1.00 - 0.115*frame.XResolution/frame.YResolution, 'RANSAC_initial_fraction={:.4f}, max_iter={:d}'.format(RANSAC_initial_fraction, max_iter), fontsize=fsize_text, transform=axs[0].transAxes)
             axs[0].text(0.01, 1.00 - 0.135*frame.XResolution/frame.YResolution, 'drmax={:.3f}'.format(drmax), fontsize=fsize_text, transform=axs[0].transAxes)
             axs[0].text(0.01, 1.00 - 0.155*frame.XResolution/frame.YResolution, 'Deformation Field Present: ' + perform_deformation_text + ',  left_crop={:d}'.format(left_crop), fontsize=fsize_text, transform=axs[0].transAxes)
-            axs[0].text(0.01, 1.00 - 0.175*frame.XResolution/frame.YResolution, 'Image Margins: {:d}, {:d}'.format(*pair_margins), fontsize=fsize_text, transform=axs[0].transAxes)
+            if overlap_bounds is not None:
+                x_ov = int(overlap_bounds[1] - overlap_bounds[0])
+                y_ov = int(overlap_bounds[3] - overlap_bounds[2])
+                axs[0].text(0.01, 1.00 - 0.175*frame.XResolution/frame.YResolution, 'Overlap (x, y): {:d}, {:d}'.format(x_ov, y_ov), fontsize=fsize_text, transform=axs[0].transAxes)
+            else:
+                axs[0].text(0.01, 1.00 - 0.175*frame.XResolution/frame.YResolution, 'Overlap: full image', fontsize=fsize_text, transform=axs[0].transAxes)
 
             if n_matches > 0:
                 columns_shifts=['X-src', 'Y-src', 'X-src transformed', 'Y-src transformed', 'X-dst', 'Y-dst', 'X-error', 'Y-error', 'Int-src', 'Int-dst']
@@ -3080,7 +3183,7 @@ class FIBSEM_mosaic_dataset:
             Subsets img1[-ymargin:, :] and  img2[0:ymargin, :] or img1[:, -xmargin:] and  img2[:, 0:xmargin] will be used for correlation.
             Default is full images, so image_margins = (self.YResolution, self.XResolution)
         left_crop : int
-            left image margine to be cropped off BEFORE distortion correction (via deformation field) is applied. Default is object attribute (or 0 if absent).
+            left image margin to be cropped off BEFORE distortion correction (via deformation field) is applied. Default is object attribute (or 0 if absent).
         deformation_field : 3D array
             Deformation field for distortion corrections to be executed before SIFT. Default is image attribute (or np.nan if absent - no distortion correction).
             Deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
@@ -3114,10 +3217,6 @@ class FIBSEM_mosaic_dataset:
             deformation_field = kwargs.get('deformation_field', self.deformation_field)
         else:
             deformation_field = kwargs.get('deformation_field', np.nan)
-        if hasattr(self, 'pair_margins'):
-            pair_margins = kwargs.get('pair_margins', self.pair_margins)
-        else:
-            pair_margins = kwargs.get('pair_margins', (self.YResolution, self.XResolution))
         if hasattr(self, 'motion'):
             motion = kwargs.get('motion', self.motion)
         else:
@@ -3147,9 +3246,13 @@ class FIBSEM_mosaic_dataset:
                      'image_margins' : pair_margins}
             fname1 = fls[index_pair[0]]
             fname2 = fls[index_pair[1]]
-            index_loc0, index_loc1 = np.mod(index_pair, self.n_tiles_per_layer)
-            FirstPixels_delta = self.FirstPixels[index_loc1] - self.FirstPixels[index_loc0]
-            dt_kwargs['warp_matrix'] = np.array([[1, 0, -FirstPixels_delta[0]], [0, 1, -FirstPixels_delta[1]]], dtype=np.float32)
+            la = int(index_pair[0]) // self.n_tiles_per_layer
+            ta = int(index_pair[0]) % self.n_tiles_per_layer
+            lb = int(index_pair[1]) // self.n_tiles_per_layer
+            tb = int(index_pair[1]) % self.n_tiles_per_layer
+            dx = self.FirstPixels[lb, tb, 0] - self.FirstPixels[la, ta, 0]
+            dy = self.FirstPixels[lb, tb, 1] - self.FirstPixels[la, ta, 1]
+            dt_kwargs['warp_matrix'] = np.array([[1, 0, -dx], [0, 1, -dy]], dtype=np.float32)
             param_ECC = [fname1, fname2, dt_kwargs]
             params_ECC.append(param_ECC)
         if use_DASK:
@@ -3218,7 +3321,7 @@ class FIBSEM_mosaic_dataset:
         w_sqrt_inter = np.sqrt(self.interlayer_weight)
         weights = np.concatenate((np.full((self.nh+self.nv), w_sqrt_intra), np.full(self.nl, w_sqrt_inter)))
         if initialize_transformation_first:
-            self.tr_matr = np.repeat(self.single_layer_default_tr_matr[np.newaxis, :, :, :], self.nz_tiles, axis=0)
+            self.tr_matr = self.default_tr_matr.copy()
 
         if method not in valid_methods:
             if verbose:
@@ -3715,7 +3818,7 @@ class FIBSEM_mosaic_dataset:
         weight_max : float
             vmax for weight. Default is 512.
         left_crop : int
-            left image margine to be cropped off BEFORE distortion correction (via deformation field) is applied. Default is object attribute (or 0 if absent).
+            left image margin to be cropped off BEFORE distortion correction (via deformation field) is applied. Default is object attribute (or 0 if absent).
         deformation_field : 3D array
             Deformation field for distortion corrections to be executed before SIFT. Default is image attribute (or np.nan if absent - no distortion correction).
             Deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
@@ -3725,7 +3828,10 @@ class FIBSEM_mosaic_dataset:
             If True, apply mosaic-level field flattening using parameters from 
             determine_mosaic_flattening_parameters(). Default is False.
         perform_intensity_normalization : boolean
-            Default is False. If True and tile_scales attribute is avilable, perform intensity normalization (tile intensity rescaling).
+            Default is False. If True and tile_scales attribute is available, perform intensity normalization (tile intensity rescaling).
+        use_default_coordinates : bool
+            If True, use self.default_tr_matr (nominal tile positions from FirstPixels)
+            instead of self.tr_matr (SIFT-refined positions). Default is False.
         DASK_client : DASK client. If set to empty string '' (default), local computations are performed.
         DASK_client_retries : int (default to 3)
             Number of allowed automatic retries if a task fails. Default is object attribute.
@@ -3751,8 +3857,6 @@ class FIBSEM_mosaic_dataset:
             If True, saves existing mosaic(s) into a .jpg or .png file(s)
         image_fname : string
             The name of the image to perform these operations (default is self.fls[layer_id].ravel()[0].replace('0-0-0.dat', 'layer_mosaic.jpg')).
-        verbose : boolean
-            Display intermediate results. Default is False.
         verbose : bool
             If True, the intermediate results are displayed. Default is False.
         interpolation : int
@@ -3814,6 +3918,7 @@ class FIBSEM_mosaic_dataset:
         color = kwargs.get('color', 'cyan')
         dtp = kwargs.get('dtp', np.int16)
         dpi = kwargs.get('dpi', 300)
+        use_default_coordinates = kwargs.get('use_default_coordinates', False)
 
         if hasattr(self, "DASK_client_retries"):
             DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
@@ -3833,14 +3938,25 @@ class FIBSEM_mosaic_dataset:
                     'border_mode' : border_mode,
                     'local_DASK_client' : DASK_client,
                     'DASK_client_retries' : DASK_client_retries}
+
+        if use_default_coordinates and hasattr(self, 'default_tr_matr'):
+            tr_matr_layer = self.default_tr_matr[layer_id]
+        else:
+            tr_matr_layer = self.tr_matr[layer_id]
         
         for j, image_name in enumerate(image_names):
             if verbose:
                 print(time.strftime('%Y/%m/%d  %H:%M:%S  ') + ' processing the data for ' + image_name)
-            params = [layer_id, self.fls[layer_id].ravel(), image_name, self.tr_matr[layer_id], weight_min, weight_max,
-                                        fill_value, self.Xsize, self.Ysize, left_crop,
-                                        self.tile_I0s[layer_id], self.tile_scales[layer_id],
-                                        return_layer_array, save_tif, tif_fname, save_zarr, output_zarr_path, dtp, verbose]
+            if hasattr(self, 'tile_scales') and perform_intensity_normalization:
+                params = [layer_id, self.fls[layer_id].ravel(), image_name, tr_matr_layer, weight_min, weight_max,
+                          fill_value, self.Xsize, self.Ysize, left_crop,
+                          self.tile_I0s[layer_id], self.tile_scales[layer_id],
+                          return_layer_array, save_tif, tif_fname, save_zarr, output_zarr_path, dtp, verbose]
+            else:
+                params = [layer_id, self.fls[layer_id].ravel(), image_name, tr_matr_layer, weight_min, weight_max,
+                          fill_value, self.Xsize, self.Ysize, left_crop,
+                          np.zeros(self.n_tiles_per_layer), np.ones(self.n_tiles_per_layer),
+                          return_layer_array, save_tif, tif_fname, save_zarr, output_zarr_path, dtp, verbose]
 
             # Add per-image flattening parameters
             kwargs_al_local = dict(kwargs_al)
@@ -4043,12 +4159,16 @@ class FIBSEM_mosaic_dataset:
                 overlay_montage_grid(ax, self,
                                      tile_positions = -self.tr_matr[layer_id, :, 0:2, 2],
                                      left_crop = left_crop,
-                                     tile_positions_actual = True,
-                                     linewidth=0.1, color = 'red')
+                                     linewidth = linewidth,
+                                     linestyle = linestyle,
+                                     color = color)
                 if j == 1:
                     image_fname_loc = imf1 + '_' + self.DetB.strip('\x00') + imf2
                 else:
-                    image_fname_loc = imf1 + '_' + self.DetA.strip('\x00') + imf2
+                    if hasattr(self, 'DetA'):
+                        image_fname_loc = imf1 + '_' + self.DetA.strip('\x00') + imf2
+                    else:
+                        image_fname_loc = imf1 + '_' + imf2
                 fig.savefig(image_fname_loc, dpi=dpi)
                 display(fig)
                 plt.close(fig)
@@ -4277,6 +4397,10 @@ class FIBSEM_mosaic_dataset:
             voxel size in nm
         dtp  : dtype
             Python data type for saving. Default is int16, the other option currently is uint8.
+        U8_range : list [U8_min, U8_max]
+            Optional conversion range for uint8 output. Only used when dtp=np.uint8.
+            Data is clipped to [U8_min, U8_max] and rescaled to [0, 255] before casting.
+            Default is None (plain cast, data must already be in [0, 255]).
         weight_min : float
             vmin for weight. Default is 1
         weight_max : float
@@ -4288,7 +4412,10 @@ class FIBSEM_mosaic_dataset:
         fill_value : int
             The value to assign to pixels outside the transformed image bounds. Default is -10000.
         perform_intensity_normalization : boolean
-            Default is False. If True and tile_scales attribute is avilable, perform intensity normalization (tile intensity rescaling).
+            Default is False. If True and tile_scales attribute is available, perform intensity normalization (tile intensity rescaling).
+        use_default_coordinates : bool
+            If True, use self.default_tr_matr (nominal tile positions from FirstPixels)
+            instead of self.tr_matr (SIFT-refined positions). Default is False.
         output_zarr_path : str
             Path to the ZARR store root directory. Default is auto-generated from object attribute self.fnm_mosaic_stack.
         zarr_chunk_z : int
@@ -4335,8 +4462,10 @@ class FIBSEM_mosaic_dataset:
         
         '''
         perform_intensity_normalization = kwargs.get('perform_intensity_normalization', False)
+        use_default_coordinates = kwargs.get('use_default_coordinates', False)
         DASK_client = kwargs.get('DASK_client', '')
         dtp = kwargs.get("dtp", np.int16)
+        U8_range = kwargs.get('U8_range', None)
         image_name = kwargs.get('image_name', 'RawImageA')
         weight_min = kwargs.get('weight_min', 1.0)
         kwargs['weight_min'] = weight_min 
@@ -4453,7 +4582,8 @@ class FIBSEM_mosaic_dataset:
             'interpolation' : interpolation,
             'border_value' : border_value,
             'border_mode' : border_mode}
-
+        if U8_range is not None:
+            kwargs_al['U8_range'] = U8_range
 
         if flatten_mosaic and hasattr(self, 'mosaic_correction_coeffs'):
             # Find the index of image_name in mosaic_correction_sources
@@ -4489,7 +4619,10 @@ class FIBSEM_mosaic_dataset:
             params_mult = []
             for layer_id in layer_ids:
                 fls_layer = self.fls[layer_id].ravel()
-                tr_matr_layer = self.tr_matr[layer_id]
+                if use_default_coordinates and hasattr(self, 'default_tr_matr'):
+                    tr_matr_layer = self.default_tr_matr[layer_id]
+                else:
+                    tr_matr_layer = self.tr_matr[layer_id]
                 #tif_fname = os.path.splitext(fnm_mosaic_stack)[0] + '_layer_{:d}.tif'.format(layer_id)
                 tif_fname = os.path.join(save_folder, os.path.splitext(os.path.split(fnm_mosaic_stack)[1])[0] + '_layer_{:06d}.tif'.format(layer_id))
                 if save_tif:
@@ -4510,13 +4643,23 @@ class FIBSEM_mosaic_dataset:
                 for future in tqdm(as_completed(futures), total=len(futures), desc='Assembling and saving mosaic layers'):
                     mosaic_out, j = future.result()
                     if save_mrc:
-                        mrc_new.data[j, :, :] = mosaic_out
+                        if dtp == np.uint8 and U8_range is not None:
+                            U8_min, U8_max = float(U8_range[0]), float(U8_range[1])
+                            scale = 255.0 / max(U8_max - U8_min, 1e-6)
+                            mrc_new.data[j, :, :] = np.clip((mosaic_out - U8_min) * scale, 0, 255).astype(np.uint8)
+                        else:
+                            mrc_new.data[j, :, :] = mosaic_out
                     future.cancel()
             else:
                 for j, params in enumerate(tqdm(params_mult, desc = 'Assembling and saving mosaic layers')):
                     mosaic_out = assemble_layer(params, deformation_field, **kwargs_al)[0]
                     if save_mrc:
-                        mrc_new.data[j, :, :] = mosaic_out
+                        if dtp == np.uint8 and U8_range is not None:
+                            U8_min, U8_max = float(U8_range[0]), float(U8_range[1])
+                            scale = 255.0 / max(U8_max - U8_min, 1e-6)
+                            mrc_new.data[j, :, :] = np.clip((mosaic_out - U8_min) * scale, 0, 255).astype(np.uint8)
+                        else:
+                            mrc_new.data[j, :, :] = mosaic_out
             if save_mrc:
                 mrc_new.close()
 
