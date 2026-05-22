@@ -694,8 +694,10 @@ def assemble_layer(params, deformation_field, **kwargs):
                     print('xi={:d}, yi={:d}'.format(xi, yi))
                 _add_warped_to_mosaic(tile_out, xi, yi, layer_mosaic, layer_mosaic_weights, **kwargs_awp)
         
-        layer_mosaic_weights = np.clip(layer_mosaic_weights, weight_min, weight_max*len(fls_layer)) 
-        layer_mosaic = np.nan_to_num(layer_mosaic / layer_mosaic_weights, nan=fill_value)
+        np.clip(layer_mosaic_weights, weight_min, weight_max*len(fls_layer), out=layer_mosaic_weights)
+        np.divide(layer_mosaic, layer_mosaic_weights, out=layer_mosaic)
+        del layer_mosaic_weights
+        np.nan_to_num(layer_mosaic, nan=fill_value, copy=False)
         if flatten_mosaic and mosaic_correction_coefs is not None:
             # Subtract offset, flatten, re-add offset
             layer_mosaic = flatten_image_fast(
@@ -709,9 +711,15 @@ def assemble_layer(params, deformation_field, **kwargs):
             if dtp == np.uint8 and 'U8_range' in kwargs:
                 U8_min, U8_max = float(kwargs['U8_range'][0]), float(kwargs['U8_range'][1])
                 scale = 255.0 / max(U8_max - U8_min, 1e-6)
-                layer_out = np.clip((layer_mosaic - U8_min) * scale, 0, 255).astype(np.uint8)
+                np.subtract(layer_mosaic, U8_min, out=layer_mosaic)
+                np.multiply(layer_mosaic, scale, out=layer_mosaic)
+                np.clip(layer_mosaic, 0, 255, out=layer_mosaic)
+                layer_out = layer_mosaic.astype(np.uint8)
             else:
-                layer_out = layer_mosaic.astype(dtp)
+                if dtp == np.float32:
+                    layer_out = layer_mosaic          # no copy
+                else:
+                    layer_out = layer_mosaic.astype(dtp)
             tiff.imwrite(tif_fname, layer_out)
         if save_zarr:
             _zarr.open(output_zarr_path, mode='r+')['s0'][layer_id, :, :] = layer_mosaic
