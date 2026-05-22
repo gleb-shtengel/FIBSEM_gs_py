@@ -1183,8 +1183,7 @@ def generate_report_data_minmax_montage_xlsx(minmax_xlsx_file, **kwargs):
     return save_fname
 
 
-def reformat_outliers_data(outliers, shape):
-    sy, sx = shape
+def reformat_outliers_data(outliers):
     res = []
     for outlier in outliers:
         for frame in outlier[1]:
@@ -2050,6 +2049,9 @@ class FIBSEM_mosaic_dataset:
         self.SIFT_fnms_matches = ['' for x in np.arange(self.C)]
         self.SIFT_nmatches = np.full(self.C, 0)
         self.SIFT_intensity_ratios = np.full(self.C, np.nan)
+        self.mean_intensity_ratios   = np.full(self.C, np.nan)
+        self.percentile_intensity_ratios = np.full(self.C, np.nan)
+        self.percentile = kwargs.get('percentile', 50)
         self.SIFT_Affine_r2norm = np.nan    # residual 2-norm from the affine bundle solve
         self.tile_I0s = np.zeros((self.nz_tiles, self.n_tiles_per_layer))
         self.tile_scales = np.ones((self.nz_tiles, self.n_tiles_per_layer))
@@ -2217,6 +2219,8 @@ class FIBSEM_mosaic_dataset:
             CDF threshold for determining the maximum data value. Default is object attribute.
         nbins : int
             Number of histogram bins for building the PDF and CDF. Default is object attribute.
+        percentile : int
+            Percentile value for data evaluation. Default is obect attribute (50).
         FIBSEM_Data_xlsx : str
             File path of the Excell file for the FIBSEM data set data to be saved (Data Min/Max, Working Distance, Milling Y Voltage, FOV center positions).
         use_existing_data : boolean
@@ -2271,7 +2275,11 @@ class FIBSEM_mosaic_dataset:
             Mill_Volt_Rate_um_per_V = kwargs.get("Mill_Volt_Rate_um_per_V", self.Mill_Volt_Rate_um_per_V)
         else:
             Mill_Volt_Rate_um_per_V = kwargs.get("Mill_Volt_Rate_um_per_V", 31.235258870176065)
-
+        if hasattr(self, 'percentile'):
+            percentile = kwargs.get('percentile', self.percentile)
+        else:
+            percentile = kwargs.get('percentile', 50)
+        self.percentile = percentile
         local_kwargs = {'use_DASK' : use_DASK,
                         'DASK_client_retries' : DASK_client_retries,
                         'ftype' : ftype,
@@ -2280,6 +2288,7 @@ class FIBSEM_mosaic_dataset:
                         'thr_min' : thr_min,
                         'thr_max' : thr_max,
                         'nbins' : nbins,
+                        'percentile' : percentile,
                         'sliding_minmax' : False,
                         'fit_params' : fit_params,
                         'FIBSEM_Data_xlsx' : FIBSEM_Data_xlsx,
@@ -2289,16 +2298,20 @@ class FIBSEM_mosaic_dataset:
         if verbose:
             print('Evaluating the parameters of FIBSEM data set (data Min/Max, Working Distance, FOV center positions, Scan Rate, EHT)')
         self.FIBSEM_Data = evaluate_FIBSEM_frames_dataset(self.fls.ravel(), DASK_client, **local_kwargs)
-        self.data_minmax = self.FIBSEM_Data[0:5]
-        self.data_min_glob = self.FIBSEM_Data[1]
-        self.data_max_glob = self.FIBSEM_Data[2]
-        WD = self.FIBSEM_Data[5]
-        
-        self.FOV_x = self.FIBSEM_Data[7]
-        self.FOV_y = self.FIBSEM_Data[8]
+        self.data_minmax = [self.FIBSEM_Data['FIBSEM_Data_xlsx'],
+                    self.FIBSEM_Data['data_min_glob'],
+                    self.FIBSEM_Data['data_max_glob'],
+                    self.FIBSEM_Data['data_min_sliding'],
+                    self.FIBSEM_Data['data_max_sliding']]
+        self.data_min_glob  = self.FIBSEM_Data['data_min_glob']
+        self.data_max_glob  = self.FIBSEM_Data['data_max_glob']
+        WD                  = self.FIBSEM_Data['mill_rate_WD']
+        MillingYVoltage     = self.FIBSEM_Data['mill_rate_MV']
+        self.FOV_x          = self.FIBSEM_Data['center_x']
+        self.FOV_y          = self.FIBSEM_Data['center_y']
         try:
-            self.XResolutions = self.FIBSEM_Data[12].astype(int)
-            self.YResolutions = self.FIBSEM_Data[13].astype(int)
+            self.XResolutions   = self.FIBSEM_Data['XResolutions'].astype(int)
+            self.YResolutions   = self.FIBSEM_Data['YResolutions'].astype(int)
         except:
             self.XResolutions = np.full(len(WD), self.XResolution).astype(int)
             self.YResolutions = np.full(len(WD), self.YResolution).astype(int)
@@ -2306,7 +2319,6 @@ class FIBSEM_mosaic_dataset:
         self.XResolution = np.max(self.XResolutions)
         self.YResolution = np.max(self.YResolutions)
         
-        MillingYVoltage = self.FIBSEM_Data[6]
         frame_inds_ext = np.repeat(np.array(frame_inds), self.n_tiles_per_layer)
 
         try:
@@ -2334,6 +2346,59 @@ class FIBSEM_mosaic_dataset:
 
         return self.FIBSEM_Data
     
+
+    def compute_frame_intensity_ratios(self, **kwargs):
+        '''
+        Compute per-pair intensity ratios from whole-frame mean or median pixel values.
+        Requires evaluate_frames() to have been called so that self.FIBSEM_Data contains
+        'dmeans' and 'dpercentiles' arrays (one value per tile, indexed by flat tile index).
+
+        kwargs:
+        ----------
+        method : str
+            'mean' or 'percentile'. Default is 'percentile'.
+        I0 : float
+            Dark-count offset subtracted before computing ratios. Default is self.Scaling[1, 0].
+        verbose : boolean
+            Display summary statistics. Default is False.
+
+        Returns:
+        ----------
+        ratios : 1D np.float64 array, shape (C,)
+            Per-pair intensity ratio dst/src. Stored as self.mean_intensity_ratios
+            or self.percentile_intensity_ratios depending on method.
+        '''
+        method = kwargs.get('method', 'percentile')
+        I0 = kwargs.get('I0', self.Scaling[1, 0])
+        verbose = kwargs.get('verbose', False)
+
+        if not hasattr(self, 'FIBSEM_Data') or self.FIBSEM_Data is None:
+            raise RuntimeError("FIBSEM_Data not available. Run evaluate_frames() first.")
+
+        if method == 'mean':
+            vals = np.array(self.FIBSEM_Data['dmeans'], dtype=np.float64)
+            attr_name = 'mean_intensity_ratios'
+        elif method == 'percentile':
+            vals = np.array(self.FIBSEM_Data['dpercentiles'], dtype=np.float64)
+            attr_name = 'percentile_intensity_ratios'
+        else:
+            raise ValueError("method '{}' not supported. Use 'mean' or 'percentile'.".format(method))
+
+        vals_corr = vals - I0
+        tile_i = self.index_pairs[:, 0]
+        tile_j = self.index_pairs[:, 1]
+        vi = vals_corr[tile_i]
+        vj = vals_corr[tile_j]
+        ratios = np.where((vi > 0) & (vj > 0), vj / vi, np.nan)
+
+        setattr(self, attr_name, ratios)
+        if verbose:
+            valid = np.isfinite(ratios) & (ratios > 0)
+            label = '{} (p={})'.format(method, self.percentile) if method == 'percentile' else method
+            print('{} intensity ratios: {:d}/{:d} valid pairs, mean={:.4f}, std={:.4f}'.format(
+                label, int(np.sum(valid)), self.C, ...))
+        return ratios
+
 
     def extract_keypoints(self, **kwargs):
         '''
@@ -2557,7 +2622,7 @@ class FIBSEM_mosaic_dataset:
                 ax.plot(frames[outliers_tilek_nkpts], tilek_nkpts[outliers_tilek_nkpts], color=my_col, marker='x', markersize=4, linestyle='')
                 for outlier_tilek_nkpts in outliers_tilek_nkpts:
                     ax.text(frames[outlier_tilek_nkpts], tilek_nkpts[outlier_tilek_nkpts], '{:d}, {:d}'.format(k, frames[outlier_tilek_nkpts]), fontsize=fsmark)
-        outliers = reformat_outliers_data(outliers_nkpts, self.shape)
+        outliers = reformat_outliers_data(outliers_nkpts)
         ax.set_ylabel('# of Key-Points')
         ax.set_xlabel('Frame')
         ax.text(0.2, 1.04, Sample_ID, fontsize = fs, transform=ax.transAxes)
@@ -2722,7 +2787,7 @@ class FIBSEM_mosaic_dataset:
                 pair_overlap_bounds = kwargs.get('pair_overlap_bounds', self.pair_overlap_bounds)
             fnms_kpts = self.fnms_kpts.ravel()
 
-            for index_pair, overlap_bounds in zip(tqdm(index_pairs, desc='Setting up SIFT parameter list', display=verbose), pair_overlap_bounds):
+            for (jj, index_pair), overlap_bounds in zip(enumerate(tqdm(index_pairs, desc='Setting up SIFT parameter list', display=verbose)), pair_overlap_bounds):
                 dt_kwargs = {'ftype' : ftype,
                         'TransformType' : TransformType,
                         'l2_matrix' : l2_matrix,
@@ -2745,9 +2810,9 @@ class FIBSEM_mosaic_dataset:
                 path_base, f1 = os.path.split(fname1)
                 _, f2 = os.path.split(fname2)
                 if select_tiles:
-                    fnm_matches = os.path.join(path_base, f1.replace('_kpdes.bin', '_')+f2.replace('_kpdes.bin', '_select_tile_matches.bin'))
+                    fnm_matches = os.path.join(path_base, 'pair{:d}_'.format(jj) + f1.replace('_kpdes.bin', '_')+f2.replace('_kpdes.bin', '_select_tile_matches.bin'))
                 else:
-                    fnm_matches = os.path.join(path_base, f1.replace('_kpdes.bin', '_')+f2.replace('_kpdes.bin', '_matches.bin'))
+                    fnm_matches = os.path.join(path_base, 'pair{:d}_'.format(jj) + f1.replace('_kpdes.bin', '_')+f2.replace('_kpdes.bin', '_matches.bin'))
                 dt_kwargs['fnm_matches'] = fnm_matches
                 dt_kwargs['overlap_bounds'] = overlap_bounds   # (x_min_a, x_max_a, y_min_a, y_max_a,
                                                                 #  x_min_b, x_max_b, y_min_b, y_max_b)
@@ -3660,7 +3725,9 @@ class FIBSEM_mosaic_dataset:
         kwargs:
         ----------
         method : str
-          Source of intensity ratios. Currently only 'SIFT' is supported. Default is 'SIFT'.
+          Source of intensity ratios. Options: 'SIFT' (matched keypoint intensities),
+          'mean' (whole-frame mean per tile), 'median' (whole-frame median per tile).
+          Default is 'SIFT'.
         I0 : float
           Dark-count offset subtracted before computing ratios. Default is self.Scaling[1, 0].
         intralayer_weight : float
@@ -3688,10 +3755,14 @@ class FIBSEM_mosaic_dataset:
                                 np.full(self.nl, w_sqrt_inter)))
 
         if method == 'SIFT':
-          ratios = self.SIFT_intensity_ratios
-          valid = self.SIFT_transformation_valid & np.isfinite(ratios) & (ratios > 0)
+            ratios = self.SIFT_intensity_ratios
+            valid = self.SIFT_transformation_valid & np.isfinite(ratios) & (ratios > 0)
+        elif method in ('mean', 'percentile'):
+            self.compute_frame_intensity_ratios(method=method, I0=I0, percentile=self.percentile, verbose=verbose)
+            ratios = getattr(self, method + '_intensity_ratios')
+            valid = np.isfinite(ratios) & (ratios > 0)
         else:
-          raise ValueError("method '{}' not supported. Only 'SIFT' is currently available.".format(method))
+            raise ValueError("method '{}' not supported. Use 'SIFT', 'mean', or 'percentile'.".format(method))
 
         if np.sum(valid) == 0:
           if verbose:
