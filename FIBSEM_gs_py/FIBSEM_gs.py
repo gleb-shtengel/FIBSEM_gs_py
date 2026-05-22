@@ -8506,9 +8506,9 @@ def evaluate_FIBSEM_frame(params):
 
     Returns:
     ----------
-    dmin, dmax, WD, MillingYVoltage, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolution, YResolution, SEMStiX, SEMStiY, SEMAlnX, SEMAlnY, ex_error
-        dmin, dmax: (float) minimum and maximum values of the data range.
-        WD, MillingYVoltage, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolution, YResolution - SEM parameters 
+    dictionary : return {'dmin': dmin, 'dmax': dmax, 'dmean': dmean, 'dpercentile': dpercentile, 'WD': WD, 'MillingYVoltage': MillingYVoltage,
+        'center_x': center_x, 'center_y': center_y, 'ScanRate': ScanRate, 'EHT': EHT, 'SEMSpecimenI': SEMSpecimenI,
+        'XResolution': XResolution, 'YResolution': YResolution, 'SEMStiX': SEMStiX, 'SEMStiY': SEMStiY, 'SEMAlnX': SEMAlnX, 'SEMAlnY': SEMAlnY, 'ex_error': ex_error} - SEM parameters 
     '''
     fl, kwargs = params
     ftype = kwargs.get("ftype", 0)
@@ -8517,9 +8517,18 @@ def evaluate_FIBSEM_frame(params):
     thr_min = kwargs.get("thr_min", 1e-3)
     thr_max = kwargs.get("thr_max", 1e-3)
     nbins = kwargs.get("nbins", 256)
+    percentile = kwargs.get('percentile', 50)
     ex_error=None
     try:
         frame = FIBSEM_frame(fl, ftype=ftype, calculate_scaled_images=calculate_scaled_images)
+        try:
+            img = getattr(frame, image_name)
+            dmean = float(np.mean(img))
+            dpercentile = float(np.percentile(img, percentile))
+        except:
+            dmean = 0.0
+            dpercentile = 0.0
+
         if frame.EightBit ==1:
             dmin = np.uint8(0)
             dmax =  np.uint8(255)
@@ -8609,8 +8618,19 @@ def evaluate_FIBSEM_frame(params):
         SEMStiY = 0
         SEMAlnX = 0
         SEMAlnY = 0
+        dmean = 0.0
+        dpercentile = 0.0
 
-    return dmin, dmax, WD, MillingYVoltage, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolution, YResolution, SEMStiX, SEMStiY, SEMAlnX, SEMAlnY, ex_error
+    return {
+            'dmin': dmin, 'dmax': dmax, 'dmean': dmean, 'dpercentile': dpercentile,
+            'WD': WD, 'MillingYVoltage': MillingYVoltage,
+            'center_x': center_x, 'center_y': center_y,
+            'ScanRate': ScanRate, 'EHT': EHT, 'SEMSpecimenI': SEMSpecimenI,
+            'XResolution': XResolution, 'YResolution': YResolution,
+            'SEMStiX': SEMStiX, 'SEMStiY': SEMStiY,
+            'SEMAlnX': SEMAlnX, 'SEMAlnY': SEMAlnY,
+            'ex_error': ex_error
+        }
 
 
 def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
@@ -8692,6 +8712,8 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
     thr_min = kwargs.get("thr_min", 1e-3)
     thr_max = kwargs.get("thr_max", 1e-3)
     nbins = kwargs.get("nbins", 256)
+    percentile = kwargs.get('percentile', 50)
+    kwargs['percentile'] = percentile
     fit_params =  kwargs.get("fit_params", False)           # perform the above adjustment using  Savitzky-Golay (SG) fith with parameters
                                                             # window size 701, polynomial order 3
     if fit_params[0] != 'None':
@@ -8732,6 +8754,14 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
             YResolutions = int_results['YResolutions']
         except:
             YResolutions = fr * 0
+        try:
+            dmeans = int_results['Mean']
+        except:
+            dmeans = fr * 0.0
+        try:
+            dpercentiles = int_results['Percentile']
+        except:
+            dpercentiles = fr * 0.0
         data_min_glob, trash = get_min_max_thresholds(data_minmax_glob[:, 0], thr_min = thr_min, thr_max = thr_max, nbins = nbins, disp_res=False)
         trash, data_max_glob = get_min_max_thresholds(data_minmax_glob[:, 1], thr_min = thr_min, thr_max = thr_max, nbins = nbins, disp_res=False)
         if fit_params[0] != 'None':
@@ -8766,28 +8796,36 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
             EHT = np.zeros(nfrs, dtype=np.float32)
             SEMSpecimenI = np.zeros(nfrs, dtype=np.float32)
             errors_s2 = np.zeros(nfrs, dtype=int)
-
+            dmeans = np.zeros(nfrs, dtype=np.float32)
+            dpercentiles = np.zeros(nfrs, dtype=np.float32)
+            for j, fl in enumerate(tqdm(fls, desc='Computing mean/percentile for 8-bit frames')):
+                try:
+                    img = FIBSEM_frame(fl, ftype=ftype, calculate_scaled_images=False).RawImageA
+                    dmeans[j] = float(np.mean(img))
+                    dpercentiles[j] = float(np.percentile(img, percentile))
+                except:
+                    pass
         else:
             params_s2 = [[fl, kwargs] for fl in np.array(fls)[frame_inds]]
-            results_s2 = np.zeros((len(frame_inds), 15))
+            results_s2 = []
             errors_s2 = []
             if use_DASK:
                 if verbose:
                     print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Using DASK distributed')
                 futures = DASK_client.map(evaluate_FIBSEM_frame, params_s2, retries = DASK_client_retries)
                 results_temp = np.array(DASK_client.gather(futures))
-                for j, res_temp in enumerate(tqdm(results_temp, desc='Converting the Results', display = verbose)):
-                    results_s2[j, :] = res_temp[0:15]
-                    errors_s2.append(res_temp[15])
+                for res_temp in tqdm(results_temp, desc='Converting the Results', display=verbose):
+                    results_s2.append(res_temp)
+                    errors_s2.append(res_temp['ex_error'])
             else:
                 if verbose:
                     print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Using Local Computation')
                 for j, param_s2 in enumerate(tqdm(params_s2, desc='Evaluating FIB-SEM frames (data min/max, mill rate, FOV shifts): ', display = verbose)):
                     res_temp = evaluate_FIBSEM_frame(param_s2)
-                    results_s2[j, :] = res_temp[0:15]
-                    errors_s2.append(res_temp[15])
+                    results_s2.append(res_temp)
+                    errors_s2.append(res_temp['ex_error'])
 
-            data_minmax_glob = results_s2[:, 0:2]
+            data_minmax_glob = np.column_stack([[r['dmin'] for r in results_s2],  [r['dmax'] for r in results_s2]])
             data_min_glob, trash = get_min_max_thresholds(data_minmax_glob[:, 0], thr_min = thr_min, thr_max = thr_max, nbins = nbins, disp_res=False)
             trash, data_max_glob = get_min_max_thresholds(data_minmax_glob[:, 1], thr_min = thr_min, thr_max = thr_max, nbins = nbins, disp_res=False)
             if fit_params[0] != 'None':
@@ -8801,51 +8839,70 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
                     print('Not smoothing the Min/Max data')
                 data_min_sliding = data_minmax_glob[:, 0].astype(np.double)
                 data_max_sliding = data_minmax_glob[:, 1].astype(np.double)
-            mill_rate_WD = results_s2[:, 2]
-            mill_rate_MV = results_s2[:, 3]
-            center_x = results_s2[:, 4]
-            center_y = results_s2[:, 5]
-            ScanRate = results_s2[:, 6]
-            EHT = results_s2[:, 7]
-            SEMSpecimenI = results_s2[:, 8]
-            XResolutions = results_s2[:, 9].astype(int)
-            YResolutions = results_s2[:, 10].astype(int)
-            SEMStiX = results_s2[:, 11]
-            SEMStiY = results_s2[:, 12]
-            SEMAlnX = results_s2[:, 13]
-            SEMAlnY = results_s2[:, 14]
+            dmeans   = np.array([r['dmean']          for r in results_s2], dtype=np.float32)
+            dpercentiles = np.array([r['dpercentile']        for r in results_s2], dtype=np.float32)
+            mill_rate_WD  = np.array([r['WD']           for r in results_s2])
+            mill_rate_MV  = np.array([r['MillingYVoltage'] for r in results_s2])
+            center_x      = np.array([r['center_x']     for r in results_s2])
+            center_y      = np.array([r['center_y']     for r in results_s2])
+            ScanRate      = np.array([r['ScanRate']     for r in results_s2])
+            EHT           = np.array([r['EHT']          for r in results_s2])
+            SEMSpecimenI  = np.array([r['SEMSpecimenI'] for r in results_s2])
+            XResolutions  = np.array([r['XResolution']  for r in results_s2]).astype(int)
+            YResolutions  = np.array([r['YResolution']  for r in results_s2]).astype(int)
+            SEMStiX       = np.array([r['SEMStiX']      for r in results_s2])
+            SEMStiY       = np.array([r['SEMStiY']      for r in results_s2])
+            SEMAlnX       = np.array([r['SEMAlnX']      for r in results_s2])
+            SEMAlnY       = np.array([r['SEMAlnY']      for r in results_s2])
 
     if verbose:
         print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Saving the FIBSEM dataset statistics (Min/Max, Mill Rate, FOV Shifts into the file: ', FIBSEM_Data_xlsx_path)
         # Create a Pandas Excel writer using XlsxWriter as the engine.
     xlsx_writer = pd.ExcelWriter(FIBSEM_Data_xlsx_path, engine='xlsxwriter')
-    columns=['Frame', 'Min', 'Max', 'Sliding Min', 'Sliding Max', 'Working Distance (mm)', 'Milling Y Voltage (V)', 'FOV X Center (Pix)', 'FOV Y Center (Pix)', 'XResolutions', 'YResolutions', 'Scan Rate (Hz)', 'EHT (kV)', 'SEMSpecimenI (nA)', 'SEMStiX', 'SEMStiY', 'SEMAlnX', 'SEMAlnY', 'Error Code']
-    minmax_df = pd.DataFrame(np.vstack((frame_inds.T,
-        data_minmax_glob.T,
-        data_min_sliding.T,
-        data_max_sliding.T,
-        mill_rate_WD.T,
-        mill_rate_MV.T,
-        center_x.T,
-        center_y.T,
-        XResolutions.T,
-        YResolutions.T,
-        ScanRate.T,
-        EHT.T,
-        SEMSpecimenI.T,
-        SEMStiX.T,
-        SEMStiY.T,
-        SEMAlnX.T,
-        SEMAlnY.T,
-        np.array(errors_s2).T)).T, columns = columns, index = None)
+    columns = ['Frame', 'Min', 'Max', 'Mean', 'Percentile', 'Sliding Min', 'Sliding Max',
+           'Working Distance (mm)', 'Milling Y Voltage (V)',
+           'FOV X Center (Pix)', 'FOV Y Center (Pix)',
+           'XResolutions', 'YResolutions', 'Scan Rate (Hz)', 'EHT (kV)',
+           'SEMSpecimenI (nA)', 'SEMStiX', 'SEMStiY', 'SEMAlnX', 'SEMAlnY', 'Error Code']
+    minmax_df = pd.DataFrame(np.vstack((
+        frame_inds.T, data_minmax_glob.T,
+        dmeans.T, dpercentiles.T,
+        data_min_sliding.T, data_max_sliding.T,
+        mill_rate_WD.T, mill_rate_MV.T,
+        center_x.T, center_y.T,
+        XResolutions.T, YResolutions.T,
+        ScanRate.T, EHT.T, SEMSpecimenI.T,
+        SEMStiX.T, SEMStiY.T, SEMAlnX.T, SEMAlnY.T,
+        np.array(errors_s2).T)).T, columns=columns, index=None)
     minmax_df.to_excel(xlsx_writer, index=None, sheet_name='FIBSEM Data')
     kwargs_info = pd.DataFrame([kwargs]).T   # prepare to be save in transposed format
     kwargs_info.to_excel(xlsx_writer, header=False, sheet_name='kwargs Info')
     #xlsx_writer.save()
     xlsx_writer.close()
            
-    return [FIBSEM_Data_xlsx_path, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding, mill_rate_WD, mill_rate_MV, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolutions, YResolutions, SEMStiX, SEMStiY, SEMAlnX, SEMAlnY, errors_s2]
-
+    return {
+            'FIBSEM_Data_xlsx': FIBSEM_Data_xlsx_path,
+            'data_min_glob':    data_min_glob,
+            'data_max_glob':    data_max_glob,
+            'data_min_sliding': data_min_sliding,
+            'data_max_sliding': data_max_sliding,
+            'mill_rate_WD':     mill_rate_WD,
+            'mill_rate_MV':     mill_rate_MV,
+            'center_x':         center_x,
+            'center_y':         center_y,
+            'ScanRate':         ScanRate,
+            'EHT':              EHT,
+            'SEMSpecimenI':     SEMSpecimenI,
+            'XResolutions':     XResolutions,
+            'YResolutions':     YResolutions,
+            'SEMStiX':          SEMStiX,
+            'SEMStiY':          SEMStiY,
+            'SEMAlnX':          SEMAlnX,
+            'SEMAlnY':          SEMAlnY,
+            'dmeans':           dmeans,
+            'dpercentiles': dpercentiles,
+            'errors':           errors_s2
+        }
 
 # Routines to extract Key-Points and Descriptors
 def extract_image_intensity(image, smoothing_kernel, pts, **kwargs):
@@ -11375,6 +11432,13 @@ def check_for_nomatch_frames_dataset(fls, fnms, fnms_matches,
         tr_matrix_orig = transformation_matrix.copy()
 
         # go through the frames to be removed and remove the frames from the list and then re-calculate the shift for new neighbours.
+        per_frame_keys = ['data_min_sliding', 'data_max_sliding',
+              'mill_rate_WD', 'mill_rate_MV',
+              'center_x', 'center_y',
+              'ScanRate', 'EHT', 'SEMSpecimenI',
+              'XResolutions', 'YResolutions',
+              'SEMStiX', 'SEMStiY', 'SEMAlnX', 'SEMAlnY',
+              'dmeans', 'dpercentiles', 'errors']
         for j,fr in enumerate(tqdm(frames_to_remove, desc = 'Removing frames and finding shifts for new sequential frames')):
             frj = fr-j # to account for the fact that every time we remove a frame the array shrinks and indicis reset
             print('Removing the frame {:d}'.format(frj))
@@ -11385,8 +11449,8 @@ def check_for_nomatch_frames_dataset(fls, fnms, fnms_matches,
             error_abs_mean = np.delete(error_abs_mean, frj)
             FOVtrend_x = np.delete(FOVtrend_x, frj)
             FOVtrend_y = np.delete(FOVtrend_y, frj)
-            for j in np.arange(3, len(FIBSEM_Data)): 
-                FIBSEM_Data[j] = np.delete(FIBSEM_Data[j], frj, axis = 0)
+            for key in per_frame_keys:
+                FIBSEM_Data[key] = np.delete(FIBSEM_Data[key], frj, axis=0)
             transformation_matrix = np.delete(transformation_matrix, frj, axis = 0)
             npts = np.delete(npts, frj, axis = 0)
             fname1 = fnms[frj-1]
@@ -12336,16 +12400,19 @@ class FIBSEM_dataset:
         if verbose:
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Evaluating the parameters of FIBSEM data set (data Min/Max, Working Distance, Milling Y Voltage, FOV center positions, Scan Rate, EHT)')
         self.FIBSEM_Data = evaluate_FIBSEM_frames_dataset(self.fls, DASK_client, **local_kwargs)
-        self.data_minmax = self.FIBSEM_Data[0:5]
-        WD = self.FIBSEM_Data[5]
-        MillingYVoltage = self.FIBSEM_Data[6]
-
-        sv_apert = np.min((51, len(self.FIBSEM_Data[7])//8*2+1))
-        self.FOVtrend_x = savgol_filter(self.FIBSEM_Data[7]*1.0, sv_apert, 1) - self.FIBSEM_Data[7][0]
-        self.FOVtrend_y = savgol_filter(self.FIBSEM_Data[8]*1.0, sv_apert, 1) - self.FIBSEM_Data[8][0]
+        self.data_minmax = [self.FIBSEM_Data['FIBSEM_Data_xlsx'],
+                    self.FIBSEM_Data['data_min_glob'],
+                    self.FIBSEM_Data['data_max_glob'],
+                    self.FIBSEM_Data['data_min_sliding'],
+                    self.FIBSEM_Data['data_max_sliding']]
+        WD = self.FIBSEM_Data['mill_rate_WD']
+        MillingYVoltage = self.FIBSEM_Data['mill_rate_MV']
+        sv_apert = np.min((51, len(self.FIBSEM_Data['center_x'])//8*2+1))
+        self.FOVtrend_x = savgol_filter(self.FIBSEM_Data['center_x']*1.0, sv_apert, 1) - self.FIBSEM_Data['center_x'][0]
+        self.FOVtrend_y = savgol_filter(self.FIBSEM_Data['center_y']*1.0, sv_apert, 1) - self.FIBSEM_Data['center_y'][0]
         try:
-            self.XResolutions = self.FIBSEM_Data[12].astype(int)
-            self.YResolutions = self.FIBSEM_Data[13].astype(int)
+            self.XResolutions = self.FIBSEM_Data['XResolutions'].astype(int)
+            self.YResolutions = self.FIBSEM_Data['YResolutions'].astype(int)
         except:
             self.XResolutions = np.full(len(WD), self.XResolution).astype(int)
             self.YResolutions = np.full(len(WD), self.YResolution).astype(int)
