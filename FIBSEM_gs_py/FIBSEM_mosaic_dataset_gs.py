@@ -1382,6 +1382,39 @@ def analyze_minmax_outliers_montage_xlsx(minmax_xlsx_file, **kwargs):
     return outliers_min, outliers_max
 
 
+def compute_tile_overlap_intensities(params):
+    '''
+    DASK worker: load one tile, compute mean/percentile over a list of sub-ROIs.
+    ©G.Shtengel gleb.shtengel@gmail.com
+
+    params : [fname, rois, kwargs]
+        fname  : str         path to tile file (.dat or .tif)
+        rois   : list of (roi_id, x_min, x_max, y_min, y_max)
+                 roi_id is opaque to this worker (the caller keys on it).
+        kwargs : dict with keys 'ftype', 'method' ('mean' or 'percentile'),
+                 'percentile' (int, used when method == 'percentile').
+
+    Returns
+    -------
+    dict {roi_id: float}
+    '''
+    fname, rois, kwargs = params
+    ftype  = kwargs['ftype']
+    method = kwargs['method']
+    p      = kwargs.get('percentile', 50)
+    img = FIBSEM_frame(fname, ftype=ftype, calculate_scaled_images=False).RawImageA
+    out = {}
+    for roi_id, xi, xa, yi, ya in rois:
+        sub = img[yi:ya, xi:xa]
+        if sub.size == 0:
+            out[roi_id] = np.nan
+        elif method == 'mean':
+            out[roi_id] = float(np.mean(sub))
+        else:
+            out[roi_id] = float(np.percentile(sub, p))
+    return out
+
+
 class FIBSEM_mosaic_dataset: 
     '''
     A class representing a stack of FIB-SEM mosaics (montages) - multiple z-panes consisting of multiple tiles.
@@ -2059,6 +2092,10 @@ class FIBSEM_mosaic_dataset:
         self.SIFT_intensity_ratios = np.full(self.C, np.nan)
         self.mean_intensity_ratios   = np.full(self.C, np.nan)
         self.percentile_intensity_ratios = np.full(self.C, np.nan)
+        self.overlap_mean_intensity_ratios       = np.full(self.C, np.nan)
+        self.overlap_percentile_intensity_ratios = np.full(self.C, np.nan)
+        self.overlap_transformation_valid        = np.full(self.C, False)
+        self.min_overlap_pixels                  = kwargs.get('min_overlap_pixels', 5000)
         self.percentile = kwargs.get('percentile', 50)
         self.SIFT_Affine_r2norm = np.nan    # residual 2-norm from the affine bundle solve
         self.tile_I0s = np.zeros((self.nz_tiles, self.n_tiles_per_layer))
@@ -2355,6 +2392,54 @@ class FIBSEM_mosaic_dataset:
         return self.FIBSEM_Data
     
 
+    def compute_solved_pair_overlap_bounds(self):
+        '''
+        Compute fresh per-pair overlap rectangles from the CURRENT (post-solve)
+        translations in self.tr_matr, instead of the init-time FirstPixels.
+        ©G.Shtengel gleb.shtengel@gmail.com
+
+        Only the translation component is used; affine scale/rotation in tr_matr
+        is ignored (acceptable for ShiftTransform and a good approximation for
+        near-translation AffineTransform solves).
+
+        Returns
+        -------
+        bounds : list of length C, each element a tuple
+            (x_min_a, x_max_a, y_min_a, y_max_a,
+             x_min_b, x_max_b, y_min_b, y_max_b)  in local tile pixel coords.
+        areas  : 1D np.int64 array, shape (C,)
+            Number of overlap pixels per pair (0 when there is no overlap).
+
+        Side effects
+        ------------
+        Stores results as self.solved_pair_overlap_bounds and self.pair_overlap_areas.
+        '''
+        positions = -self.tr_matr[:, :, 0:2, 2]   # (nz_tiles, n_tiles_per_layer, 2)
+        bounds = []
+        areas  = np.zeros(self.C, dtype=np.int64)
+        for j, (abs_a, abs_b) in enumerate(self.index_pairs):
+            la, ta = int(abs_a) // self.n_tiles_per_layer, int(abs_a) % self.n_tiles_per_layer
+            lb, tb = int(abs_b) // self.n_tiles_per_layer, int(abs_b) % self.n_tiles_per_layer
+            dx = positions[lb, tb, 0] - positions[la, ta, 0]
+            dy = positions[lb, tb, 1] - positions[la, ta, 1]
+            x_ov = self.XResolution - abs(dx)
+            y_ov = self.YResolution - abs(dy)
+            if x_ov <= 0 or y_ov <= 0:
+                bounds.append((0, 0, 0, 0, 0, 0, 0, 0))
+                areas[j] = 0
+                continue
+            x_min_a = int(max(0,  dx)); x_max_a = int(x_min_a + x_ov)
+            y_min_a = int(max(0,  dy)); y_max_a = int(y_min_a + y_ov)
+            x_min_b = int(max(0, -dx)); x_max_b = int(x_min_b + x_ov)
+            y_min_b = int(max(0, -dy)); y_max_b = int(y_min_b + y_ov)
+            bounds.append((x_min_a, x_max_a, y_min_a, y_max_a,
+                           x_min_b, x_max_b, y_min_b, y_max_b))
+            areas[j] = int(x_ov) * int(y_ov)
+        self.solved_pair_overlap_bounds = bounds
+        self.pair_overlap_areas         = areas
+        return bounds, areas
+
+
     def compute_frame_intensity_ratios(self, **kwargs):
         '''
         Compute per-pair intensity ratios from whole-frame mean or median pixel values.
@@ -2405,6 +2490,125 @@ class FIBSEM_mosaic_dataset:
             label = '{} (p={})'.format(method, self.percentile) if method == 'percentile' else method
             print('{} intensity ratios: {:d}/{:d} valid pairs, mean={:.4f}, std={:.4f}'.format(
                 label, int(np.sum(valid)), self.C, ...))
+        return ratios
+
+
+    def compute_overlap_intensity_ratios(self, **kwargs):
+        '''
+        Compute per-pair intensity ratios from the MEAN or PERCENTILE intensity
+        inside each pair's overlap ROI, using the post-solve tile positions
+        (self.tr_matr). Parallelized across TILES using DASK so that each tile
+        file is read at most once even when it participates in several pairs.
+        ©G.Shtengel gleb.shtengel@gmail.com
+
+        kwargs
+        ------
+        method : str
+            'mean' or 'percentile'. Default 'percentile'.
+        I0 : float
+            Dark-count offset subtracted before computing ratios.
+            Default self.Scaling[1, 0].
+        percentile : int
+            Percentile used when method == 'percentile'. Default self.percentile.
+        min_overlap_pixels : int
+            Pairs with overlap area below this threshold are marked invalid
+            (analogous to SIFT_nmatches_min). Default self.min_overlap_pixels (5000).
+        DASK_client : DASK client or '' for local. Default ''.
+        DASK_client_retries : int. Default self.DASK_client_retries (or 3).
+        ftype : int. Default self.ftype.
+        verbose : bool. Default False.
+
+        Returns
+        -------
+        ratios : 1D np.float64, shape (C,)
+            Per-pair intensity ratio dst/src. Stored as
+            self.overlap_mean_intensity_ratios or self.overlap_percentile_intensity_ratios.
+
+        Side effects
+        ------------
+        Updates self.overlap_transformation_valid (True iff overlap area >=
+        min_overlap_pixels AND both mean intensities are positive after I0 subtraction).
+        '''
+        method             = kwargs.get('method', 'percentile')
+        I0                 = kwargs.get('I0', self.Scaling[1, 0])
+        percentile         = kwargs.get('percentile', self.percentile)
+        min_overlap_pixels = kwargs.get('min_overlap_pixels', self.min_overlap_pixels)
+        DASK_client        = kwargs.get('DASK_client', '')
+        DASK_client_retries = kwargs.get('DASK_client_retries',
+                                         getattr(self, 'DASK_client_retries', 3))
+        ftype              = kwargs.get('ftype', self.ftype)
+        verbose            = kwargs.get('verbose', False)
+
+        if method not in ('mean', 'percentile'):
+            raise ValueError("method '{}' not supported. Use 'mean' or 'percentile'.".format(method))
+
+        use_DASK, _ = check_DASK(DASK_client, verbose=verbose)
+
+        bounds, areas = self.compute_solved_pair_overlap_bounds()
+        pair_valid_by_area = areas >= min_overlap_pixels
+
+        # --- Build per-tile ROI work lists. ---
+        # roi_id = (pair_index, side)  with side in (0, 1)  for (a, b).
+        per_tile_rois = {}
+        for j, (abs_a, abs_b) in enumerate(self.index_pairs):
+            if not pair_valid_by_area[j]:
+                continue
+            x_min_a, x_max_a, y_min_a, y_max_a, x_min_b, x_max_b, y_min_b, y_max_b = bounds[j]
+            per_tile_rois.setdefault(int(abs_a), []).append(((j, 0), x_min_a, x_max_a, y_min_a, y_max_a))
+            per_tile_rois.setdefault(int(abs_b), []).append(((j, 1), x_min_b, x_max_b, y_min_b, y_max_b))
+
+        fls_flat = self.fls.ravel()
+        worker_kwargs = {'ftype': ftype, 'method': method, 'percentile': percentile}
+        params = [[fls_flat[t], rois, worker_kwargs] for t, rois in per_tile_rois.items()]
+
+        # --- Dispatch (mirrors evaluate_FIBSEM_frames_dataset). ---
+        results = []
+        if len(params) > 0:
+            if use_DASK:
+                if verbose:
+                    print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                          + '   Using DASK distributed for overlap intensity computation')
+                futures = DASK_client.map(compute_tile_overlap_intensities, params,
+                                          retries=DASK_client_retries)
+                results = DASK_client.gather(futures)
+            else:
+                if verbose:
+                    print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                          + '   Using Local Computation for overlap intensity computation')
+                for p in tqdm(params, desc='Computing overlap intensities', display=verbose):
+                    results.append(compute_tile_overlap_intensities(p))
+
+        # --- Merge per-tile result dicts. ---
+        roi_vals = {}
+        for r in results:
+            roi_vals.update(r)
+
+        # --- Assemble per-pair ratios + validity. ---
+        ratios = np.full(self.C, np.nan, dtype=np.float64)
+        valid  = np.full(self.C, False)
+        for j in range(self.C):
+            if not pair_valid_by_area[j]:
+                continue
+            va = roi_vals.get((j, 0), np.nan)
+            vb = roi_vals.get((j, 1), np.nan)
+            if not (np.isfinite(va) and np.isfinite(vb)):
+                continue
+            vi = va - I0
+            vj = vb - I0
+            if vi > 0 and vj > 0:
+                ratios[j] = vj / vi
+                valid[j]  = True
+
+        attr_name = 'overlap_' + method + '_intensity_ratios'
+        setattr(self, attr_name, ratios)
+        self.overlap_transformation_valid = valid
+
+        if verbose:
+            label = '{} (p={})'.format(method, percentile) if method == 'percentile' else method
+            print('{} overlap ratios: {:d}/{:d} valid pairs (area >= {:d} px), mean={:.4f}, std={:.4f}'.format(
+                label, int(np.sum(valid)), self.C, int(min_overlap_pixels),
+                float(np.mean(ratios[valid])) if np.any(valid) else float('nan'),
+                float(np.std(ratios[valid]))  if np.any(valid) else float('nan')))
         return ratios
 
 
@@ -3733,8 +3937,15 @@ class FIBSEM_mosaic_dataset:
         kwargs:
         ----------
         method : str
-          Source of intensity ratios. Options: 'SIFT' (matched keypoint intensities),
-          'mean' (whole-frame mean per tile), 'median' (whole-frame median per tile).
+          Source of intensity ratios. Options:
+            'SIFT'               — matched keypoint intensities (whole-tile).
+                                   Requires prior determine_transformations_SIFT().
+            'mean'               — whole-frame mean per tile (uses cached FIBSEM_Data).
+            'percentile'         — whole-frame percentile per tile (uses cached FIBSEM_Data).
+            'overlap_mean'       — mean over each pair's overlap ROI.
+                                   Requires prior compute_overlap_intensity_ratios(method='mean', DASK_client=...).
+            'overlap_percentile' — percentile over each pair's overlap ROI.
+                                   Requires prior compute_overlap_intensity_ratios(method='percentile', DASK_client=...).
           Default is 'SIFT'.
         I0 : float
           Dark-count offset subtracted before computing ratios. Default is self.Scaling[1, 0].
@@ -3742,6 +3953,17 @@ class FIBSEM_mosaic_dataset:
           Weight for intra-layer pair constraints. Default is self.intralayer_weight.
         interlayer_weight : float
           Weight for inter-layer pair constraints. Default is self.interlayer_weight.
+        tikhonov_damp : float
+          Strength of L2 regularization on log-scales (Tikhonov). Each tile's log-scale
+          is pulled toward 0 (i.e., scale → 1.0) with strength `tikhonov_damp`.
+          Reduces drift of poorly-connected tiles (corners/edges) at the cost of
+          slightly under-correcting well-connected tiles.
+          Reasonable range - 0 to 30 in log-scale:
+            0.0 disables regularization (default).
+              ~1  gentle anchor; barely touches strong tiles, mildly nudges corners
+              ~3 – 10 meaningful anchor on corners; some pullback on strong tiles too
+              30+ starts to dominate — all scales pushed toward 1.0 regardless of data
+          
         verbose : boolean
           Display intermediate results. Default is False.
 
@@ -3756,6 +3978,7 @@ class FIBSEM_mosaic_dataset:
         I0 = kwargs.get('I0', self.Scaling[1, 0])
         intralayer_weight = kwargs.get('intralayer_weight', self.intralayer_weight)
         interlayer_weight = kwargs.get('interlayer_weight', self.interlayer_weight)
+        tikhonov_damp = kwargs.get('tikhonov_damp', 0.0)
 
         w_sqrt_intra = np.sqrt(intralayer_weight)
         w_sqrt_inter = np.sqrt(interlayer_weight)
@@ -3764,13 +3987,26 @@ class FIBSEM_mosaic_dataset:
 
         if method == 'SIFT':
             ratios = self.SIFT_intensity_ratios
-            valid = self.SIFT_transformation_valid & np.isfinite(ratios) & (ratios > 0)
+            valid  = self.SIFT_transformation_valid & np.isfinite(ratios) & (ratios > 0)
         elif method in ('mean', 'percentile'):
-            self.compute_frame_intensity_ratios(method=method, I0=I0, percentile=self.percentile, verbose=verbose)
+            self.compute_frame_intensity_ratios(method=method, I0=I0,
+                                                percentile=self.percentile, verbose=verbose)
             ratios = getattr(self, method + '_intensity_ratios')
-            valid = np.isfinite(ratios) & (ratios > 0)
+            valid  = np.isfinite(ratios) & (ratios > 0)
+        elif method in ('overlap_mean', 'overlap_percentile'):
+            base = method[len('overlap_'):]   # 'mean' or 'percentile'
+            attr = 'overlap_' + base + '_intensity_ratios'
+            ratios = getattr(self, attr)
+            if not np.any(np.isfinite(ratios)):
+                raise RuntimeError(
+                    "{} has not been computed yet. Call "
+                    "compute_overlap_intensity_ratios(method='{}', DASK_client=...) "
+                    "first.".format(attr, base))
+            valid  = self.overlap_transformation_valid & np.isfinite(ratios) & (ratios > 0)
         else:
-            raise ValueError("method '{}' not supported. Use 'SIFT', 'mean', or 'percentile'.".format(method))
+            raise ValueError(
+                "method '{}' not supported. Use 'SIFT', 'mean', 'percentile', "
+                "'overlap_mean', or 'overlap_percentile'.".format(method))
 
         if np.sum(valid) == 0:
           if verbose:
@@ -3779,7 +4015,7 @@ class FIBSEM_mosaic_dataset:
           return self.tile_scales
 
         log_ratios = np.log(ratios[valid]) * weights[valid]
-        res = lsqr(self.A_csr[valid], log_ratios)
+        res = lsqr(self.A_csr[valid], log_ratios, damp=tikhonov_damp)
         log_scales = res[0]
 
         # Normalise: geometric mean of all scale factors = 1
@@ -3787,8 +4023,10 @@ class FIBSEM_mosaic_dataset:
         tile_scales = 1.0 / np.exp(log_scales).reshape(self.nz_tiles, self.n_tiles_per_layer)
 
         if verbose:
-          print('Intensity scale factors: min={:.4f}, max={:.4f}, std={:.4f}'.format(
-              np.min(tile_scales), np.max(tile_scales), np.std(tile_scales)))
+            print('Intensity normalization method: ' + method)
+            print('Intensity normalization parameters (tikhonov_damp={:.4g}): '
+                'intralayer_weight={:.4f}, interlayer_weight={:.4f}'.format( tikhonov_damp, intralayer_weight, interlayer_weight))
+            print('Intensity scale factors: min={:.4f}, max={:.4f}, std={:.4f}'.format(np.min(tile_scales), np.max(tile_scales), np.std(tile_scales)))
 
         self.tile_scales = tile_scales
         return tile_scales
