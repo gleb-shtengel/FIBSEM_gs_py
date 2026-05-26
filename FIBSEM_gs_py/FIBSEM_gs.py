@@ -1872,6 +1872,38 @@ def Two_Image_NCC_SNR(img1, img2, **kwargs):
     
     return NCC, SNR
 
+def split_and_diagonal_bin(img):
+    """
+    Split an image into two checkerboard subsets, then bin-average pairs
+    of diagonally-adjacent pixels within each subset.
+
+    For each non-overlapping 2x2 block
+        [a b]
+        [c d]
+    in the original image, produce:
+        subset_A[i, j] = (a + d) / 2    # main-diagonal pair (even parity)
+        subset_B[i, j] = (b + c) / 2    # anti-diagonal pair (odd parity)
+
+    Parameters
+    ----------
+    img : 2D ndarray, shape (H, W)
+        Input image. Trailing odd row/column is discarded.
+
+    Returns
+    -------
+    subset_A, subset_B : 2D ndarrays, shape (H//2, W//2)
+    """
+    H, W = img.shape
+    H2, W2 = (H // 2) * 2, (W // 2) * 2          # crop to even
+    img = img[:H2, :W2].astype(np.float32)
+
+    # Reshape into 2x2 blocks: axis order (block_row, block_col, in_row, in_col)
+    blocks = img.reshape(H2 // 2, 2, W2 // 2, 2).transpose(0, 2, 1, 3)
+
+    subset_A = 0.5 * (blocks[..., 0, 0] + blocks[..., 1, 1])   # a + d
+    subset_B = 0.5 * (blocks[..., 0, 1] + blocks[..., 1, 0])   # b + c
+    return subset_A, subset_B
+
 def Two_Image_FSC(img1, img2, **kwargs):
     '''
     Performs Fourier Shell Correlation to determine the image resolution, after [1]. ©G.Shtengel, 10/2019. gleb.shtengel@gmail.com
@@ -1924,20 +1956,26 @@ def Two_Image_FSC(img1, img2, **kwargs):
 
     Returns:
     ----------
-    FSC_sp_frequencies, FSC_data, x2, T, FSC_bw
-        FSC_sp_frequencies : np.float32 array 
+    FSC_sp_frequencies, FSC_data, x2, T, FSC_bw, FSC_bw_T
+        FSC_sp_frequencies : np.float32 array
             Spatial Frequency (/Nyquist) - for FSC plot
         FSC_data: np.float32 array
+            Raw FSC magnitude at FSC_sp_frequencies
         x2 : np.float32 array
-            Spatial Frequency (/Nyquist) - for threshold line plot
+            Spatial Frequency (/Nyquist) - for threshold line plot (length N+1)
         T : np.float32 array
-            threshold line plot
+            van Heel-Schatz Eq. 14 threshold curve evaluated at x2
         FSC_bw : float
-            the value of FSC determined as an intersection of smoothed data threshold
+            Resolution bandwidth from intersection of smoothed FSC with the FLAT
+            SNRt line (legacy behavior).
+        FSC_bw_T : float
+            Resolution bandwidth from intersection of smoothed FSC with the
+            van Heel-Schatz Eq. 14 threshold CURVE T(r). NaN if no crossing
+            within fr_cutoff. This is the recommended resolution criterion.
         
     [1]. M. van Heel, and M. Schatz, "Fourier shell correlation threshold criteria," Journal of Structural Biology 151, 250-262 (2005)
     '''   
-    SNRt = kwargs.get("SNRt", 0.1)
+    SNRt = kwargs.get("SNRt", 0.143)
     smooth_aperture = kwargs.get("smooth_aperture", 20)
     fit_data = kwargs.get("fit_data", False)
     fit_power = kwargs.get("fit_power", 3)
@@ -1973,20 +2011,18 @@ def Two_Image_FSC(img1, img2, **kwargs):
     C  = radial_profile_select_angles(np.real(C_imre), [x0,y0], astart=astart, astop=astop, symm=symm) + 1j * radial_profile_select_angles(np.imag(C_imre), [x0,y0], astart=astart, astop=astop, symm=symm)
 
     FSC_data = np.abs(C)/np.sqrt(np.abs(np.multiply(C1,C2)))
-    '''
-    T is the SNR threshold calculated accoring to the input SNRt, if nothing is given
-    a default value of 0.1 is used.
     
-    x2 contains the normalized spatial frequencies
-    '''
-    r = np.arange(1+np.shape(img1)[0])
-    n = 2*np.pi*r
-    n[0] = 1
-    eps = np.finfo(float).eps
-    t1 = np.divide(np.ones(np.shape(n)),n+eps)
-    t2 = SNRt + 2*np.sqrt(SNRt)*t1 + np.divide(np.ones(np.shape(n)),np.sqrt(n))
-    t3 = SNRt + 2*np.sqrt(SNRt)*t1 + 1
-    T = np.divide(t2,t3)
+    # van Heel & Schatz 2005, Eq. 14 (2D, SNR-based threshold curve):
+    #   T(r) = (SNRt + 2*sqrt(SNRt)/sqrt(n_r) + 1/sqrt(n_r))
+    #        / (SNRt + 2*sqrt(SNRt)/sqrt(n_r) + 1)
+    # n_r = number of independent samples in the Fourier shell at radius r (~2*pi*r in 2D).
+    r = np.arange(1 + np.shape(img1)[0])
+    n_r = 2.0 * np.pi * r
+    n_r[0] = 1.0                                # avoid divide-by-zero at the DC bin
+    sqrt_nr = np.sqrt(n_r)
+    t_num = SNRt + 2.0 * np.sqrt(SNRt) / sqrt_nr + 1.0 / sqrt_nr
+    t_den = SNRt + 2.0 * np.sqrt(SNRt) / sqrt_nr + 1.0
+    T = t_num / t_den
     #FSC_sp_frequencies = np.arange(np.shape(C)[0])/(np.shape(img1)[0]/np.sqrt(2.0))
     #x2 = r/(np.shape(img1)[0]/np.sqrt(2.0))
     FSC_sp_frequencies = np.arange(np.shape(C)[0])/(np.shape(img1)[0])
@@ -1998,6 +2034,29 @@ def Two_Image_FSC(img1, img2, **kwargs):
                               fit_data = fit_data,
                               fit_power = fit_power,
                               fr_cutoff = fr_cutoff)
+
+    # ----------------------------------------------------------------------
+    # Resolution per van Heel & Schatz 2005, Eq. 14:
+    # find the first frequency at which the smoothed FSC drops below T(r).
+    # T is sampled at x2 (length N+1); FSC at FSC_sp_frequencies (length N).
+    # ----------------------------------------------------------------------
+    T_on_FSC_grid = np.interp(FSC_sp_frequencies, x2, T)
+    diff_FSC_T    = FSC_data_smooth - T_on_FSC_grid            # > 0 while FSC is above threshold
+    f_max         = fr_cutoff * FSC_sp_frequencies[-1]
+    search_mask   = FSC_sp_frequencies <= f_max
+    sign_change   = np.where(np.diff(np.sign(diff_FSC_T[search_mask])) < 0)[0]
+    if len(sign_change) > 0:
+        k = int(sign_change[0])
+        f_lo, f_hi = FSC_sp_frequencies[k], FSC_sp_frequencies[k + 1]
+        d_lo, d_hi = diff_FSC_T[k], diff_FSC_T[k + 1]
+        # Linear interpolation for the exact crossing:
+        FSC_bw_T = f_lo + (f_hi - f_lo) * d_lo / (d_lo - d_hi)
+    else:
+        FSC_bw_T = np.nan
+    if verbose:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')
+              + '   FSC BW (Eq. 14, SNRt={:.3f}) = {:.5f}'.format(SNRt, FSC_bw_T))
+
     if fitOK > 0:
         if verbose:
                 print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Cannot determine BW accurately: not enough points')
@@ -2051,7 +2110,18 @@ def Two_Image_FSC(img1, img2, **kwargs):
             ax.plot(fr_fit, FSC_fit, label = 'a/(x**{:d}+a) Fit'.format(fit_power), linewidth=1, color='g')
             ax.plot(fr_fit, fr_fit*0.0+SNRt, '--', label = 'Threshold SNR = {:.3f}'.format(SNRt), color='m')
         else:
-            ax.plot(FSC_sp_frequencies, FSC_sp_frequencies*0.0+SNRt, '--', label = 'Threshold SNR = {:.3f}'.format(SNRt), color='m')
+            ax.plot(FSC_sp_frequencies, FSC_sp_frequencies*0.0+SNRt, '--',
+                    label='Threshold SNR = {:.3f}'.format(SNRt), color='m')
+        # van Heel-Schatz Eq.14 threshold curve and its corresponding bandwidth.
+        ax.plot(x2, T, '--', color='c',
+                label='van Heel-Schatz Eq.14')
+        if np.isfinite(FSC_bw_T):
+            if pixel > 1e-6:
+                label_T = 'FSC BW (Eq.14) = {:.3f} inv.pix., or {:.2f} nm'.format(
+                    FSC_bw_T, pixel / FSC_bw_T)
+            else:
+                label_T = 'FSC BW (Eq.14) = {:.3f}'.format(FSC_bw_T)
+            ax.plot([FSC_bw_T, FSC_bw_T], [0, 1], '--', color='purple', label=label_T)
 
         ax.plot([FSC_bw, FSC_bw], [0, 1], '--', label = 'BW = {:.3f}'.format(FSC_bw), color='brown')
         ax.legend()
@@ -2076,7 +2146,7 @@ def Two_Image_FSC(img1, img2, **kwargs):
         if save_res_png:
             fig.savefig(res_fname, dpi=dpi)
             print('Saved the results into the file: ', res_fname)
-    return (FSC_sp_frequencies, FSC_data, x2, T, FSC_bw)
+    return (FSC_sp_frequencies, FSC_data, x2, T, FSC_bw, FSC_bw_T)
 
 
 def Two_Image_Analysis(params):
