@@ -2095,6 +2095,8 @@ class FIBSEM_mosaic_dataset:
         self.overlap_mean_intensity_ratios       = np.full(self.C, np.nan)
         self.overlap_percentile_intensity_ratios = np.full(self.C, np.nan)
         self.overlap_transformation_valid        = np.full(self.C, False)
+        self.target_ratios        = np.full(self.C, np.nan, dtype=np.float64)
+        self.target_ratios_valid  = np.full(self.C, False)
         self.min_overlap_pixels                  = kwargs.get('min_overlap_pixels', 5000)
         self.percentile = kwargs.get('percentile', 50)
         self.SIFT_Affine_r2norm = np.nan    # residual 2-norm from the affine bundle solve
@@ -2391,6 +2393,100 @@ class FIBSEM_mosaic_dataset:
 
         return self.FIBSEM_Data
     
+    def compute_detector_target_ratios(self, **kwargs):
+        '''
+        Compute per-pair "detector-prior" target intensity ratios.
+
+        For each tile, detector ID is parsed from the filename (default pattern
+        sfov_NNN). Per-detector average intensity is computed over all tiles
+        using that detector, from self.FIBSEM_Data (requires a prior call to
+        evaluate_FIBSEM_statistics()). For each pair (a, b),
+            T_ab = I_{det(b)} / I_{det(a)}.
+        Pairs where either detector ID is unparseable or has < min_tiles_per_detector
+        samples are marked invalid and excluded from the prior.
+
+        kwargs:
+        -------
+        method : 'mean' or 'percentile'.    Default 'percentile'.
+        I0 : float.                          Default self.Scaling[1, 0].
+        detector_id_pattern : raw str.       Default r'sfov_(\d+)'.
+        min_tiles_per_detector : int.        Default 5.
+        verbose : bool.                      Default False.
+
+        Stores:
+        -------
+        self.detector_ids               : 1D int array, length V (-1 = unknown)
+        self.detector_avg_intensities   : dict {detector_id -> avg float}
+        self.target_ratios              : 1D float64, length C
+        self.target_ratios_valid        : 1D bool,   length C
+        '''
+        import re
+        method                 = kwargs.get('method', 'percentile')
+        I0                     = kwargs.get('I0', self.Scaling[1, 0])
+        pattern                = kwargs.get('detector_id_pattern', r'sfov_(\d+)')
+        min_tiles_per_detector = kwargs.get('min_tiles_per_detector', 5)
+        verbose                = kwargs.get('verbose', False)
+
+        if not hasattr(self, 'FIBSEM_Data') or self.FIBSEM_Data is None:
+            raise RuntimeError("FIBSEM_Data not available. Run evaluate_FIBSEM_statistics() first.")
+
+        if method == 'mean':
+            vals = np.array(self.FIBSEM_Data['dmeans'],       dtype=np.float64)
+        elif method == 'percentile':
+            vals = np.array(self.FIBSEM_Data['dpercentiles'], dtype=np.float64)
+        else:
+            raise ValueError("method must be 'mean' or 'percentile'.")
+        vals_corr = vals - I0    # dark-count corrected
+
+        # --- Parse detector IDs from filenames. ---
+        fls_flat = self.fls.ravel()
+        rx = re.compile(pattern)
+        det_ids = np.full(len(fls_flat), -1, dtype=np.int32)
+        for i, fname in enumerate(fls_flat):
+            m = rx.search(str(fname))
+            if m is not None:
+                try:
+                    det_ids[i] = int(m.group(1))
+                except ValueError:
+                    pass
+        self.detector_ids = det_ids
+
+        # --- Per-detector averages. ---
+        det_avg = {}
+        for d in np.unique(det_ids):
+            if d < 0:
+                continue
+            mask = (det_ids == d) & np.isfinite(vals_corr) & (vals_corr > 0)
+            if int(np.sum(mask)) >= min_tiles_per_detector:
+                det_avg[int(d)] = float(np.mean(vals_corr[mask]))
+        self.detector_avg_intensities = det_avg
+
+        if verbose:
+            print('Parsed {} unique detector IDs; {} retained (>= {} tiles each).'.format(
+                int(np.sum(np.unique(det_ids) >= 0)), len(det_avg), min_tiles_per_detector))
+
+        # --- Per-pair target ratios. ---
+        targets = np.full(self.C, np.nan, dtype=np.float64)
+        valid   = np.full(self.C, False)
+        for k, (abs_a, abs_b) in enumerate(self.index_pairs):
+            da = int(det_ids[int(abs_a)])
+            db = int(det_ids[int(abs_b)])
+            if da in det_avg and db in det_avg:
+                ia = det_avg[da]
+                ib = det_avg[db]
+                if ia > 0 and ib > 0:
+                    targets[k] = ib / ia
+                    valid[k]   = True
+        self.target_ratios       = targets
+        self.target_ratios_valid = valid
+
+        if verbose:
+            print('Target ratios: {:d}/{:d} pairs valid, range [{:.4f}, {:.4f}]'.format(
+                int(np.sum(valid)), self.C,
+                float(np.min(targets[valid])) if np.any(valid) else float('nan'),
+                float(np.max(targets[valid])) if np.any(valid) else float('nan')))
+        return targets
+
 
     def compute_solved_pair_overlap_bounds(self):
         '''
@@ -3963,7 +4059,15 @@ class FIBSEM_mosaic_dataset:
               ~1  gentle anchor; barely touches strong tiles, mildly nudges corners
               ~3 – 10 meaningful anchor on corners; some pullback on strong tiles too
               30+ starts to dominate — all scales pushed toward 1.0 regardless of data
-          
+        target_damp : float
+          Strength of regularization pulling each pair's solved log-ratio
+          (log_scale[b] - log_scale[a]) toward a per-pair target log(T_ab),
+          where T_ab is determined by the detectors that recorded tiles a and b
+          (see compute_detector_target_ratios). Encodes the prior that pair
+          differences are explained largely by known detector sensitivity
+          differences. 0.0 disables this term (default).
+          Coexists with `tikhonov_damp` (both can be nonzero).
+
         verbose : boolean
           Display intermediate results. Default is False.
 
@@ -3979,6 +4083,7 @@ class FIBSEM_mosaic_dataset:
         intralayer_weight = kwargs.get('intralayer_weight', self.intralayer_weight)
         interlayer_weight = kwargs.get('interlayer_weight', self.interlayer_weight)
         tikhonov_damp = kwargs.get('tikhonov_damp', 0.0)
+        target_damp = kwargs.get('target_damp', 0.0)
 
         w_sqrt_intra = np.sqrt(intralayer_weight)
         w_sqrt_inter = np.sqrt(interlayer_weight)
@@ -4015,7 +4120,25 @@ class FIBSEM_mosaic_dataset:
           return self.tile_scales
 
         log_ratios = np.log(ratios[valid]) * weights[valid]
-        res = lsqr(self.A_csr[valid], log_ratios, damp=tikhonov_damp)
+
+        if target_damp > 0.0:
+            if not hasattr(self, 'target_ratios') or not np.any(self.target_ratios_valid):
+                raise RuntimeError(
+                    "target_ratios not available. Call compute_detector_target_ratios() first.")
+            from scipy.sparse import diags, vstack
+            t_valid = self.target_ratios_valid & np.isfinite(self.target_ratios) & (self.target_ratios > 0)
+            if verbose:
+                print('Detector prior: stacking {} target rows (target_damp={:.4g})'.format(
+                    int(t_valid.sum()), target_damp))
+            # Strip the per-pair weight off A_csr rows, then scale by target_damp:
+            inv_w = 1.0 / weights[t_valid]
+            A_reg = diags(target_damp * inv_w) @ self.A_csr[t_valid]
+            b_reg = target_damp * np.log(self.target_ratios[t_valid])
+            A_aug = vstack([self.A_csr[valid], A_reg], format='csr')
+            b_aug = np.concatenate([log_ratios, b_reg])
+            res = lsqr(A_aug, b_aug, damp=tikhonov_damp)
+        else:
+            res = lsqr(self.A_csr[valid], log_ratios, damp=tikhonov_damp)
         log_scales = res[0]
 
         # Normalise: geometric mean of all scale factors = 1
@@ -4024,8 +4147,8 @@ class FIBSEM_mosaic_dataset:
 
         if verbose:
             print('Intensity normalization method: ' + method)
-            print('Intensity normalization parameters (tikhonov_damp={:.4g}): '
-                'intralayer_weight={:.4f}, interlayer_weight={:.4f}'.format( tikhonov_damp, intralayer_weight, interlayer_weight))
+            print('Intensity normalization parameters (tikhonov_damp={:.4g}, target_damp={:.4g}): '
+                'intralayer_weight={:.4f}, interlayer_weight={:.4f}'.format( tikhonov_damp, target_damp, intralayer_weight, interlayer_weight))
             print('Intensity scale factors: min={:.4f}, max={:.4f}, std={:.4f}'.format(np.min(tile_scales), np.max(tile_scales), np.std(tile_scales)))
 
         self.tile_scales = tile_scales
