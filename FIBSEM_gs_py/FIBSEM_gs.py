@@ -2101,17 +2101,18 @@ def Two_Image_FSC(img1, img2, **kwargs):
     if disp_res or ax != '':
         ax.plot(FSC_sp_frequencies, FSC_data, label = 'FSC data', color='r')
         ax.plot(FSC_sp_frequencies, FSC_data_smooth, label = 'FSC data smoothed', color='b')
+
+        if fit_data:
+            ax.plot(fr_fit, FSC_fit, label = 'a/(x**{:d}+a) Fit'.format(fit_power), linewidth=1, color='m')
+            ax.plot(fr_fit, fr_fit*0.0+SNRt, '--', label = 'Threshold SNR = {:.3f}'.format(SNRt), color = 'g')
+        else:
+            ax.plot(FSC_sp_frequencies, FSC_sp_frequencies*0.0+SNRt, '--',
+                    label='Threshold SNRt = {:.3f}'.format(SNRt), color = 'g')
         if pixel>1e-6:
             label = 'FSC BW = {:.3f} inv.pix., or {:.2f} nm'.format(FSC_bw, pixel/FSC_bw)
         else:
             label = 'FSC BW = {:.3f}'.format(FSC_bw)
         ax.plot(np.array((FSC_bw,FSC_bw)), np.array((0.0,1.0)), '--', label = label, color = 'g')
-        if fit_data:
-            ax.plot(fr_fit, FSC_fit, label = 'a/(x**{:d}+a) Fit'.format(fit_power), linewidth=1, color='g')
-            ax.plot(fr_fit, fr_fit*0.0+SNRt, '--', label = 'Threshold SNR = {:.3f}'.format(SNRt), color='m')
-        else:
-            ax.plot(FSC_sp_frequencies, FSC_sp_frequencies*0.0+SNRt, '--',
-                    label='Threshold SNR = {:.3f}'.format(SNRt), color='m')
         # van Heel-Schatz Eq.14 threshold curve and its corresponding bandwidth.
         ax.plot(x2, T, '--', color='c',
                 label='van Heel-Schatz Eq.14')
@@ -2121,9 +2122,8 @@ def Two_Image_FSC(img1, img2, **kwargs):
                     FSC_bw_T, pixel / FSC_bw_T)
             else:
                 label_T = 'FSC BW (Eq.14) = {:.3f}'.format(FSC_bw_T)
-            ax.plot([FSC_bw_T, FSC_bw_T], [0, 1], '--', color='purple', label=label_T)
-
-        ax.plot([FSC_bw, FSC_bw], [0, 1], '--', label = 'BW = {:.3f}'.format(FSC_bw), color='brown')
+            ax.plot([FSC_bw_T, FSC_bw_T], [0, 1], '--', color='c', label=label_T)
+        
         ax.legend()
         ax.set_ylim(0, 1.05)
         ax.set_xlim(xrange)
