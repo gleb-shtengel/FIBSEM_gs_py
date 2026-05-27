@@ -47,8 +47,6 @@ from scipy.ndimage import gaussian_filter
 from scipy.optimize import curve_fit
 from scipy.ndimage import map_coordinates
 
-#from sklearn import __version__ as sklearn_version
-#print('sklearn version: ', sklearn_version)
 from sklearn.linear_model import (LinearRegression,
     TheilSenRegressor,
     RANSACRegressor,
@@ -389,14 +387,9 @@ def remap_tile(img, deformation_field, **kwargs):
     img_shape = img.shape
     shift_x = int(np.min((np.nanmin(deformation_field[:, :, 0]), 0))) # Find the leftmost source coordinate in the entire field — but only if it is negative.
     shift_y = int(np.min((np.nanmin(deformation_field[:, :, 1]), 0))) # Find the top-most source coordinate in the entire field — but only if it is negative.
-    #shift_x = int(np.nanmin(deformation_field[:, :, 0]))
-    #shift_y = int(np.nanmin(deformation_field[:, :, 1]))
 
     if verbose:
         print('shift_x={:d},  shift_y={:d}'.format(shift_x, shift_y))
-    # df_shifted = deformation_field*1.0
-    # df_shifted[:, :, 0] = deformation_field[:, :, 0] - shift_x  # Shift the deformation field to ake all coordinates non-negative.
-    # df_shifted[:, :, 1] = deformation_field[:, :, 1] - shift_y
     df_shifted = deformation_field.astype(np.float32) - np.array([shift_x, shift_y], dtype=np.float32)  # Shift the deformation field to make all coordinates non-negative.
     # Compute the expanded canvas size
     # The canvas must be at least as large as the original image AND large enough to contain every source coordinate the shifted field can address.
@@ -619,7 +612,7 @@ def assemble_layer(params, deformation_field, **kwargs):
         If True, apply mosaic-level field flattening. Default is False.
     mosaic_correction_intercept : float
         Intercept for this image_name's polynomial fit.
-    mosaic_correction_coefs : 1D array
+    mosaic_correction_coeffs : 1D array
         Coefficients for this image_name's polynomial fit.
     mosaic_correction_degree : int
         Polynomial degree.
@@ -646,7 +639,7 @@ def assemble_layer(params, deformation_field, **kwargs):
     DASK_client_retries = kwargs.get('DASK_client_retries', 3)
     flatten_mosaic = kwargs.get('flatten_mosaic', False)
     mosaic_correction_intercept = kwargs.get('mosaic_correction_intercept', None)
-    mosaic_correction_coefs = kwargs.get('mosaic_correction_coefs', None)
+    mosaic_correction_coeffs = kwargs.get('mosaic_correction_coeffs', None)
     mosaic_correction_degree = kwargs.get('mosaic_correction_degree', 2)
     mosaic_correction_bins = kwargs.get('mosaic_correction_bins', 10)
     mosaic_Scaling_offset = kwargs.get('mosaic_Scaling_offset', 0.0)
@@ -681,7 +674,6 @@ def assemble_layer(params, deformation_field, **kwargs):
             for future in tqdm(as_completed(futures), total=len(futures), desc='Assembling ' + image_name + ' mosaic layer'):
                     tile_out, xi, yi = future.result()
                     _add_warped_to_mosaic(tile_out, xi, yi, layer_mosaic, layer_mosaic_weights, **kwargs_awp)
-                    #future.cancel()
         else:
             for tile_params in tqdm(tile_params_mult, desc = 'Building mosaic for layer_id={:d}'.format(layer_id), display = verbose):
                 if verbose:
@@ -698,12 +690,12 @@ def assemble_layer(params, deformation_field, **kwargs):
         np.divide(layer_mosaic, layer_mosaic_weights, out=layer_mosaic)
         del layer_mosaic_weights
         np.nan_to_num(layer_mosaic, nan=fill_value, copy=False)
-        if flatten_mosaic and mosaic_correction_coefs is not None:
+        if flatten_mosaic and mosaic_correction_coeffs is not None:
             # Subtract offset, flatten, re-add offset
             layer_mosaic = flatten_image_fast(
                 layer_mosaic - mosaic_Scaling_offset,
                 mosaic_correction_intercept,
-                mosaic_correction_coefs,
+                mosaic_correction_coeffs,
                 mosaic_correction_degree,
                 mosaic_correction_bins) + mosaic_Scaling_offset
 
@@ -2094,14 +2086,19 @@ class FIBSEM_mosaic_dataset:
         self.percentile_intensity_ratios = np.full(self.C, np.nan)
         self.overlap_mean_intensity_ratios       = np.full(self.C, np.nan)
         self.overlap_percentile_intensity_ratios = np.full(self.C, np.nan)
-        self.overlap_transformation_valid        = np.full(self.C, False)
-        self.target_ratios        = np.full(self.C, np.nan, dtype=np.float64)
-        self.target_ratios_valid  = np.full(self.C, False)
+        self.overlap_intensity_ratios_valid        = np.full(self.C, False)
+        self.target_intensity_ratios        = np.full(self.C, np.nan, dtype=np.float64)
+        self.target_intensity_ratios_valid  = np.full(self.C, False)
         self.min_overlap_pixels                  = kwargs.get('min_overlap_pixels', 5000)
         self.percentile = kwargs.get('percentile', 50)
         self.SIFT_Affine_r2norm = np.nan    # residual 2-norm from the affine bundle solve
         self.tile_I0s = np.zeros((self.nz_tiles, self.n_tiles_per_layer))
         self.tile_scales = np.ones((self.nz_tiles, self.n_tiles_per_layer))
+        # Pre-init so that `len(self.fnms_kpts) == 0` works in determine_transformations_SIFT
+        # before extract_keypoints() has been called. Both are overwritten with shape
+        # (nz_tiles, n_tiles_per_layer) numpy arrays inside extract_keypoints (line 2854).
+        self.fnms_kpts = np.array([])
+        self.nkpts     = np.array([])
 
         if verbose:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Initialized FIBSEM_mosaic_dataset instance:')
@@ -2303,10 +2300,7 @@ class FIBSEM_mosaic_dataset:
         verbose = kwargs.get('verbose', True)
         DASK_client = kwargs.get('DASK_client', '')
         use_DASK, status_update_address = check_DASK(DASK_client, verbose = True)
-        if hasattr(self, "DASK_client_retries"):
-            DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
-        else:
-            DASK_client_retries = kwargs.get("DASK_client_retries", 3)
+        DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
         ftype = kwargs.get("ftype", self.ftype)
         frame_inds = kwargs.get("frame_inds", np.arange(self.nz_tiles))
         data_dir = kwargs.get('data_dir', self.data_dir)
@@ -2317,15 +2311,11 @@ class FIBSEM_mosaic_dataset:
         FIBSEM_Data_xlsx_default = os.path.join(data_dir, os.path.splitext(self.fnm_mosaic_stack)[0] + '_FIBSEM_Data.xlsx')
         FIBSEM_Data_xlsx = kwargs.get('FIBSEM_Data_xlsx', FIBSEM_Data_xlsx_default)
         use_existing_data = kwargs.get('use_existing_data', False)
-
         if hasattr(self, 'Mill_Volt_Rate_um_per_V'):
             Mill_Volt_Rate_um_per_V = kwargs.get("Mill_Volt_Rate_um_per_V", self.Mill_Volt_Rate_um_per_V)
         else:
             Mill_Volt_Rate_um_per_V = kwargs.get("Mill_Volt_Rate_um_per_V", 31.235258870176065)
-        if hasattr(self, 'percentile'):
-            percentile = kwargs.get('percentile', self.percentile)
-        else:
-            percentile = kwargs.get('percentile', 50)
+        percentile = kwargs.get('percentile', self.percentile)
         self.percentile = percentile
         local_kwargs = {'use_DASK' : use_DASK,
                         'DASK_client_retries' : DASK_client_retries,
@@ -2393,7 +2383,7 @@ class FIBSEM_mosaic_dataset:
 
         return self.FIBSEM_Data
     
-    def compute_detector_target_ratios(self, **kwargs):
+    def compute_detector_target_intensity_ratios(self, **kwargs):
         '''
         Compute per-pair "detector-prior" target intensity ratios.
 
@@ -2417,8 +2407,8 @@ class FIBSEM_mosaic_dataset:
         -------
         self.detector_ids               : 1D int array, length V (-1 = unknown)
         self.detector_avg_intensities   : dict {detector_id -> avg float}
-        self.target_ratios              : 1D float64, length C
-        self.target_ratios_valid        : 1D bool,   length C
+        self.target_intensity_ratios              : 1D float64, length C
+        self.target_intensity_ratios_valid        : 1D bool,   length C
         '''
         import re
         method                 = kwargs.get('method', 'percentile')
@@ -2477,8 +2467,8 @@ class FIBSEM_mosaic_dataset:
                 if ia > 0 and ib > 0:
                     targets[k] = ib / ia
                     valid[k]   = True
-        self.target_ratios       = targets
-        self.target_ratios_valid = valid
+        self.target_intensity_ratios       = targets
+        self.target_intensity_ratios_valid = valid
 
         if verbose:
             print('Target ratios: {:d}/{:d} pairs valid, range [{:.4f}, {:.4f}]'.format(
@@ -2539,8 +2529,8 @@ class FIBSEM_mosaic_dataset:
     def compute_frame_intensity_ratios(self, **kwargs):
         '''
         Compute per-pair intensity ratios from whole-frame mean or median pixel values.
-        Requires evaluate_frames() to have been called so that self.FIBSEM_Data contains
-        'dmeans' and 'dpercentiles' arrays (one value per tile, indexed by flat tile index).
+        Requires evaluate_FIBSEM_statistics() to have been called so that self.FIBSEM_Data
+        contains 'dmeans' and 'dpercentiles' arrays (one value per tile, indexed by flat tile index).
 
         kwargs:
         ----------
@@ -2562,7 +2552,7 @@ class FIBSEM_mosaic_dataset:
         verbose = kwargs.get('verbose', False)
 
         if not hasattr(self, 'FIBSEM_Data') or self.FIBSEM_Data is None:
-            raise RuntimeError("FIBSEM_Data not available. Run evaluate_frames() first.")
+            raise RuntimeError("FIBSEM_Data not available. Run evaluate_FIBSEM_statistics() first.")
 
         if method == 'mean':
             vals = np.array(self.FIBSEM_Data['dmeans'], dtype=np.float64)
@@ -2585,7 +2575,9 @@ class FIBSEM_mosaic_dataset:
             valid = np.isfinite(ratios) & (ratios > 0)
             label = '{} (p={})'.format(method, self.percentile) if method == 'percentile' else method
             print('{} intensity ratios: {:d}/{:d} valid pairs, mean={:.4f}, std={:.4f}'.format(
-                label, int(np.sum(valid)), self.C, ...))
+                label, int(np.sum(valid)), self.C,
+                float(np.mean(ratios[valid])) if np.any(valid) else float('nan'),
+                float(np.std(ratios[valid]))  if np.any(valid) else float('nan')))
         return ratios
 
 
@@ -2622,7 +2614,7 @@ class FIBSEM_mosaic_dataset:
 
         Side effects
         ------------
-        Updates self.overlap_transformation_valid (True iff overlap area >=
+        Updates self.overlap_intensity_ratios_valid (True iff overlap area >=
         min_overlap_pixels AND both mean intensities are positive after I0 subtraction).
         '''
         method             = kwargs.get('method', 'percentile')
@@ -2697,7 +2689,7 @@ class FIBSEM_mosaic_dataset:
 
         attr_name = 'overlap_' + method + '_intensity_ratios'
         setattr(self, attr_name, ratios)
-        self.overlap_transformation_valid = valid
+        self.overlap_intensity_ratios_valid = valid
 
         if verbose:
             label = '{} (p={})'.format(method, percentile) if method == 'percentile' else method
@@ -2783,18 +2775,12 @@ class FIBSEM_mosaic_dataset:
         verbose = kwargs.get('verbose', True)
         DASK_client = kwargs.get('DASK_client', '')
         use_DASK, status_update_address = check_DASK(DASK_client, verbose = verbose)
-        if hasattr(self, "DASK_client_retries"):
-            DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
-        else:
-            DASK_client_retries = kwargs.get("DASK_client_retries", 3)
+        DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
         ftype = kwargs.get("ftype", self.ftype)
         thr_min = kwargs.get("thr_min", self.thr_min)
         thr_max = kwargs.get("thr_max", self.thr_max)
         nbins = kwargs.get("nbins", self.nbins)
-        if hasattr(self, 'U8_conversion'):
-            U8_conversion = kwargs.get('U8_conversion', self.U8_conversion)
-        else:
-            U8_conversion = kwargs.get('U8_conversion', 'local')
+        U8_conversion = kwargs.get('U8_conversion', self.U8_conversion)
         if U8_conversion != 'local':
             data_minmax = kwargs.get("data_minmax", self.data_minmax)
             minmax_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding = data_minmax
@@ -2803,14 +2789,8 @@ class FIBSEM_mosaic_dataset:
         SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", self.SIFT_contrastThreshold)
         SIFT_edgeThreshold = kwargs.get("SIFT_edgeThreshold", self.SIFT_edgeThreshold)
         SIFT_sigma = kwargs.get("SIFT_sigma", self.SIFT_sigma)
-        if hasattr(self, 'left_crop'):
-            left_crop = kwargs.get('left_crop', self.left_crop)
-        else:
-            left_crop = kwargs.get('left_crop', 0)
-        if hasattr(self, 'deformation_field'):
-            deformation_field = kwargs.get('deformation_field', self.deformation_field)
-        else:
-            deformation_field = kwargs.get('deformation_field', np.nan)
+        left_crop = kwargs.get('left_crop', self.left_crop)
+        deformation_field = kwargs.get('deformation_field', self.deformation_field)
         interpolation = kwargs.get('interpolation', self.interpolation)
         fill_value = kwargs.get('fill_value', 0)
         use_existing_data = kwargs.get('use_existing_data', False)
@@ -2884,10 +2864,7 @@ class FIBSEM_mosaic_dataset:
         '''
         sigma_thr = kwargs.get('sigma_thr', 6.0)
         nxny = self.n_tiles_per_layer
-        if hasattr(self, 'data_dir'):
-            data_dir = kwargs.get("data_dir", self.data_dir)
-        else:
-            data_dir = kwargs.get("data_dir", '')
+        data_dir = kwargs.get("data_dir", self.data_dir)
         verbose = kwargs.get('verbose', False)
         save_png = kwargs.get('save_png', True)
         dpi = kwargs.get('dpi', 300)
@@ -3052,19 +3029,10 @@ class FIBSEM_mosaic_dataset:
             DASK_client = kwargs.get('DASK_client', '')
             use_DASK, status_update_address = check_DASK(DASK_client, verbose = True)
             select_tiles = kwargs.get('select_tiles', False)
-            if hasattr(self, "DASK_client_retries"):
-                DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
-            else:
-                DASK_client_retries = kwargs.get("DASK_client_retries", 3)
+            DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
             ftype = kwargs.get("ftype", self.ftype)
-            if hasattr(self, 'left_crop'):
-                left_crop = kwargs.get('left_crop', self.left_crop)
-            else:
-                left_crop = kwargs.get('left_crop', 0)
-            if hasattr(self, 'deformation_field'):
-                deformation_field = kwargs.get('deformation_field', self.deformation_field)
-            else:
-                deformation_field = kwargs.get('deformation_field', np.nan)
+            left_crop = kwargs.get('left_crop', self.left_crop)
+            deformation_field = kwargs.get('deformation_field', self.deformation_field)
             TransformType = kwargs.get("TransformType", self.TransformType)
             l2_matrix = kwargs.get("l2_matrix", self.l2_matrix)
             targ_vector = kwargs.get("targ_vector", self.targ_vector)
@@ -3072,10 +3040,7 @@ class FIBSEM_mosaic_dataset:
             RANSAC_initial_fraction = kwargs.get("RANSAC_initial_fraction", self.RANSAC_initial_fraction)
             drmax = kwargs.get("drmax", self.drmax)
             max_iter = kwargs.get("max_iter", self.max_iter)
-            if hasattr(self, 'SIFT_nmatches_min'):
-                SIFT_nmatches_min = kwargs.get('SIFT_nmatches_min', self.SIFT_nmatches_min)
-            else:
-                SIFT_nmatches_min = kwargs.get('SIFT_nmatches_min', 5)
+            SIFT_nmatches_min = kwargs.get('SIFT_nmatches_min', self.SIFT_nmatches_min)
             Lowe_Ratio_Threshold = kwargs.get("Lowe_Ratio_Threshold", 0.7)   # threshold for Lowe's Ratio Test
             BFMatcher = kwargs.get("BFMatcher", self.BFMatcher)
             save_matches = kwargs.get("save_matches", self.save_matches)
@@ -3246,14 +3211,8 @@ class FIBSEM_mosaic_dataset:
             int_results is pd.Dataframe with columns: ['X-src', 'Y-src', 'X-src transformed', 'Y-src transformed', 'X-dst', 'Y-dst', 'X-error', 'Y-error', 'Int-src', 'Int-dst']
         '''
         ftype = kwargs.get("ftype", self.ftype)
-        if hasattr(self, 'left_crop'):
-            left_crop = kwargs.get('left_crop', self.left_crop)
-        else:
-            left_crop = kwargs.get('left_crop', 0)
-        if hasattr(self, 'deformation_field'):
-            deformation_field = kwargs.get('deformation_field', self.deformation_field)
-        else:
-            deformation_field = kwargs.get('deformation_field', np.nan)
+        left_crop = kwargs.get('left_crop', self.left_crop)
+        deformation_field = kwargs.get('deformation_field', self.deformation_field)
         perform_deformation = not np.all(np.isnan(deformation_field))
         if perform_deformation:
             perform_deformation_text = 'True'
@@ -3277,10 +3236,7 @@ class FIBSEM_mosaic_dataset:
         drmax = kwargs.get("drmax", self.drmax)
         max_iter = kwargs.get("max_iter", self.max_iter)
         Sample_ID = kwargs.get('Sample_ID', self.Sample_ID)
-        if hasattr(self, 'SIFT_nmatches_min'):
-            SIFT_nmatches_min = kwargs.get('SIFT_nmatches_min', self.SIFT_nmatches_min)
-        else:
-            SIFT_nmatches_min = kwargs.get('SIFT_nmatches_min', 5)
+        SIFT_nmatches_min = kwargs.get('SIFT_nmatches_min', self.SIFT_nmatches_min)
         Lowe_Ratio_Threshold = kwargs.get("Lowe_Ratio_Threshold", 0.7)   # threshold for Lowe's Ratio Test
         BFMatcher = kwargs.get("BFMatcher", self.BFMatcher)
         if BFMatcher:
@@ -3458,7 +3414,6 @@ class FIBSEM_mosaic_dataset:
                 xcounts, xbins, xhist_patches = axx.hist(xshifts, bins=64)
                 error_FWHMx, indxi, indxa, mxx, mxx_ind = find_FWHM(xbins, xcounts[:-1], verbose=False, estimation=estimation, start=start, max_aver_aperture=5)
                 dbx = (xbins[1]-xbins[0])/2.0
-                #axx.plot([xbins[indxi]+dbx, xbins[indxa]+dbx], [mxx/2.0, mxx/2.0], 'r', linewidth = 4)
                 axx.plot([xbins[indxi], xbins[indxa]], [mxx/2.0, mxx/2.0], 'r', linewidth = 4)
                 axx.plot([xbins[mxx_ind]+dbx], [mxx], 'rd')
                 axx.text(0.05, 0.9, 'mean={:.3f}'.format(np.mean(xshifts)), transform=axx.transAxes, fontsize=fsz)
@@ -3467,7 +3422,6 @@ class FIBSEM_mosaic_dataset:
                 ycounts, ybins, yhist_patches = axy.hist(yshifts, bins=64)
                 error_FWHMy, indyi, indya, mxy, mxy_ind = find_FWHM(ybins, ycounts[:-1], verbose=False, estimation=estimation, start=start, max_aver_aperture=5)
                 dby = (ybins[1]-ybins[0])/2.0
-                #axy.plot([ybins[indyi] + dby, ybins[indya] + dby], [mxy/2.0, mxy/2.0], 'r', linewidth = 4)
                 axy.plot([ybins[indyi], ybins[indya]], [mxy/2.0, mxy/2.0], 'r', linewidth = 4)
                 axy.plot([ybins[mxy_ind] + dby], [mxy], 'rd')
                 axy.text(0.05, 0.9, 'mean={:.3f}'.format(np.mean(yshifts)), transform=axy.transAxes, fontsize=fsz)
@@ -3551,10 +3505,6 @@ class FIBSEM_mosaic_dataset:
             Number of allowed automatic retries if a task fails. Default is object attribute.
         ftype : int
             File type (0 - Shan Xu's .dat, 1 - tif). Default is object attribute.
-        pair_margins : array of tuples of 2 ints
-            Parts of images to be used. It is assumed that first image (img1) in each target_pair is to the left and above of the second image (img2).
-            Subsets img1[-ymargin:, :] and  img2[0:ymargin, :] or img1[:, -xmargin:] and  img2[:, 0:xmargin] will be used for correlation.
-            Default is full images, so image_margins = (self.YResolution, self.XResolution)
         left_crop : int
             left image margin to be cropped off BEFORE distortion correction (via deformation field) is applied. Default is object attribute (or 0 if absent).
         deformation_field : 3D array
@@ -3582,14 +3532,8 @@ class FIBSEM_mosaic_dataset:
         repeats = kwargs.get('repeats', 2)
         verbose = kwargs.get('verbose', False)
         use_existing_data = kwargs.get('use_existing_data', False)
-        if hasattr(self, 'left_crop'):
-            left_crop = kwargs.get('left_crop', self.left_crop)
-        else:
-            left_crop = kwargs.get('left_crop', 0)
-        if hasattr(self, 'deformation_field'):
-            deformation_field = kwargs.get('deformation_field', self.deformation_field)
-        else:
-            deformation_field = kwargs.get('deformation_field', np.nan)
+        left_crop = kwargs.get('left_crop', self.left_crop)
+        deformation_field = kwargs.get('deformation_field', self.deformation_field)
         if hasattr(self, 'motion'):
             motion = kwargs.get('motion', self.motion)
         else:
@@ -3601,10 +3545,7 @@ class FIBSEM_mosaic_dataset:
         
         DASK_client = kwargs.get('DASK_client', '')
         use_DASK, status_update_address = check_DASK(DASK_client, verbose = True)
-        if hasattr(self, "DASK_client_retries"):
-            DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
-        else:
-            DASK_client_retries = kwargs.get("DASK_client_retries", 3)
+        DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
         use_existing_data = kwargs.get('use_existing_data', False)
         params_ECC = []
         fls = self.fls.ravel()
@@ -3747,8 +3688,8 @@ class FIBSEM_mosaic_dataset:
             res_x = res_x_all[0]
             res_y = res_y_all[0]
             positions = np.zeros((self.nz_tiles * self.n_tiles_per_layer, 2))
-            positions[:, 0] = res_x #- np.max(res_x)
-            positions[:, 1] = res_y #- np.max(res_y)
+            positions[:, 0] = res_x
+            positions[:, 1] = res_y
             positions_3d = positions.reshape((self.nz_tiles, self.n_tiles_per_layer, 2))
 
             # Determine which tiles appear in at least one valid pairwise constraint.
@@ -4036,8 +3977,10 @@ class FIBSEM_mosaic_dataset:
           Source of intensity ratios. Options:
             'SIFT'               — matched keypoint intensities (whole-tile).
                                    Requires prior determine_transformations_SIFT().
-            'mean'               — whole-frame mean per tile (uses cached FIBSEM_Data).
-            'percentile'         — whole-frame percentile per tile (uses cached FIBSEM_Data).
+            'mean'               — whole-frame mean per tile.
+                                   Requires prior compute_frame_intensity_ratios(method='mean').
+            'percentile'         — whole-frame percentile per tile.
+                                   Requires prior compute_frame_intensity_ratios(method='percentile').
             'overlap_mean'       — mean over each pair's overlap ROI.
                                    Requires prior compute_overlap_intensity_ratios(method='mean', DASK_client=...).
             'overlap_percentile' — percentile over each pair's overlap ROI.
@@ -4063,7 +4006,7 @@ class FIBSEM_mosaic_dataset:
           Strength of regularization pulling each pair's solved log-ratio
           (log_scale[b] - log_scale[a]) toward a per-pair target log(T_ab),
           where T_ab is determined by the detectors that recorded tiles a and b
-          (see compute_detector_target_ratios). Encodes the prior that pair
+          (see compute_detector_target_intensity_ratios). Encodes the prior that pair
           differences are explained largely by known detector sensitivity
           differences. 0.0 disables this term (default).
           Coexists with `tikhonov_damp` (both can be nonzero).
@@ -4089,14 +4032,18 @@ class FIBSEM_mosaic_dataset:
         w_sqrt_inter = np.sqrt(interlayer_weight)
         weights = np.concatenate((np.full(self.nh + self.nv, w_sqrt_intra),
                                 np.full(self.nl, w_sqrt_inter)))
-
         if method == 'SIFT':
             ratios = self.SIFT_intensity_ratios
             valid  = self.SIFT_transformation_valid & np.isfinite(ratios) & (ratios > 0)
         elif method in ('mean', 'percentile'):
-            self.compute_frame_intensity_ratios(method=method, I0=I0,
-                                                percentile=self.percentile, verbose=verbose)
-            ratios = getattr(self, method + '_intensity_ratios')
+            attr = method + '_intensity_ratios'
+            ratios = getattr(self, attr)
+            if not np.any(np.isfinite(ratios)):
+                raise RuntimeError(
+                    "{} has not been computed yet. Call "
+                    "compute_frame_intensity_ratios(method='{}') first "
+                    "(requires prior evaluate_FIBSEM_statistics(); the percentile is "
+                    "set there as self.percentile, not at this call).".format(attr, method))
             valid  = np.isfinite(ratios) & (ratios > 0)
         elif method in ('overlap_mean', 'overlap_percentile'):
             base = method[len('overlap_'):]   # 'mean' or 'percentile'
@@ -4107,7 +4054,7 @@ class FIBSEM_mosaic_dataset:
                     "{} has not been computed yet. Call "
                     "compute_overlap_intensity_ratios(method='{}', DASK_client=...) "
                     "first.".format(attr, base))
-            valid  = self.overlap_transformation_valid & np.isfinite(ratios) & (ratios > 0)
+            valid  = self.overlap_intensity_ratios_valid & np.isfinite(ratios) & (ratios > 0)
         else:
             raise ValueError(
                 "method '{}' not supported. Use 'SIFT', 'mean', 'percentile', "
@@ -4122,18 +4069,25 @@ class FIBSEM_mosaic_dataset:
         log_ratios = np.log(ratios[valid]) * weights[valid]
 
         if target_damp > 0.0:
-            if not hasattr(self, 'target_ratios') or not np.any(self.target_ratios_valid):
+            if not np.any(self.target_intensity_ratios_valid):
                 raise RuntimeError(
-                    "target_ratios not available. Call compute_detector_target_ratios() first.")
-            from scipy.sparse import diags, vstack
-            t_valid = self.target_ratios_valid & np.isfinite(self.target_ratios) & (self.target_ratios > 0)
+                    "target_intensity_ratios not available. Call compute_detector_target_intensity_ratios() first.")
+            from scipy.sparse import csr_matrix, vstack
+            t_valid = self.target_intensity_ratios_valid & np.isfinite(self.target_intensity_ratios) & (self.target_intensity_ratios > 0)
             if verbose:
                 print('Detector prior: stacking {} target rows (target_damp={:.4g})'.format(
                     int(t_valid.sum()), target_damp))
-            # Strip the per-pair weight off A_csr rows, then scale by target_damp:
-            inv_w = 1.0 / weights[t_valid]
-            A_reg = diags(target_damp * inv_w) @ self.A_csr[t_valid]
-            b_reg = target_damp * np.log(self.target_ratios[t_valid])
+            # Build A_reg from scratch with uniform ±target_damp entries (one row per valid
+            # pair). Independent of A_csr's pre-weighted row scaling, so this stays correct
+            # when the caller overrides intralayer_weight / interlayer_weight kwargs.
+            t_indices = np.where(t_valid)[0]
+            n_reg     = len(t_indices)
+            pairs     = self.index_pairs[t_indices]                # (n_reg, 2)
+            rows      = np.repeat(np.arange(n_reg), 2)
+            cols      = pairs.ravel().astype(np.int64)
+            data      = np.tile([-target_damp, target_damp], n_reg).astype(np.float64)
+            A_reg     = csr_matrix((data, (rows, cols)), shape=(n_reg, self.A_csr.shape[1]))
+            b_reg     = target_damp * np.log(self.target_intensity_ratios[t_valid])
             A_aug = vstack([self.A_csr[valid], A_reg], format='csr')
             b_aug = np.concatenate([log_ratios, b_reg])
             res = lsqr(A_aug, b_aug, damp=tikhonov_damp)
@@ -4319,19 +4273,14 @@ class FIBSEM_mosaic_dataset:
         if ifDetB:
             image_names_default.append('RawImageB')
         image_names = kwargs.get('image_names', image_names_default)
-        if layer_id<-1 or layer_id>self.nz_tiles-1:
-            print('layer_id parameter {:d} is out of range: -1 to {:d}'.format(layer_id, self.nz_tiles))
-            return np.nan
+        if layer_id < -1 or layer_id > self.nz_tiles - 1:
+            raise ValueError(
+                "assemble_layer_mosaic: layer_id={:d} is out of range; "
+                "valid range is -1..{:d}".format(layer_id, self.nz_tiles - 1))
         DASK_client = kwargs.get('DASK_client', '')
         use_DASK, status_update_address = check_DASK(DASK_client, verbose=True)
-        if hasattr(self, 'left_crop'):
-            left_crop = kwargs.get('left_crop', self.left_crop)
-        else:
-            left_crop = kwargs.get('left_crop', 0)
-        if hasattr(self, 'deformation_field'):
-            deformation_field = kwargs.get('deformation_field', self.deformation_field)
-        else:
-            deformation_field = kwargs.get('deformation_field', np.nan)
+        left_crop = kwargs.get('left_crop', self.left_crop)
+        deformation_field = kwargs.get('deformation_field', self.deformation_field)
         weight_min = kwargs.get('weight_min', 1.0)
         weight_max = kwargs.get('weight_max', 512.0)
         fill_value = kwargs.get('fill_value', -10000) 
@@ -4359,11 +4308,7 @@ class FIBSEM_mosaic_dataset:
         dtp = kwargs.get('dtp', np.int16)
         dpi = kwargs.get('dpi', 300)
         use_default_coordinates = kwargs.get('use_default_coordinates', False)
-
-        if hasattr(self, "DASK_client_retries"):
-            DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
-        else:
-            DASK_client_retries = kwargs.get("DASK_client_retries", 3)
+        DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
 
         return_layer_array = True
         save_tif = False
@@ -4379,7 +4324,7 @@ class FIBSEM_mosaic_dataset:
                     'local_DASK_client' : DASK_client,
                     'DASK_client_retries' : DASK_client_retries}
 
-        if use_default_coordinates and hasattr(self, 'default_tr_matr'):
+        if use_default_coordinates:
             tr_matr_layer = self.default_tr_matr[layer_id]
         else:
             tr_matr_layer = self.tr_matr[layer_id]
@@ -4387,7 +4332,7 @@ class FIBSEM_mosaic_dataset:
         for j, image_name in enumerate(image_names):
             if verbose:
                 print(time.strftime('%Y/%m/%d  %H:%M:%S  ') + ' processing the data for ' + image_name)
-            if hasattr(self, 'tile_scales') and perform_intensity_normalization:
+            if perform_intensity_normalization:
                 params = [layer_id, self.fls[layer_id].ravel(), image_name, tr_matr_layer, weight_min, weight_max,
                           fill_value, self.Xsize, self.Ysize, left_crop,
                           self.tile_I0s[layer_id], self.tile_scales[layer_id],
@@ -4403,7 +4348,7 @@ class FIBSEM_mosaic_dataset:
             if flatten_mosaic and hasattr(self, 'mosaic_correction_coeffs'):
                 kwargs_al_local['flatten_mosaic'] = True
                 kwargs_al_local['mosaic_correction_intercept'] = self.mosaic_correction_intercepts[j]
-                kwargs_al_local['mosaic_correction_coefs'] = self.mosaic_correction_coeffs[j]
+                kwargs_al_local['mosaic_correction_coeffs'] = self.mosaic_correction_coeffs[j]
                 kwargs_al_local['mosaic_correction_degree'] = self.mosaic_correction_degrees[j]
                 kwargs_al_local['mosaic_correction_bins'] = self.mosaic_correction_bins
                 # Determine offset for Raw images
@@ -4728,8 +4673,8 @@ class FIBSEM_mosaic_dataset:
             except:
                 Fit_kwargs['degree'] = degrees
 
-            intercept, coefs, mse, mosaic_correction_array = Perform_2D_fit(img, estimator, **Fit_kwargs)
-            mosaic_correction_coeffs.append(coefs)
+            intercept, coeffs, mse, mosaic_correction_array = Perform_2D_fit(img, estimator, **Fit_kwargs)
+            mosaic_correction_coeffs.append(coeffs)
             mosaic_correction_intercepts.append(intercept)
             mosaic_correction_degrees.append(Fit_kwargs['degree'])
             mosaic_correction_arrays.append(mosaic_correction_array)
@@ -4752,7 +4697,7 @@ class FIBSEM_mosaic_dataset:
     def flatten_layer_mosaic(self, layer_mosaics, **kwargs):
         '''
         Flatten assembled mosaic layer(s) using stored polynomial coefficients.
-        Calls the standalone function flatten_image_fast(img, intercept, coefs, degree, bins)
+        Calls the standalone function flatten_image_fast(img, intercept, coeffs, degree, bins)
         for each mosaic image.
 
         Parameters:
@@ -4784,22 +4729,22 @@ class FIBSEM_mosaic_dataset:
             getattr(self, 'mosaic_correction_bins', 10))
 
         flattened_mosaics = []
-        for mosaic, source, intercept, coefs, degree in zip(
+        for mosaic, source, intercept, coeffs, degree in zip(
                 layer_mosaics,
                 mosaic_correction_sources,
                 mosaic_correction_intercepts,
                 mosaic_correction_coeffs,
                 mosaic_correction_degrees):
 
-            if (source is not False) and (coefs is not False):
+            if (source is not False) and (coeffs is not False):
                 if source == 'RawImageA':
                     img = mosaic - self.Scaling[1, 0]
-                    flattened_mosaic = flatten_image_fast(img, intercept, coefs, degree, bins) + self.Scaling[1, 0]
+                    flattened_mosaic = flatten_image_fast(img, intercept, coeffs, degree, bins) + self.Scaling[1, 0]
                 elif source == 'RawImageB':
                     img = mosaic - self.Scaling[1, 1]
-                    flattened_mosaic = flatten_image_fast(img, intercept, coefs, degree, bins) + self.Scaling[1, 1]
+                    flattened_mosaic = flatten_image_fast(img, intercept, coeffs, degree, bins) + self.Scaling[1, 1]
                 else:
-                    flattened_mosaic = flatten_image_fast(mosaic, intercept, coefs, degree, bins)
+                    flattened_mosaic = flatten_image_fast(mosaic, intercept, coeffs, degree, bins)
             else:
                 flattened_mosaic = mosaic
 
@@ -4829,8 +4774,6 @@ class FIBSEM_mosaic_dataset:
         flatten_mosaic : boolean
             If True, apply mosaic-level field flattening using parameters from
             determine_mosaic_flattening_parameters(). Default is False.
-        image_correction_file : str
-            full path to a binary filename that contains source name (image_correction_source) and correction array (img_correction_array)
         tif_folder : str
             sub-directory name (will be created inside data_dir). Default is 'tif_stack'
         voxel_size : rec array of 3 elements
@@ -4844,7 +4787,7 @@ class FIBSEM_mosaic_dataset:
         weight_min : float
             vmin for weight. Default is 1
         weight_max : float
-            vmax for weight. Default is 2048
+            vmax for weight. Default is 512
         left_crop : int 
             Cropping value for cropping the image from the left side (used along with deformation_field or on its own). Default is 0 - no cropping.
         deformation_field : 3D array
@@ -4919,14 +4862,8 @@ class FIBSEM_mosaic_dataset:
         border_value = kwargs.get('border_value', np.nan)
         border_mode = kwargs.get('border_mode', cv2.BORDER_CONSTANT)
         use_DASK, status_update_address = check_DASK(DASK_client, verbose=True)
-        if hasattr(self, 'left_crop'):
-            left_crop = kwargs.get('left_crop', self.left_crop)
-        else:
-            left_crop = kwargs.get('left_crop', 0)
-        if hasattr(self, 'deformation_field'):
-            deformation_field = kwargs.get('deformation_field', self.deformation_field)
-        else:
-            deformation_field = kwargs.get('deformation_field', np.nan)
+        left_crop = kwargs.get('left_crop', self.left_crop)
+        deformation_field = kwargs.get('deformation_field', self.deformation_field)
         kwargs['left_crop'] = left_crop
         fnm_mosaic_stack = kwargs.get('fnm_mosaic_stack', self.fnm_mosaic_stack)
         fnm_types = kwargs.get("fnm_types", ['mrc'])
@@ -4964,11 +4901,7 @@ class FIBSEM_mosaic_dataset:
                 dtp=np.int16
                 mrc_mode = 1
         
-        if hasattr(self, 'voxel_size'):
-            voxel_size = kwargs.get("voxel_size", self.voxel_size)
-        else:
-            voxel_size_default = np.rec.array((8.0, 8.0, 8.0), dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4')])
-            voxel_size = kwargs.get("voxel_size", voxel_size_default)
+        voxel_size = kwargs.get("voxel_size", self.voxel_size)
         voxel_size_angstr = voxel_size.copy()
         voxel_size_angstr.x = voxel_size_angstr.x * 10.0
         voxel_size_angstr.y = voxel_size_angstr.y * 10.0
@@ -5013,11 +4946,7 @@ class FIBSEM_mosaic_dataset:
                 overwrite=True,
             )
         
-        if hasattr(self, "DASK_client_retries"):
-            DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
-        else:
-            DASK_client_retries = kwargs.get("DASK_client_retries", 3)
-
+        DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
         kwargs_al = {'verbose' : verbose,
             'interpolation' : interpolation,
             'border_value' : border_value,
@@ -5031,7 +4960,7 @@ class FIBSEM_mosaic_dataset:
                 corr_idx = self.mosaic_correction_sources.index(image_name)
                 kwargs_al['flatten_mosaic'] = True
                 kwargs_al['mosaic_correction_intercept'] = self.mosaic_correction_intercepts[corr_idx]
-                kwargs_al['mosaic_correction_coefs'] = self.mosaic_correction_coeffs[corr_idx]
+                kwargs_al['mosaic_correction_coeffs'] = self.mosaic_correction_coeffs[corr_idx]
                 kwargs_al['mosaic_correction_degree'] = self.mosaic_correction_degrees[corr_idx]
                 kwargs_al['mosaic_correction_bins'] = self.mosaic_correction_bins
                 if image_name == 'RawImageA':
@@ -5059,15 +4988,14 @@ class FIBSEM_mosaic_dataset:
             params_mult = []
             for layer_id in layer_ids:
                 fls_layer = self.fls[layer_id].ravel()
-                if use_default_coordinates and hasattr(self, 'default_tr_matr'):
+                if use_default_coordinates:
                     tr_matr_layer = self.default_tr_matr[layer_id]
                 else:
                     tr_matr_layer = self.tr_matr[layer_id]
-                #tif_fname = os.path.splitext(fnm_mosaic_stack)[0] + '_layer_{:d}.tif'.format(layer_id)
                 tif_fname = os.path.join(save_folder, os.path.splitext(os.path.split(fnm_mosaic_stack)[1])[0] + '_layer_{:06d}.tif'.format(layer_id))
                 if save_tif:
                     fnms_saved.append(tif_fname)
-                if hasattr(self, 'tile_scales') and perform_intensity_normalization:
+                if perform_intensity_normalization:
                     params_mult.append([layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max,
                                         fill_value, self.Xsize, self.Ysize, left_crop,
                                         self.tile_I0s[layer_id], self.tile_scales[layer_id],
