@@ -4729,7 +4729,7 @@ def evaluate_registration_two_frames_tif(params_tif):
 
 def analyze_tif_stack_registration(tif_filename, **kwargs):
     '''
-    Read MRC stack and analyze registration - calculate NSAD, NCC, and MI.
+    Read TIF stack and analyze registration - calculate NSAD, NCC, and MI.
     ©G.Shtengel, 08/2022. gleb.shtengel@gmail.com
 
     Parameters:
