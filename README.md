@@ -75,7 +75,7 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
         Analyses the noise statistics of the EM data image.
     Perform_2D_fit(img, estimator, **kwargs)
         Bin the image and then perform 2D polynomial fit on the binned image.
-    calculate_gradent_map(img, ** kwargs)
+    calculate_gradient_map(img, ** kwargs)
         Computes 2D Gradient of the image.
 
 ## Two-Frame Image Processing Functions  (FIBSEM_gs.py)
@@ -113,7 +113,7 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
         Generates a figure with blob examples based on xlsx file created by mrc_stack_estimate_resolution_blobs_2D.
 
 ## TIF stack Functions  (FIBSEM_gs.py)
-    analyze_tif_stack_registration(tif_filename, DASK_client, **kwargs)
+    analyze_tif_stack_registration(tif_filename, **kwargs)
         Read TIF stack and analyze registration - calculate NSAD, NCC, and MI.
     show_eval_box_tif_stack(tif_filename, **kwargs)
         Read TIF stack and display the eval box for each frame from the list.
@@ -195,6 +195,11 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
     assemble_layer(params, deformation_field, **kwargs)
         Worker function that assembles a single mosaic layer (one Z-pane) from per-tile
         transformation matrices. Called by assemble_layer_mosaic and save_stack.
+    compute_tile_overlap_intensities(params)
+        Dask worker function for compute_overlap_intensity_ratios. Loads one tile and
+        computes mean/percentile across one or more ROI sub-regions of it, returning a
+        {roi_id: value} dict so that the parent gathers per-pair stats with each tile
+        read at most once.
 
 ## Mosaic Reporting Functions  (FIBSEM_mosaic_dataset_gs.py)
     generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs)
@@ -212,7 +217,7 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
     generate_outliers_report(outliers, fls, **kwargs)
         Generate a quick summary figure of potential outlier frames flagged by upstream analysis
         (e.g. analyze_minmax_outliers_montage_xlsx).
-    reformat_outliers_data(outliers, shape)
+    reformat_outliers_data(outliers)
         Utility that reshapes a flat outlier list into a 2D (ny_tiles × nx_tiles) layout.
 
 ## Helper Functions for Results Presentation  (FIBSEM_gs.py)
@@ -226,7 +231,7 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
         Generate Report Plot for FOV center shift from XLSX spreadsheet file.
     generate_report_data_minmax_xlsx(minmax_xlsx_file, **kwargs)
         Generate Report Plot for data Min-Max from XLSX spreadsheet file.
-    generate_report_transf_matrix_from_xlsx(transf_matrix_xlsx_file, *kwargs)
+    generate_report_transf_matrix_from_xlsx(transf_matrix_xlsx_file, **kwargs)
         Generate Report Plot for Transformation Matrix from XLSX spreadsheet file.
     generate_report_from_xls_registration_summary(file_xlsx, **kwargs)
         Generate Report Plot for FIB-SEM data set registration from XLSX spreadsheet file.
@@ -295,6 +300,9 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
         Perfrom 2D polynomial fit (calls Perform_2D_fit(Img, estimator, **kwargs)) and determine the field-flattening parameters.
     flatten_image(**kwargs)
         Flatten the image(s). Image flattening parameters must be pre-determined (determine_field_fattening_parameters).
+    pad_and_save(**kwargs)
+        Pad FIBSEM frame and re-save.
+
 
 
 ## class FIBSEM_dataset  (FIBSEM_gs.py)
@@ -468,29 +476,44 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
 
     Methods:
     ----------
-    find_tile_pairs(layer_id, tile_ids, **kwargs)
+    find_tile_pairs(layer_id, tile_id, **kwargs)
         Identify intra-layer and inter-layer tile pairs that share an overlap region for a given
         layer / tile set. Used as input to transformation determination and to bundle solving.
     save_parameters(**kwargs)
         Save transformation attributes and parameters (including transformation matrices).
     evaluate_FIBSEM_statistics(**kwargs)
         Evaluates parameters of FIBSEM data set (data Min/Max, Working Distance, Milling Y Voltage, FOV center positions).
+    compute_frame_intensity_ratios(**kwargs)
+        Required precondition for solve_intensity_normalization(method='mean'/'percentile').
     extract_keypoints(**kwargs)
         Extract Key-Points and Descriptors.
     analyze_kpt_statistics(**kwargs)
         Report per-tile-pair keypoint match statistics produced by extract_keypoints /
         determine_transformations_SIFT (counts, residual errors, drop reasons).
     determine_transformations_SIFT(**kwargs)
-        Determine transformation matrices for frame pairs using SIFT. 
-    SIFT_evaluation(index_pair, pair_margins, **kwargs)
+        Determine transformation matrices for frame pairs using SIFT.
+    SIFT_evaluation(index_pair, **kwargs)
         Evaluate SIFT performance on a given index_pair.
     determine_transformations_ECC(**kwargs)
         Determine transformation matrices for frame pairs using ECC. Uses find_Transform_ECC(img1, img2, **kwargs).
+    compute_solved_pair_overlap_bounds(**kwargs)
+        Public post-solve helper.
+    compute_overlap_intensity_ratios(**kwargs)
+        Required for method='overlap_mean'/'overlap_percentile'.
+    compute_detector_target_intensity_ratios(**kwargs)
+        Required for intensity normalization when using target_damp > 0.
     solve_stack_stitching(**kwargs)
         Solve mosaic stack stitching (perform bundle optimization).
     solve_intensity_normalization(**kwargs)
-        Solve a global per-tile intensity correction (gain / offset) so that overlapping tile
-        regions match in mean / contrast across the whole stack.
+        Solve a global per-tile multiplicative scale factor so that overlapping tile
+        regions match in intensity across the whole stack. Five methods, each consuming
+        pre-computed intensity ratios:
+            'SIFT'                - matched-keypoint intensities (requires determine_transformations_SIFT)
+            'mean' / 'percentile' - whole-frame stats (requires compute_frame_intensity_ratios)
+            'overlap_mean' / 'overlap_percentile' - per-pair overlap-ROI stats
+                                    (requires compute_overlap_intensity_ratios)
+        Optional regularization: tikhonov_damp (per-tile L2 toward 1.0) and target_damp
+        (per-pair L2 toward detector-prior ratios from compute_detector_target_intensity_ratios).
     generate_transformation_report(**kwargs)
         Generate Report Plot for transformation summary.
     assemble_layer_mosaic(layer_id, **kwargs)
