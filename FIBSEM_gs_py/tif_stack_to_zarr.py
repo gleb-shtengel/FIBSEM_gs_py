@@ -214,19 +214,24 @@ def create_zarr_store(
     Returns the root zarr.Group.
     """
     compressor = _make_compressor(zarr_compressor, zarr_compressor_level)
-    root = zarr.open_group(output_zarr_path, mode="w" if overwrite else "w-")
+    # zarr 3.x accepts the new `compressors=[...]` (plural, list) kwarg for
+    # v2 stores too; the singular `compressor=` is deprecated.
+    compressors_kw = {'compressors': [compressor]} if compressor is not None else {}
+
+    root = zarr.open_group(output_zarr_path, mode="w" if overwrite else "w-",
+                           zarr_format=2)
 
     cur_nz, cur_ny, cur_nx = nz, ny, nx
     for level in range(n_pyramid_levels):
         lvl_chunks = (min(chunk_z, cur_nz), min(chunk_y, cur_ny), min(chunk_x, cur_nx))
-        root.require_dataset(
+        root.require_array(
             f"s{level}",
             shape=(cur_nz, cur_ny, cur_nx),
             chunks=lvl_chunks,
             dtype=dtype,
-            compressor=compressor,
             fill_value=0,
             overwrite=overwrite,
+            **compressors_kw,
         )
         print(f"  Level s{level}: shape=({cur_nz}, {cur_ny}, {cur_nx})  chunks={lvl_chunks}")
         cur_nz //= downsample_factor
