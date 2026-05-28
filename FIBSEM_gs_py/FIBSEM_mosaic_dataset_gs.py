@@ -728,7 +728,7 @@ def assemble_layer(params, deformation_field, **kwargs):
     ----------
     params = [layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max,
           fill_value, Xsize, Ysize, left_crop, tile_I0s, tile_scales,
-          return_layer_array, save_tif, tif_fname, dtp, verbose]
+          return_layer_array, save_tif, tif_fname, dtp, bin_factor, verbose]
         layer_id : int
             Layer ID should be a value between -1 and self.nz_tiles-1. -1 means the last layer will be assembled.
         fls_layer : list
@@ -756,6 +756,12 @@ def assemble_layer(params, deformation_field, **kwargs):
         tif_fname : str
             path for the TIF file
         dtp : data type
+        bin_factor : int
+            Output binning factor (>= 1). If > 1, the assembled mosaic is binned
+            by mean over (bin_factor x bin_factor) blocks before saving / returning.
+            Output shape becomes (Ysize // bin_factor, (Xsize - left_crop) // bin_factor).
+            Trailing edge pixels that don't form a complete bin are dropped.
+            Default is 1 (no binning).
         verbose : boolean
             Display intermediate results.
     
@@ -816,7 +822,7 @@ def assemble_layer(params, deformation_field, **kwargs):
 
     layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max, fill_value, \
     Xsize, Ysize, left_crop, tile_I0s, tile_scales, return_layer_array, save_tif, tif_fname, \
-    dtp, verbose = params
+    dtp, bin_factor, verbose = params
     layer_mosaic = np.zeros((Ysize, Xsize-left_crop), dtype=np.float32)
     layer_mosaic_weights = np.zeros((Ysize, Xsize-left_crop), dtype=np.float32)
     tile_params_mult = []
@@ -866,6 +872,21 @@ def assemble_layer(params, deformation_field, **kwargs):
                 mosaic_correction_coeffs,
                 mosaic_correction_degree,
                 mosaic_correction_bins) + mosaic_Scaling_offset
+
+        # Optional output binning. Done in float32 BEFORE the dtype cast so we
+        # don't lose precision in the mean. Trailing edge pixels that don't
+        # form a complete bin are dropped.
+        if bin_factor > 1:
+            h, w = layer_mosaic.shape
+            h_t = (h // bin_factor) * bin_factor
+            w_t = (w // bin_factor) * bin_factor
+            layer_mosaic = (
+                layer_mosaic[:h_t, :w_t]
+                .reshape(h_t // bin_factor, bin_factor,
+                         w_t // bin_factor, bin_factor)
+                .mean(axis=(1, 3))
+                .astype(np.float32)
+            )
 
         if save_tif:
             if dtp == np.uint8 and 'U8_range' in kwargs:
@@ -4435,6 +4456,11 @@ class FIBSEM_mosaic_dataset:
             borderValue for cv2.remap. Default is np.nan
         border_mode : int
             borderMode for cv2.remap. Default is cv2.BORDER_CONSTANT
+        bin_factor : int
+            Output binning factor (>= 1). When > 1, the assembled layer is
+            binned by mean over (bin_factor x bin_factor) blocks before being
+            returned. Output shape becomes (Ysize // bin_factor,
+            (Xsize - left_crop) // bin_factor). Default is 1 (no binning).
 
         Returns:
         ----------
@@ -4485,6 +4511,11 @@ class FIBSEM_mosaic_dataset:
         dpi = kwargs.get('dpi', 300)
         use_default_coordinates = kwargs.get('use_default_coordinates', False)
         DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
+        bin_factor = kwargs.get('bin_factor', 1)
+        if not isinstance(bin_factor, int) or bin_factor < 1:
+            raise ValueError(
+                f"assemble_layer_mosaic: bin_factor must be a positive int (got {bin_factor!r})."
+            )
 
         return_layer_array = True
         save_tif = False
@@ -4510,12 +4541,12 @@ class FIBSEM_mosaic_dataset:
                 params = [layer_id, self.fls[layer_id].ravel(), image_name, tr_matr_layer, weight_min, weight_max,
                           fill_value, self.Xsize, self.Ysize, left_crop,
                           self.tile_I0s[layer_id], self.tile_scales[layer_id],
-                          return_layer_array, save_tif, tif_fname, dtp, verbose]
+                          return_layer_array, save_tif, tif_fname, dtp, bin_factor, verbose]
             else:
                 params = [layer_id, self.fls[layer_id].ravel(), image_name, tr_matr_layer, weight_min, weight_max,
                           fill_value, self.Xsize, self.Ysize, left_crop,
                           np.zeros(self.n_tiles_per_layer), np.ones(self.n_tiles_per_layer),
-                          return_layer_array, save_tif, tif_fname, dtp, verbose]
+                          return_layer_array, save_tif, tif_fname, dtp, bin_factor, verbose]
 
             # Add per-image flattening parameters
             kwargs_al_local = dict(kwargs_al)
@@ -4688,7 +4719,7 @@ class FIBSEM_mosaic_dataset:
                 print(time.strftime('%Y/%m/%d  %H:%M:%S  ') + ' saving images into .jpg files')
             imf1, imf2 = os.path.splitext(image_fname)
             for j, layer_mosaic in enumerate(layer_mosaics):
-                sx = 15.0
+                sx = 10.0
                 sy = sx / layer_mosaic.shape[1] * layer_mosaic.shape[0]
                 fig, ax = plt.subplots(1,1, figsize=(sx,sy))
                 fig.subplots_adjust(left=0.0, bottom=0.0, right=1.0, top=1.0, wspace=0.01, hspace=0.01)
@@ -5102,12 +5133,12 @@ class FIBSEM_mosaic_dataset:
                     params_mult.append([layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max,
                                         fill_value, self.Xsize, self.Ysize, left_crop,
                                         self.tile_I0s[layer_id], self.tile_scales[layer_id],
-                                        return_layer_array, save_tif, tif_fname, dtp, verbose])
+                                        return_layer_array, save_tif, tif_fname, dtp, 1, verbose])  # bin_factor = 1
                 else:
                     params_mult.append([layer_id, fls_layer, image_name, tr_matr_layer, weight_min, weight_max,
                                         fill_value, self.Xsize, self.Ysize, left_crop,
                                         np.zeros(len(fls_layer)), np.ones(len(fls_layer)),
-                                        return_layer_array, save_tif, tif_fname, dtp, verbose])
+                                        return_layer_array, save_tif, tif_fname, dtp, 1, verbose])  # bin_factor = 1
             if use_DASK:
                 shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)
                 futures = DASK_client.map(assemble_layer, params_mult, deformation_field = shared_data_future, retries = DASK_client_retries, **kwargs_al)
