@@ -497,6 +497,11 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
         X-size of the tile. Default is montage_object.XResolution-left_crop
     dy : int
         Y-size of the tile. Default is montage_object.YResolution
+    bin_factor : int
+        If the displayed mosaic was binned by this factor before being passed
+        to imshow, divide all overlay coordinates (xi, yi, dx, dy) by this
+        factor so the grid aligns with the displayed image. Default is 1
+        (no binning).
     '''
     linestyle = kwargs.get('linestyle', 'dashed')
     linewidth = kwargs.get('linewidth', 1.0)
@@ -505,6 +510,11 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
     dx = kwargs.get('dx', montage_object.XResolution-left_crop)
     dy = kwargs.get('dy', montage_object.YResolution)
     tile_positions_actual = kwargs.get('tile_positions_actual', True)
+    bin_factor = kwargs.get('bin_factor', 1)
+    if not isinstance(bin_factor, int) or bin_factor < 1:
+        raise ValueError(
+            f"overlay_montage_grid: bin_factor must be a positive int (got {bin_factor!r})."
+        )
 
     if tile_positions_actual:
         # Default: derive (positive) tile positions from tr_matr on the fly.
@@ -512,8 +522,11 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
         tile_positions = kwargs.get('tile_positions', -montage_object.tr_matr[0, :, 0:2, 2])
         for tile_position in tile_positions:
             xi, yi = tile_position
-            rect_patch = patches.Rectangle((xi,yi), dx-2, dy-2,
-            linewidth=linewidth, linestyle=linestyle, edgecolor=color, facecolor='none')
+            rect_patch = patches.Rectangle(
+                (xi / bin_factor, yi / bin_factor),
+                (dx - 2) / bin_factor, (dy - 2) / bin_factor,
+                linewidth=linewidth, linestyle=linestyle,
+                edgecolor=color, facecolor='none')
             ax.add_patch(rect_patch)
     else:
         X0 = montage_object.FirstPixels[0, 0]
@@ -523,8 +536,11 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
             yi = np.max((FirstPixel_pair[1]- Y0, 0))
             dx_loc = dx  + np.min((FirstPixel_pair[0]- X0, 0))
             dy_loc = dy  + np.min((FirstPixel_pair[1]- Y0, 0))
-            rect_patch = patches.Rectangle((xi,yi), dx_loc-2, dy_loc-2,
-            linewidth=linewidth, linestyle=linestyle, edgecolor=color, facecolor='none')
+            rect_patch = patches.Rectangle(
+                (xi / bin_factor, yi / bin_factor),
+                (dx_loc - 2) / bin_factor, (dy_loc - 2) / bin_factor,
+                linewidth=linewidth, linestyle=linestyle,
+                edgecolor=color, facecolor='none')
             ax.add_patch(rect_patch)
 
 
@@ -4595,6 +4611,7 @@ class FIBSEM_mosaic_dataset:
                 if overlay_tile_grid:
                         overlay_montage_grid(ax, self,
                                 tile_positions = -self.tr_matr[layer_id, :, 0:2, 2],
+                                bin_factor = bin_factor,
                                  linewidth = linewidth,
                                  linestyle = linestyle,
                                  color = color)
@@ -4748,6 +4765,7 @@ class FIBSEM_mosaic_dataset:
                 ax.axis(False)
                 overlay_montage_grid(ax, self,
                                      tile_positions = -self.tr_matr[layer_id, :, 0:2, 2],
+                                     bin_factor = bin_factor,
                                      left_crop = left_crop,
                                      linewidth = linewidth,
                                      linestyle = linestyle,
