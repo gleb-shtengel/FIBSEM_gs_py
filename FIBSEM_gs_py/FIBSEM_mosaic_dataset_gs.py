@@ -2539,7 +2539,17 @@ class FIBSEM_mosaic_dataset:
                     print('Z pixel = {:.2f} nm  - based on WD data'.format(Z_pixel_size_WD))
                     print('Z pixel = {:.2f} nm  - based on Milling Voltage data'.format(Z_pixel_size_MV))
 
-            self.voxel_size = np.rec.array((self.PixelSize,  self.PixelSize,  Z_pixel_size_WD), dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4')])
+            # If the milling-rate fit produced a non-positive or non-finite Z spacing
+            # (e.g. flat WD trend → slope 0), fall back to PixelSize so downstream
+            # OME-NGFF metadata gets a positive scale.
+            if not (np.isfinite(Z_pixel_size_WD) and Z_pixel_size_WD > 0):
+                if verbose:
+                    print(f"  WD-based Z pixel size is {Z_pixel_size_WD}; "
+                          f"falling back to PixelSize ({self.PixelSize}) for z spacing.")
+                Z_pixel_size_WD = self.PixelSize
+            self.voxel_size = np.rec.array(
+                (self.PixelSize, self.PixelSize, Z_pixel_size_WD),
+                dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4')])
         except:
             if verbose:
                 print('Could not estimate milling rate')
@@ -5245,8 +5255,24 @@ class FIBSEM_mosaic_dataset:
         axis_perm = tuple('zyx'.index(a) for a in axis_order)   # ZYX -> output
         dst_shape = tuple(src_shape_zyx[axis_perm[i]] for i in range(3))
 
-        voxel_size = kwargs.get('voxel_size', self.voxel_size)
-        voxel_size_zyx = (float(voxel_size.z), float(voxel_size.y), float(voxel_size.x))
+        # voxel_size_zyx (tuple) takes precedence over voxel_size (rec array).
+        # Fallback to self.voxel_size when neither kwarg is supplied.
+        vs_kwarg = kwargs.get('voxel_size_zyx', None)
+        if vs_kwarg is not None:
+            voxel_size_zyx = (float(vs_kwarg[0]), float(vs_kwarg[1]), float(vs_kwarg[2]))
+        else:
+            voxel_size = kwargs.get('voxel_size', self.voxel_size)
+            voxel_size_zyx = (float(voxel_size.z), float(voxel_size.y), float(voxel_size.x))
+
+        # Validate: every component must be positive finite (Neuroglancer requirement).
+        if not all(np.isfinite(v) and v > 0 for v in voxel_size_zyx):
+            raise ValueError(
+                f"save_stack_zarr3: voxel_size_zyx contains non-positive or non-finite "
+                f"values: {voxel_size_zyx}. Pass voxel_size_zyx=(zsz, ysz, xsz) as a "
+                f"kwarg, or run evaluate_FIBSEM_statistics first to populate "
+                f"self.voxel_size from milling-rate data."
+            )
+
         voxel_size_out = tuple(voxel_size_zyx[axis_perm[i]] for i in range(3))
         origin_out     = tuple(origin_zyx[axis_perm[i]]      for i in range(3))
 
@@ -5303,20 +5329,15 @@ class FIBSEM_mosaic_dataset:
         # Choose tr_matr source (post-solve or nominal).
         tr_matr_all = self.default_tr_matr if use_default_coords else self.tr_matr
 
-        # Per-tile canvas bbox (post-warp), translation-only approximation.
-        # tr_matr stores NEGATIVE translation; canvas origin of tile is
-        # -round(tr_matr[..., :2, 2]), matching split_translation_int_fract.
-        # For AffineTransform solves with non-trivial rotation/scale this can
-        # miss 1-2 edge pixels at the warped bbox border.
-        def _tile_canvas_bbox(layer, tile):
-            # Reproduces split_translation_int_fract: returns dx, dy that
-            # transform_tile would place the tile at.
-            tx = -int(np.round(tr_matr_all[layer, tile, 0, 2]))
-            ty = -int(np.round(tr_matr_all[layer, tile, 1, 2]))
-            # Source tile size after left_crop:
-            w = self.XResolution - left_crop
-            h = self.YResolution
-            return tx, ty, tx + w, ty + h     # (x0, y0, x1, y1) — inclusive/exclusive
+        # Vectorised tile-bbox table for fast shard-membership tests.
+        # tile_tx[layer, tile] = -round(tr_matr[layer, tile, 0, 2]) — matches
+        # split_translation_int_fract sign convention used by transform_tile.
+        tile_tx = -np.round(tr_matr_all[..., 0, 2]).astype(np.int64)   # (nz, n_tiles)
+        tile_ty = -np.round(tr_matr_all[..., 1, 2]).astype(np.int64)
+        tile_w  = self.XResolution - left_crop
+        tile_h  = self.YResolution
+        tile_tx1 = tile_tx + tile_w     # exclusive right edge
+        tile_ty1 = tile_ty + tile_h     # exclusive bottom edge
 
         use_s0 = level_shards[0]
         shard_size_xyz = use_s0       # (sx, sy, sz) in output axis order...
@@ -5350,7 +5371,7 @@ class FIBSEM_mosaic_dataset:
         fls_flat_by_layer = [self.fls[lid].ravel() for lid in range(nz)]
 
         params_s0 = []
-        for origin_out in tqdm(s0_origins, desc = 'Building s0 shard task list params', display = verbose):
+        for origin_out in tqdm(s0_origins, desc = 'Preparing s0 shard tasks', display = verbose):
             # Convert output-axis-order origin/size → canvas ZYX coords.
             origin_zyx_shard = tuple(origin_out[axis_order.index(a)] for a in 'zyx')
             size_zyx_shard   = tuple(use_s0[axis_order.index(a)]    for a in 'zyx')
@@ -5362,20 +5383,26 @@ class FIBSEM_mosaic_dataset:
                 continue
 
             layer_ids = list(range(z0, z0 + sz))
+
+            # Vectorised overlap test across the entire z-slab of this shard.
+            # overlap[li, t] = True iff tile t of layer (z0+li) overlaps the
+            # shard's canvas xy region [x0, x0+sx) × [y0, y0+sy).
+            tx_slab  = tile_tx [z0:z0 + sz]      # shape (sz, n_tiles)
+            ty_slab  = tile_ty [z0:z0 + sz]
+            tx1_slab = tile_tx1[z0:z0 + sz]
+            ty1_slab = tile_ty1[z0:z0 + sz]
+            overlap = ~((tx1_slab <= x0) | (tx_slab >= x0 + sx) |
+                        (ty1_slab <= y0) | (ty_slab >= y0 + sy))
+
             tiles_per_layer = []
-            for lid in layer_ids:
-                contribs = []
-                for t in range(self.n_tiles_per_layer):
-                    tx0, ty0, tx1, ty1 = _tile_canvas_bbox(lid, t)
-                    if tx1 <= x0 or tx0 >= x0 + sx or ty1 <= y0 or ty0 >= y0 + sy:
-                        continue
-                    contribs.append((
-                        t,
-                        fls_flat_by_layer[lid][t],
-                        tr_matr_all[lid, t],
-                        float(tile_I0s_all[lid, t]),
-                        float(tile_scales_all[lid, t]),
-                    ))
+            for li, lid in enumerate(layer_ids):
+                contrib_tiles = np.where(overlap[li])[0]
+                contribs = [(int(t),
+                             fls_flat_by_layer[lid][t],
+                             tr_matr_all[lid, t],
+                             float(tile_I0s_all[lid, t]),
+                             float(tile_scales_all[lid, t]))
+                            for t in contrib_tiles]
                 tiles_per_layer.append(contribs)
 
             params_s0.append([
