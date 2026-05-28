@@ -4610,7 +4610,7 @@ class FIBSEM_mosaic_dataset:
                 ax.set_title(ttls[j], fontsize=10)
                 if overlay_tile_grid:
                         overlay_montage_grid(ax, self,
-                                tile_positions = -self.tr_matr[layer_id, :, 0:2, 2],
+                                tile_positions = -tr_matr_layer[:, 0:2, 2],
                                 bin_factor = bin_factor,
                                  linewidth = linewidth,
                                  linestyle = linestyle,
@@ -4764,7 +4764,7 @@ class FIBSEM_mosaic_dataset:
                 ax.imshow(layer_mosaic, cmap='Greys', vmin = vmin, vmax = vmax)
                 ax.axis(False)
                 overlay_montage_grid(ax, self,
-                                     tile_positions = -self.tr_matr[layer_id, :, 0:2, 2],
+                                     tile_positions = -tr_matr_layer[:, 0:2, 2],
                                      bin_factor = bin_factor,
                                      left_crop = left_crop,
                                      linewidth = linewidth,
