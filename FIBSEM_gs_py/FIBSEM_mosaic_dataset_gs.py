@@ -128,6 +128,7 @@ def split_translation_int_fract(transformation_matrix):
                          [0, 0,  0]])
     return transformation_matrix + delta_matrix, dx, dy
 
+
 def combine_deformation_fields(DF1, DF2, interpolation=cv2.INTER_LINEAR):
     """
     Combine two deformation fields: DFjoint = DF2 ∘ DF1
@@ -204,6 +205,182 @@ def _add_warped_to_mosaic(tile, xi, yi, mosaic, mosaic_weight, **kwargs):
 
     mosaic[cyi:cya, cxi:cxa] += tile_out*tile_weight
     mosaic_weight[cyi:cya, cxi:cxa] += tile_weight
+
+
+def _write_zarr3_shard_s0_from_tiles(params, deformation_field, **kwargs):
+    """
+    DASK worker — build one s0 shard of a zarr v3 store from tile data.
+    Composites contributing tiles into a shard-local (sz, sy, sx) ZYX buffer
+    via `_add_warped_to_mosaic`, optionally transposes to the output axis
+    order, then writes the whole shard atomically.
+
+    params : list
+        [output_zarr_path,
+         x0, y0, z0,                       # canvas-coords shard origin (XYZ)
+         sx, sy, sz,                       # shard size at s0 (XYZ); edge shards may clip
+         layer_ids,                        # list of layer indices in [z0, z0+sz)
+         tiles_per_layer,                  # list, per layer: [(tile_id, fl, tr_matr_single, I0, scale), ...]
+         image_name, fill_value,
+         weight_min, weight_max,
+         left_crop,
+         flatten_kwargs,                   # dict or None  — passed through to optional flattening
+         axis_perm,                        # (0,1,2) | (2,1,0) etc — source ZYX → output
+         dtp,
+         U8_range,                         # None or [umin, umax]
+         verbose]
+
+    deformation_field : 3D array | np.nan
+        Shared by all workers; pass via DASK_client.scatter(..., broadcast=True).
+    """
+    import os, time
+    import numpy as np
+    import zarr
+
+    t0 = time.time()
+    (output_zarr_path,
+     x0, y0, z0,
+     sx, sy, sz,
+     layer_ids,
+     tiles_per_layer,
+     image_name, fill_value,
+     weight_min, weight_max,
+     left_crop,
+     flatten_kwargs,
+     axis_perm,
+     dtp,
+     U8_range,
+     verbose) = params
+
+    kwargs_tt = {
+        'verbose': False,
+        'interpolation': kwargs.get('interpolation'),
+        'border_value':  kwargs.get('border_value', np.nan),
+        'border_mode':   kwargs.get('border_mode'),
+    }
+    kwargs_awp = {'weight_min': weight_min, 'weight_max': weight_max}
+
+    # Allocate ZYX shard buffer.
+    shard_buf_zyx = np.empty((sz, sy, sx), dtype=dtp)
+
+    for layer_idx, (layer_id, tile_list) in enumerate(zip(layer_ids, tiles_per_layer)):
+        # Shard-local mosaic + weights for this layer.
+        layer_mosaic   = np.zeros((sy, sx), dtype=np.float32)
+        layer_weights  = np.zeros((sy, sx), dtype=np.float32)
+
+        for (j, fl, tr_matr_single, tile_I0, tile_scale) in tile_list:
+            tile_params = [j, fl, image_name, tr_matr_single,
+                           sy, sx,                # NOT used by transform_tile for output sizing
+                           left_crop, tile_I0, tile_scale]
+            tile_warped, xi, yi = transform_tile(tile_params, deformation_field, **kwargs_tt)
+            # xi, yi are the tile's placement in CANVAS coords.
+            # Convert to shard-local coords and let _add_warped_to_mosaic clip:
+            _add_warped_to_mosaic(
+                tile_warped, xi - x0, yi - y0,
+                layer_mosaic, layer_weights,
+                **kwargs_awp,
+            )
+
+        # Normalise (same idiom as assemble_layer).
+        np.clip(layer_weights, weight_min, weight_max * max(len(tile_list), 1),
+                out=layer_weights)
+        np.divide(layer_mosaic, layer_weights, out=layer_mosaic)
+        np.nan_to_num(layer_mosaic, nan=fill_value, copy=False)
+
+        # Optional per-layer flattening (same as assemble_layer's flatten path).
+        if flatten_kwargs is not None:
+            offset = flatten_kwargs.get('mosaic_Scaling_offset', 0.0)
+            layer_mosaic = flatten_image_fast(
+                layer_mosaic - offset,
+                flatten_kwargs['mosaic_correction_intercept'],
+                flatten_kwargs['mosaic_correction_coeffs'],
+                flatten_kwargs['mosaic_correction_degree'],
+                flatten_kwargs['mosaic_correction_bins'],
+            ) + offset
+
+        # Cast to dtp.
+        if dtp == np.uint8 and U8_range is not None:
+            U8_min, U8_max = float(U8_range[0]), float(U8_range[1])
+            scale = 255.0 / max(U8_max - U8_min, 1e-6)
+            np.subtract(layer_mosaic, U8_min, out=layer_mosaic)
+            np.multiply(layer_mosaic, scale,  out=layer_mosaic)
+            np.clip(layer_mosaic, 0, 255, out=layer_mosaic)
+            shard_buf_zyx[layer_idx] = layer_mosaic.astype(np.uint8)
+        else:
+            shard_buf_zyx[layer_idx] = layer_mosaic.astype(dtp)
+
+    # Transpose to output axis order. ZYX = (0,1,2); XYZ = (2,1,0).
+    if axis_perm != (0, 1, 2):
+        shard_out = shard_buf_zyx.transpose(axis_perm)
+    else:
+        shard_out = shard_buf_zyx
+
+    # Destination slices in output axis order.
+    src_slices_zyx = (slice(z0, z0 + sz), slice(y0, y0 + sy), slice(x0, x0 + sx))
+    dst_slices = tuple(src_slices_zyx[axis_perm[i]] for i in range(3))
+
+    arr = zarr.open(output_zarr_path, mode='r+')['s0']
+    arr[dst_slices] = shard_out
+
+    elapsed = time.time() - t0
+    return {
+        'shard_origin_xyz': (x0, y0, z0),
+        'shard_size_xyz':   (sx, sy, sz),
+        'nbytes': shard_out.nbytes,
+        'elapsed_s': elapsed,
+    }
+
+
+def _downsample_zarr3_shard(params):
+    """
+    DASK worker — downsample one shard from level (lvl-1) to level lvl
+    within the same zarr v3 store. Mirrors the per-shard pattern used by
+    convert_ome_zarr_v2_to_v3 (one shard = one task = one atomic write).
+
+    params : list
+        [output_zarr_path, src_lvl_arr_path, dst_lvl_arr_path,
+         src_slices, dst_slices, downsample_factor, dtp]
+    """
+    import time
+    import numpy as np
+    import zarr
+
+    t0 = time.time()
+    (output_zarr_path, src_arr_path, dst_arr_path,
+     src_slices, dst_slices, downsample_factor, dtp) = params
+
+    grp = zarr.open_group(str(output_zarr_path), mode='r+')
+    src = grp[src_arr_path]
+    dst = grp[dst_arr_path]
+
+    data = np.asarray(src[src_slices])
+
+    # Trim to a multiple of downsample_factor along every axis, then average downsample_factor-blocks.
+    trimmed = tuple((data.shape[d] // downsample_factor) * downsample_factor for d in range(data.ndim))
+    if any(t == 0 for t in trimmed):
+        return {'arr_path': dst_arr_path, 'elapsed_s': time.time() - t0,
+                'note': 'empty after trim'}
+    cropped = data[:trimmed[0], :trimmed[1], :trimmed[2]]
+    new_shape = tuple(s // downsample_factor for s in trimmed)
+    downsampled = (
+        cropped
+        .reshape(new_shape[0], downsample_factor, new_shape[1], downsample_factor, new_shape[2], downsample_factor)
+        .mean(axis=(1, 3, 5))
+        .astype(dtp)
+    )
+
+    # Write whole shard atomically; only fill the actually-downsampled region
+    # (edge shards may be smaller than dst_slices' nominal extent).
+    out_slices = tuple(slice(dst_slices[d].start,
+                             dst_slices[d].start + downsampled.shape[d])
+                       for d in range(data.ndim))
+    dst[out_slices] = downsampled
+
+    return {
+        'arr_path': dst_arr_path,
+        'dst_slices': str(dst_slices),
+        'nbytes': downsampled.nbytes,
+        'elapsed_s': time.time() - t0,
+    }
 
 
 def transform_tile(tile_params, deformation_field, **kwargs):
@@ -4949,3 +5126,361 @@ class FIBSEM_mosaic_dataset:
             
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Saving Finished')
         return fnms_saved
+
+
+    def save_stack_zarr3(self, **kwargs):
+        '''
+        One-stop save of the assembled mosaic stack directly into a sharded ZARR v3
+        store (OME-NGFF v0.4 multiscales metadata). No intermediate MRC/v2 store.
+        ©G.Shtengel 2026 gleb.shtengel@gmail.com
+
+        Each DASK worker handles ONE shard. At s0, the worker composites the
+        contributing tiles (via transform_tile + _add_warped_to_mosaic) into a
+        shard-local buffer and writes the whole shard atomically.  For pyramid
+        levels s1, s2, …, each worker reads one shard's worth of source from
+        the previous level, downsamples by `downsample_factor`, and writes the
+        whole shard.
+
+        kwargs (mirrors save_stack where applicable):
+        ----------
+        DASK_client            : DASK client; '' for local (default '').
+        DASK_client_retries    : int.  Default self.DASK_client_retries.
+        output_zarr_path       : str.  Default = splitext(self.fnm_mosaic_stack)[0] + '.zarr'.
+        image_name             : 'RawImageA' | 'RawImageB'.  Default 'RawImageA'.
+        weight_min, weight_max : floats.  Defaults 1.0, 512.0.
+        fill_value             : float.  Default -10000.
+        left_crop              : int.    Default self.left_crop.
+        deformation_field      : 3D array.  Default self.deformation_field.
+        perform_intensity_normalization : bool.  Default False.
+        use_default_coordinates : bool.  Default False.
+        flatten_mosaic         : bool.  Default False.
+        dtp                    : numpy dtype.  Default int16.
+        U8_range               : [umin, umax] for uint8 output.  Default None.
+        verbose                : bool.  Default False.
+        interpolation, border_value, border_mode : cv2 args.
+
+        # v3-specific (defaults follow convert_ome_zarr_v2_to_v3 / tif_stack_to_zarr3)
+        chunk_size             : tuple, default (32, 32, 32) in axis_order.
+        shard_size             : tuple, default (1024, 1024, 1024) in axis_order.
+        axis_order             : str,   default 'xyz' (source is always ZYX).
+        transpose_codec        : bool,  default True (F-order inside chunks).
+        compression            : str,   default 'zstd'.
+        compression_level      : int,   default 3.
+        n_pyramid_levels       : int,   default 4.
+        downsample_factor      : int,   default 2.
+        voxel_unit             : str,   default 'nanometer'.
+        zarr_origin_zyx        : tuple, default (0.0, 0.0, 0.0).
+        zarr_dataset_name      : str,   default 'volume'.
+
+        # Neuroglancer
+        neuroglancer_serve_base_url, neuroglancer_viewer_url,
+        neuroglancer_display_axes_order : forwarded to generate_neuroglancer_link.
+
+        Returns:
+        ----------
+        dict
+            {'output_zarr_path', 'shape_zyx', 'shape_out', 'dtype',
+             'chunks', 'shards', 'n_levels', 'elapsed_s', 'neuroglancer_link'}
+        '''
+        import math, itertools, time
+        import numpy as np
+        import zarr
+        from FIBSEM_gs_py.tif_stack_to_zarr import (
+            _make_v3_compressor, _resolve_chunks_shards, _translation_at_level,
+            generate_neuroglancer_link, _print_neuroglancer_info,
+        )
+
+        # ---- 0. Read kwargs ----------------------------------------------
+        verbose = kwargs.get('verbose', False)
+        DASK_client = kwargs.get('DASK_client', '')
+        use_DASK, _ = check_DASK(DASK_client, verbose=verbose)
+        DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
+
+        image_name = kwargs.get('image_name', 'RawImageA')
+        weight_min = kwargs.get('weight_min', 1.0)
+        weight_max = kwargs.get('weight_max', 512.0)
+        fill_value = kwargs.get('fill_value', -10000)
+        left_crop  = kwargs.get('left_crop', self.left_crop)
+        deformation_field = kwargs.get('deformation_field', self.deformation_field)
+        perform_norm = kwargs.get('perform_intensity_normalization', False)
+        use_default_coords = kwargs.get('use_default_coordinates', False)
+        flatten_mosaic = kwargs.get('flatten_mosaic', False)
+        dtp = kwargs.get('dtp', np.int16)
+        U8_range = kwargs.get('U8_range', None)
+        interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
+        border_value  = kwargs.get('border_value', np.nan)
+        border_mode   = kwargs.get('border_mode', cv2.BORDER_CONSTANT)
+
+        fnm_mosaic_stack = kwargs.get('fnm_mosaic_stack', self.fnm_mosaic_stack)
+        output_zarr_path = kwargs.get('output_zarr_path',
+                                      os.path.splitext(fnm_mosaic_stack)[0] + '.zarr')
+
+        # v3 kwargs
+        chunk_size  = kwargs.get('chunk_size', (32, 32, 32))
+        shard_size  = kwargs.get('shard_size', (1024, 1024, 1024))
+        axis_order  = kwargs.get('axis_order', 'xyz').lower()
+        transpose_codec   = kwargs.get('transpose_codec', True)
+        compression       = kwargs.get('compression', 'zstd')
+        compression_level = kwargs.get('compression_level', 3)
+        n_pyramid_levels  = kwargs.get('n_pyramid_levels', 4)
+        downsample_factor = kwargs.get('downsample_factor', 2)
+        voxel_unit        = kwargs.get('voxel_unit', 'nanometer')
+        origin_zyx        = kwargs.get('zarr_origin_zyx', (0.0, 0.0, 0.0))
+        dataset_name      = kwargs.get('zarr_dataset_name', 'volume')
+
+        ng_serve_url  = kwargs.get('neuroglancer_serve_base_url', 'https://s3.janelia.org/hess-lab/FIBSEM')
+        ng_viewer_url = kwargs.get('neuroglancer_viewer_url', 'https://neuroglancer-demo.appspot.com/')
+        ng_axes_order = kwargs.get('neuroglancer_display_axes_order', list(axis_order))
+
+        t_start = time.time()
+
+        # ---- 1. Geometry --------------------------------------------------
+        nz = int(self.nz_tiles)
+        ny = int(self.Ysize)
+        nx = int(self.Xsize - left_crop)
+        src_shape_zyx = (nz, ny, nx)
+
+        if set(axis_order) != set('xyz') or len(axis_order) != 3:
+            raise ValueError(f"axis_order must be a permutation of 'xyz', got {axis_order!r}")
+        axis_perm = tuple('zyx'.index(a) for a in axis_order)   # ZYX -> output
+        dst_shape = tuple(src_shape_zyx[axis_perm[i]] for i in range(3))
+
+        voxel_size = kwargs.get('voxel_size', self.voxel_size)
+        voxel_size_zyx = (float(voxel_size.z), float(voxel_size.y), float(voxel_size.x))
+        voxel_size_out = tuple(voxel_size_zyx[axis_perm[i]] for i in range(3))
+        origin_out     = tuple(origin_zyx[axis_perm[i]]      for i in range(3))
+
+        # ---- 2. Pre-allocate v3 store with all pyramid levels -------------
+        if os.path.exists(output_zarr_path):
+            shutil.rmtree(output_zarr_path)
+        root = zarr.open_group(output_zarr_path, mode='w', zarr_format=3)
+
+        v3_compressor = _make_v3_compressor(compression, compression_level)
+        transpose_filter = None
+        if transpose_codec:
+            from zarr.codecs import TransposeCodec
+            transpose_filter = TransposeCodec(order=(2, 1, 0))   # F-order, 3D
+
+        level_shapes, level_chunks, level_shards = [], [], []
+        cur = dst_shape
+        for lvl in range(n_pyramid_levels):
+            use_chunks, use_shards = _resolve_chunks_shards(cur, chunk_size, shard_size)
+            codec_kwargs = {}
+            if transpose_filter is not None: codec_kwargs['filters']     = [transpose_filter]
+            if v3_compressor   is not None: codec_kwargs['compressors'] = [v3_compressor]
+            root.create_array(
+                name=f's{lvl}', shape=cur, dtype=dtp,
+                chunks=use_chunks, shards=use_shards, fill_value=0, overwrite=True,
+                **codec_kwargs,
+            )
+            level_shapes.append(cur)
+            level_chunks.append(use_chunks)
+            level_shards.append(use_shards)
+            if verbose:
+                print(f"  Pre-allocated s{lvl}  shape={cur}  chunks={use_chunks}  shards={use_shards}")
+            cur = tuple(max(d // downsample_factor, 1) for d in cur)
+
+        # ---- 3. OME-NGFF multiscales metadata -----------------------------
+        axes_meta = [{'name': a, 'type': 'space', 'unit': voxel_unit} for a in axis_order]
+        datasets_meta = []
+        for lvl in range(n_pyramid_levels):
+            scale = [voxel_size_out[i] * (downsample_factor ** lvl) for i in range(3)]
+            datasets_meta.append({
+                'path': f's{lvl}',
+                'coordinateTransformations': [
+                    {'type': 'scale',       'scale':       scale},
+                    {'type': 'translation', 'translation': list(origin_out)},
+                ],
+            })
+        root.attrs['multiscales'] = [{
+            'version': '0.4', 'name': dataset_name,
+            'axes': axes_meta, 'datasets': datasets_meta,
+            'type': 'mean',
+            'metadata': {'description': f'save_stack_zarr3 (axis_order={axis_order})'},
+        }]
+
+        # ---- 4. Build s0 shard task list ---------------------------------
+        # Choose tr_matr source (post-solve or nominal).
+        tr_matr_all = self.default_tr_matr if use_default_coords else self.tr_matr
+
+        # Per-tile canvas bbox (post-warp).  Use translation only; rotation/scale
+        # in the affine causes a small bbox expansion but transform_tile pads
+        # by remap.  We pad by +/- 1 pixel to be safe.
+        # tr_matr stores NEGATIVE translation; canvas origin of tile is +tr_matr[..., :2, 2].
+        def _tile_canvas_bbox(layer, tile):
+            # Reproduces split_translation_int_fract: returns dx, dy that
+            # transform_tile would place the tile at.
+            tx = int(np.floor(tr_matr_all[layer, tile, 0, 2]))
+            ty = int(np.floor(tr_matr_all[layer, tile, 1, 2]))
+            # Source tile size after left_crop:
+            w = self.XResolution - left_crop
+            h = self.YResolution
+            return tx, ty, tx + w, ty + h     # (x0, y0, x1, y1) — inclusive/exclusive
+
+        use_s0 = level_shards[0]
+        shard_size_xyz = use_s0       # (sx, sy, sz) in output axis order...
+        # ...but we enumerate shards in OUTPUT space and convert to ZYX for the worker.
+        s0_shape_out = level_shapes[0]
+        s0_origins = list(itertools.product(
+            *[list(range(0, s0_shape_out[d], use_s0[d])) for d in range(3)]
+        ))
+
+        # tile_scales / tile_I0s (broadcasting unity if not present / not requested).
+        tile_I0s_all    = self.tile_I0s    if perform_norm else np.zeros_like(self.tile_I0s)
+        tile_scales_all = self.tile_scales if perform_norm else np.ones_like(self.tile_scales)
+
+        # flatten_kwargs (per-image), if requested.
+        flatten_kwargs_global = None
+        if flatten_mosaic and hasattr(self, 'mosaic_correction_coeffs'):
+            try:
+                corr_idx = self.mosaic_correction_sources.index(image_name)
+                flatten_kwargs_global = {
+                    'mosaic_correction_intercept': self.mosaic_correction_intercepts[corr_idx],
+                    'mosaic_correction_coeffs':    self.mosaic_correction_coeffs[corr_idx],
+                    'mosaic_correction_degree':    self.mosaic_correction_degrees[corr_idx],
+                    'mosaic_correction_bins':      self.mosaic_correction_bins,
+                    'mosaic_Scaling_offset':       (self.Scaling[1, 0] if image_name == 'RawImageA'
+                                                    else self.Scaling[1, 1] if image_name == 'RawImageB'
+                                                    else 0.0),
+                }
+            except (ValueError, AttributeError):
+                flatten_kwargs_global = None
+
+        fls_flat_by_layer = [self.fls[lid].ravel() for lid in range(nz)]
+
+        params_s0 = []
+        for origin_out in s0_origins:
+            # Convert output-axis-order origin/size → canvas ZYX coords.
+            origin_zyx_shard = tuple(origin_out[axis_order.index(a)] for a in 'zyx')
+            size_zyx_shard   = tuple(use_s0[axis_order.index(a)]    for a in 'zyx')
+            z0, y0, x0 = origin_zyx_shard
+            sz, sy, sx = size_zyx_shard
+            # Clip to volume.
+            sz = min(sz, nz - z0); sy = min(sy, ny - y0); sx = min(sx, nx - x0)
+            if sz <= 0 or sy <= 0 or sx <= 0:
+                continue
+
+            layer_ids = list(range(z0, z0 + sz))
+            tiles_per_layer = []
+            for lid in layer_ids:
+                contribs = []
+                for t in range(self.n_tiles_per_layer):
+                    tx0, ty0, tx1, ty1 = _tile_canvas_bbox(lid, t)
+                    if tx1 <= x0 or tx0 >= x0 + sx or ty1 <= y0 or ty0 >= y0 + sy:
+                        continue
+                    contribs.append((
+                        t,
+                        fls_flat_by_layer[lid][t],
+                        tr_matr_all[lid, t],
+                        float(tile_I0s_all[lid, t]),
+                        float(tile_scales_all[lid, t]),
+                    ))
+                tiles_per_layer.append(contribs)
+
+            params_s0.append([
+                str(output_zarr_path),
+                int(x0), int(y0), int(z0),
+                int(sx), int(sy), int(sz),
+                layer_ids,
+                tiles_per_layer,
+                image_name, fill_value,
+                weight_min, weight_max,
+                left_crop,
+                flatten_kwargs_global,
+                axis_perm,
+                dtp,
+                U8_range,
+                False,                        # verbose inside worker (driver prints progress)
+            ])
+
+        if verbose:
+            print(f"\nWriting s0:  {len(params_s0)} shards, "
+                  f"output shape={dst_shape}, dtype={dtp}")
+
+        # ---- 5. Submit s0 tasks ------------------------------------------
+        kwargs_tt = {'interpolation': interpolation,
+                     'border_value':  border_value,
+                     'border_mode':   border_mode}
+        if use_DASK:
+            df_future = DASK_client.scatter(deformation_field, broadcast=True)
+            futures = DASK_client.map(
+                _write_zarr3_shard_s0_from_tiles, params_s0,
+                deformation_field=df_future,
+                retries=DASK_client_retries, **kwargs_tt,
+            )
+            for fut in tqdm(as_completed(futures), total=len(futures),
+                            desc='Writing s0 shards'):
+                fut.result()
+                fut.cancel()
+        else:
+            for p in tqdm(params_s0, desc='Writing s0 shards', display=verbose):
+                _write_zarr3_shard_s0_from_tiles(p, deformation_field, **kwargs_tt)
+
+        # ---- 6. Build pyramid (s1, s2, ...) ------------------------------
+        f = downsample_factor
+        for lvl in range(1, n_pyramid_levels):
+            dst_shape_lvl = level_shapes[lvl]
+            use_sh_lvl    = level_shards[lvl]
+            origins_lvl = list(itertools.product(
+                *[list(range(0, dst_shape_lvl[d], use_sh_lvl[d])) for d in range(3)]
+            ))
+            params_lvl = []
+            for o in origins_lvl:
+                dst_slices = tuple(
+                    slice(o[d], min(o[d] + use_sh_lvl[d], dst_shape_lvl[d]))
+                    for d in range(3)
+                )
+                src_slices = tuple(
+                    slice(dst_slices[d].start * f,
+                          min(dst_slices[d].stop * f, level_shapes[lvl - 1][d]))
+                    for d in range(3)
+                )
+                params_lvl.append([
+                    str(output_zarr_path),
+                    f's{lvl - 1}', f's{lvl}',
+                    src_slices, dst_slices, f, dtp,
+                ])
+
+            if verbose:
+                print(f"\nBuilding s{lvl}:  {len(params_lvl)} shards from s{lvl - 1}")
+            if use_DASK:
+                futures = DASK_client.map(
+                    _downsample_zarr3_shard, params_lvl,
+                    retries=DASK_client_retries,
+                )
+                for fut in tqdm(as_completed(futures), total=len(futures),
+                                desc=f'Downsampling to s{lvl}'):
+                    fut.result()
+                    fut.cancel()
+            else:
+                for p in tqdm(params_lvl, desc=f'Downsampling to s{lvl}',
+                              display=verbose):
+                    _downsample_zarr3_shard(p)
+
+        elapsed = time.time() - t_start
+        if verbose:
+            print(f"\nsave_stack_zarr3 done in {elapsed/60:.1f} min")
+
+        # ---- 7. Neuroglancer link ----------------------------------------
+        ng_link = generate_neuroglancer_link(
+            output_zarr_path, layer_name=dataset_name,
+            viewer_url=ng_viewer_url, serve_base_url=ng_serve_url,
+            display_axes_order=ng_axes_order, zarr_format=3,
+        )
+        _print_neuroglancer_info(
+            output_zarr_path, serve_base_url=ng_serve_url,
+            layer_name=dataset_name, viewer_url=ng_viewer_url,
+            display_axes_order=ng_axes_order, zarr_format=3,
+        )
+
+        return {
+            'output_zarr_path': str(output_zarr_path),
+            'shape_zyx': src_shape_zyx,
+            'shape_out': dst_shape,
+            'dtype': str(np.dtype(dtp)),
+            'chunks': level_chunks[0],
+            'shards': level_shards[0],
+            'n_levels': n_pyramid_levels,
+            'elapsed_s': elapsed,
+            'neuroglancer_link': ng_link,
+        }

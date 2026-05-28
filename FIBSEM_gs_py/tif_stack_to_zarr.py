@@ -108,6 +108,35 @@ def _make_compressor(name: str, level: int = 1):
     return None
 
 
+def _make_v3_compressor(compression: str, compression_level: int = 3):
+    """Pick a zarr v3 BytesBytesCodec. compression in {'zstd', 'blosc', 'gzip', None}."""
+    if compression is None or compression == 'none':
+        return None
+    if compression == 'zstd':
+        from zarr.codecs import ZstdCodec
+        return ZstdCodec(level=compression_level)
+    if compression in ('blosc', 'lz4'):
+        from zarr.codecs import BloscCodec
+        return BloscCodec(cname='lz4', clevel=compression_level, shuffle='bitshuffle')
+    if compression == 'gzip':
+        from zarr.codecs import GzipCodec
+        return GzipCodec(level=compression_level)
+    raise ValueError(f"_make_v3_compressor: unknown compression {compression!r}")
+
+
+def _resolve_chunks_shards(dst_shape, chunk_size, shard_size):
+    """zarr v3 sharding requires shard size = integer multiple of chunk size."""
+    ndim = len(dst_shape)
+    def _round_up(x, m): return ((x + m - 1) // m) * m
+    use_chunks = tuple(min(chunk_size[i], dst_shape[i]) for i in range(ndim))
+    use_shards = tuple(
+        min(_round_up(shard_size[i], use_chunks[i]),
+            _round_up(dst_shape[i], use_chunks[i]))
+        for i in range(ndim)
+    )
+    return use_chunks, use_shards
+
+
 # ---------------------------------------------------------------------------
 # OME-ZARR metadata
 # ---------------------------------------------------------------------------
@@ -881,20 +910,7 @@ def convert_ome_zarr_v2_to_v3(
     import math
     from dask.distributed import as_completed as dask_as_completed
 
-    # Build the zarr v3 inner-codec pipeline
-    def _make_v3_compressor():
-        if compression == 'zstd':
-            from zarr.codecs import ZstdCodec
-            return ZstdCodec(level=compression_level)
-        if compression in ('blosc', 'lz4'):
-            from zarr.codecs import BloscCodec
-            return BloscCodec(cname='lz4', clevel=compression_level,
-                              shuffle='bitshuffle')
-        if compression == 'gzip':
-            from zarr.codecs import GzipCodec
-            return GzipCodec(level=compression_level)
-        return None   # no compression
-
+    
     # ------------------------------------------------------------------ #
     # 1.  Open source (zarr 3.x reads v2 natively)                        #
     # ------------------------------------------------------------------ #
@@ -1017,7 +1033,7 @@ def convert_ome_zarr_v2_to_v3(
         print('  Root OME-ZARR metadata written.')
 
     # Prepare the zarr v3 compressor object (built once, reused per level)
-    v3_compressor = _make_v3_compressor()
+    v3_compressor = _make_v3_compressor(compression, compression_level)
 
     # Build the F-order TransposeCodec (if requested).  In zarr v3 the
     # TransposeCodec is an array→array filter applied inside each inner
@@ -1033,28 +1049,6 @@ def convert_ome_zarr_v2_to_v3(
     # ------------------------------------------------------------------ #
     # 6.  Pre-allocate all destination arrays                              #
     # ------------------------------------------------------------------ #
-    def _resolve_chunks_shards(dst_shape):
-        """
-        Pick chunk/shard sizes that satisfy zarr v3 sharding rules:
-            shard_size must be an integer multiple of chunk_size.
-        Strategy:
-          - chunk = min(requested, dim)
-          - shard = ceil(requested / chunk) * chunk, capped at
-                    ceil(dim / chunk) * chunk so a shard never exceeds
-                    the array dim by more than (chunk-1) elements.
-        This keeps the user's requested chunk and shard sizes intact for
-        full-size axes, and gracefully shrinks them on small pyramid levels.
-        """
-        def _round_up(x, m):
-            return ((x + m - 1) // m) * m
-
-        use_chunks = tuple(min(chunk_size[i], dst_shape[i]) for i in range(ndim))
-        use_shards = tuple(
-            min(_round_up(shard_size[i], use_chunks[i]),
-                _round_up(dst_shape[i],  use_chunks[i]))
-            for i in range(ndim)
-        )
-        return use_chunks, use_shards
 
     for arr_path, src_arr in arrays_info:
         src_shape = src_arr.shape   # in source axis order
@@ -1062,7 +1056,7 @@ def convert_ome_zarr_v2_to_v3(
         # Output shape after optional axis transposition
         dst_shape = tuple(src_shape[i] for i in perm) if perm else src_shape
 
-        use_chunks, use_shards = _resolve_chunks_shards(dst_shape)
+        use_chunks, use_shards = _resolve_chunks_shards(dst_shape, chunk_size, shard_size)
 
         # Navigate / create parent groups in dst
         parts      = arr_path.split('/')
@@ -1118,7 +1112,7 @@ def convert_ome_zarr_v2_to_v3(
         src_shape = src_arr.shape
         dst_shape = tuple(src_shape[i] for i in perm) if perm else src_shape
 
-        use_chunks, use_shards = _resolve_chunks_shards(dst_shape)
+         use_chunks, use_shards = _resolve_chunks_shards(dst_shape, chunk_size, shard_size)
 
         # Build list of all shard regions (output coordinates)
         shard_starts = [
