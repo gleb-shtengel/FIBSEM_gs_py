@@ -1112,7 +1112,7 @@ def convert_ome_zarr_v2_to_v3(
         src_shape = src_arr.shape
         dst_shape = tuple(src_shape[i] for i in perm) if perm else src_shape
 
-         use_chunks, use_shards = _resolve_chunks_shards(dst_shape, chunk_size, shard_size)
+        use_chunks, use_shards = _resolve_chunks_shards(dst_shape, chunk_size, shard_size)
 
         # Build list of all shard regions (output coordinates)
         shard_starts = [
