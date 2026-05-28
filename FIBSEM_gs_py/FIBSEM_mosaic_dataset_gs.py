@@ -5275,6 +5275,8 @@ class FIBSEM_mosaic_dataset:
 
         voxel_size_out = tuple(voxel_size_zyx[axis_perm[i]] for i in range(3))
         origin_out     = tuple(origin_zyx[axis_perm[i]]      for i in range(3))
+        if verbose:
+            print(f"The output stack (axis_order='{axis_order}') will have voxel size: {voxel_size_out}")
 
         # ---- 2. Pre-allocate v3 store with all pyramid levels -------------
         if os.path.exists(output_zarr_path):
