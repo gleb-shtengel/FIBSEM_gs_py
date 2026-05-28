@@ -5303,15 +5303,16 @@ class FIBSEM_mosaic_dataset:
         # Choose tr_matr source (post-solve or nominal).
         tr_matr_all = self.default_tr_matr if use_default_coords else self.tr_matr
 
-        # Per-tile canvas bbox (post-warp).  Use translation only; rotation/scale
-        # in the affine causes a small bbox expansion but transform_tile pads
-        # by remap.  We pad by +/- 1 pixel to be safe.
-        # tr_matr stores NEGATIVE translation; canvas origin of tile is +tr_matr[..., :2, 2].
+        # Per-tile canvas bbox (post-warp), translation-only approximation.
+        # tr_matr stores NEGATIVE translation; canvas origin of tile is
+        # -round(tr_matr[..., :2, 2]), matching split_translation_int_fract.
+        # For AffineTransform solves with non-trivial rotation/scale this can
+        # miss 1-2 edge pixels at the warped bbox border.
         def _tile_canvas_bbox(layer, tile):
             # Reproduces split_translation_int_fract: returns dx, dy that
             # transform_tile would place the tile at.
-            tx = int(np.floor(tr_matr_all[layer, tile, 0, 2]))
-            ty = int(np.floor(tr_matr_all[layer, tile, 1, 2]))
+            tx = -int(np.round(tr_matr_all[layer, tile, 0, 2]))
+            ty = -int(np.round(tr_matr_all[layer, tile, 1, 2]))
             # Source tile size after left_crop:
             w = self.XResolution - left_crop
             h = self.YResolution
@@ -5417,7 +5418,6 @@ class FIBSEM_mosaic_dataset:
                 _write_zarr3_shard_s0_from_tiles(p, deformation_field, **kwargs_tt)
 
         # ---- 6. Build pyramid (s1, s2, ...) ------------------------------
-        f = downsample_factor
         for lvl in range(1, n_pyramid_levels):
             dst_shape_lvl = level_shapes[lvl]
             use_sh_lvl    = level_shards[lvl]
@@ -5431,14 +5431,14 @@ class FIBSEM_mosaic_dataset:
                     for d in range(3)
                 )
                 src_slices = tuple(
-                    slice(dst_slices[d].start * f,
-                          min(dst_slices[d].stop * f, level_shapes[lvl - 1][d]))
+                    slice(dst_slices[d].start * downsample_factor,
+                          min(dst_slices[d].stop * downsample_factor, level_shapes[lvl - 1][d]))
                     for d in range(3)
                 )
                 params_lvl.append([
                     str(output_zarr_path),
                     f's{lvl - 1}', f's{lvl}',
-                    src_slices, dst_slices, f, dtp,
+                    src_slices, dst_slices, downsample_factor, dtp,
                 ])
 
             if verbose:
