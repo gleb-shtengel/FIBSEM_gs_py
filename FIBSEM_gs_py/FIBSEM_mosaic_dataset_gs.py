@@ -5350,7 +5350,7 @@ class FIBSEM_mosaic_dataset:
         fls_flat_by_layer = [self.fls[lid].ravel() for lid in range(nz)]
 
         params_s0 = []
-        for origin_out in s0_origins:
+        for origin_out in tqdm(s0_origins, desc = 'Building s0 shard task list params', display = verbose):
             # Convert output-axis-order origin/size → canvas ZYX coords.
             origin_zyx_shard = tuple(origin_out[axis_order.index(a)] for a in 'zyx')
             size_zyx_shard   = tuple(use_s0[axis_order.index(a)]    for a in 'zyx')
