@@ -5309,15 +5309,22 @@ class FIBSEM_mosaic_dataset:
             cur = tuple(max(d // downsample_factor, 1) for d in cur)
 
         # ---- 3. OME-NGFF multiscales metadata -----------------------------
+        # Per-level translation compensates for the half-voxel offset that
+        # appears when level n averages 2^n full-resolution voxels. Use the
+        # shared helper so the metadata matches what convert_ome_zarr_v2_to_v3
+        # produces for the same data.
         axes_meta = [{'name': a, 'type': 'space', 'unit': voxel_unit} for a in axis_order]
         datasets_meta = []
         for lvl in range(n_pyramid_levels):
             scale = [voxel_size_out[i] * (downsample_factor ** lvl) for i in range(3)]
+            translation = _translation_at_level(
+                voxel_size_out, origin_out, lvl, downsample_factor,
+            )
             datasets_meta.append({
                 'path': f's{lvl}',
                 'coordinateTransformations': [
                     {'type': 'scale',       'scale':       scale},
-                    {'type': 'translation', 'translation': list(origin_out)},
+                    {'type': 'translation', 'translation': list(translation)},
                 ],
             })
         root.attrs['multiscales'] = [{
