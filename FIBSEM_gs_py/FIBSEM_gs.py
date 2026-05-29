@@ -8879,7 +8879,14 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
                 except:
                     pass
         else:
-            params_s2 = [[fl, kwargs] for fl in np.array(fls)[frame_inds]]
+            # Build a minimal worker-kwargs dict — strip large/driver-only entries
+            # so each task carries ~150 bytes instead of ~28 MB.  This is the
+            # difference between submission completing in seconds vs. hours for
+            # million-frame datasets.
+            _WORKER_KWARG_KEYS = ('ftype', 'image_name',
+                'thr_min', 'thr_max', 'nbins', 'percentile')
+            worker_kwargs = {k: kwargs[k] for k in _WORKER_KWARG_KEYS if k in kwargs}
+            params_s2 = [[fl, worker_kwargs] for fl in np.array(fls)[frame_inds]]
             results_s2 = []
             errors_s2 = []
             if use_DASK:
