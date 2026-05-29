@@ -1819,6 +1819,8 @@ class FIBSEM_mosaic_dataset:
             Filename (full path) to a binary dump file with saved dataset attributes. If dump_filename points to a valid binary file the data set saved in that file will be recalled. Default is empty string ''.
         memory_profiling : boolean
             Perform memory profiling during the data load and output it. Default is False.
+        max_futures : int
+            max number of running DASK futures. Default is 50000.
         intralayer_weight : np.float32, default 1.0
             Weight for pairwise constraints within a single Z-layer.
         interlayer_weight : np.float32, default 100.0
@@ -1936,6 +1938,7 @@ class FIBSEM_mosaic_dataset:
             start_time = time.time()
 
         self.fls = np.array(fls)
+        self.max_futures = kwargs.get('max_futures', 50000)
         fname0 = self.fls.ravel()[0]
         if verbose:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Started data set initialization')
@@ -2458,6 +2461,8 @@ class FIBSEM_mosaic_dataset:
         DASK_client : DASK client. If set to empty string '' (default), local computations are performed.
         DASK_client_retries : int (default to 3)
             Number of allowed automatic retries if a task fails. Default is object attribute.
+        max_futures : int
+            max number of running DASK futures. Default is self.max_futures (50000).
         ftype : int
             File type (0 - Shan Xu's .dat, 1 - tif). Default is object attribute.
         frame_inds : array
@@ -2508,6 +2513,7 @@ class FIBSEM_mosaic_dataset:
         DASK_client = kwargs.get('DASK_client', '')
         use_DASK, status_update_address = check_DASK(DASK_client, verbose = True)
         DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
+        max_futures = kwargs.get('max_futures', self.max_futures)
         ftype = kwargs.get("ftype", self.ftype)
         frame_inds = kwargs.get("frame_inds", np.arange(self.nz_tiles))
         data_dir = kwargs.get('data_dir', self.data_dir)
@@ -2526,6 +2532,7 @@ class FIBSEM_mosaic_dataset:
         self.percentile = percentile
         local_kwargs = {'use_DASK' : use_DASK,
                         'DASK_client_retries' : DASK_client_retries,
+                        'max_futures' : max_futures,
                         'ftype' : ftype,
                         'frame_inds' : np.arange(len(self.fls.ravel())),
                         'data_dir' : data_dir,

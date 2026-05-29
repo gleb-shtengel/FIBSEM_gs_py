@@ -8717,6 +8717,8 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
         perform remote DASK computations
     DASK_client_retries : int
         Number of allowed automatic retries if a task fails. Default is 3.
+    max_futures : int
+        max number of running DASK futures. Default is 50000.
     ftype : int
         file type (0 - Shan Xu's .dat, 1 - tif)
     frame_inds : array
@@ -8774,6 +8776,7 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
     nfrs = len(fls)
     use_DASK = kwargs.get("use_DASK", False)
     DASK_client_retries = kwargs.get("DASK_client_retries", 3)
+    max_futures = kwargs.get('max_futures', 50000)
     ftype = kwargs.get("ftype", 0)
     frame_inds = kwargs.get("frame_inds", np.arange(len(fls)))
     data_dir = kwargs.get("data_dir", '')
@@ -8882,10 +8885,21 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
             if use_DASK:
                 if verbose:
                     print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Using DASK distributed')
-                futures = DASK_client.map(evaluate_FIBSEM_frame, params_s2, retries = DASK_client_retries)
-                results_temp = np.array(DASK_client.gather(futures))
-                for res_temp in tqdm(results_temp, desc='Converting the Results', display=verbose):
-                    results_s2.append(res_temp)
+                # In case of a large source file, need to stage the DASK jobs - cannot start all at once.
+                DASK_batch = 0
+                while len(params_s2) > max_futures:
+                    if verbose:
+                        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Starting DASK batch {:d} with {:d} jobs, {:d} jobs remaining'.format(DASK_batch, max_futures, (len(params_s2)-max_futures)))
+                    futures = DASK_client.map(evaluate_FIBSEM_frame, params_s2[0:max_futures], retries = DASK_client_retries)
+                    params_s2 = params_s2[max_futures:]
+                    results_s2 += DASK_client.gather(futures)
+                    DASK_batch += 1
+                if len(params_s2) > 0:
+                    if verbose:
+                        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Starting DASK batch {:d} with {:d} jobs'.format(DASK_batch, len(params_s2)))
+                    futures = DASK_client.map(evaluate_FIBSEM_frame, params_s2, retries = DASK_client_retries)
+                    results_s2 += DASK_client.gather(futures)            
+                for res_temp in tqdm(results_s2, desc='Converting the Results', display=verbose):
                     errors_s2.append(res_temp['ex_error'])
             else:
                 if verbose:
