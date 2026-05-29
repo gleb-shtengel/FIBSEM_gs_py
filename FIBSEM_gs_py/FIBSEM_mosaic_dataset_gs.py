@@ -3765,6 +3765,9 @@ class FIBSEM_mosaic_dataset:
         DASK_client : DASK client. If empty string '' (default), local computations are performed.
         DASK_client_retries : int
             Number of allowed automatic retries if a task fails. Default is object attribute.
+        max_futures : int
+            Max number of running DASK futures per batch. Default is self.max_futures (50000).
+            Staged submission avoids overloading the scheduler with million-pair jobs.
         ftype : int
             File type (0 - Shan Xu's .dat, 1 - tif). Default is object attribute.
         left_crop : int
@@ -3831,10 +3834,27 @@ class FIBSEM_mosaic_dataset:
             dt_kwargs['warp_matrix'] = np.array([[1, 0, -dx], [0, 1, -dy]], dtype=np.float32)
             param_ECC = [fname1, fname2, dt_kwargs]
             params_ECC.append(param_ECC)
+
+        max_futures = kwargs.get('max_futures', self.max_futures)
         if use_DASK:
+            # Scatter deformation_field once — all tasks reference it via the future.
             shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)
-            futures_ECC = DASK_client.map(find_Transform_ECC_DASK, params_ECC, deformation_field = shared_data_future, retries = DASK_client_retries)
-            transformations_results_3D = DASK_client.gather(futures_ECC)
+            # Stage submissions to avoid choking the scheduler on million-pair jobs.
+            transformations_results_3D = []
+            n_tasks   = len(params_ECC)
+            n_batches = (n_tasks + max_futures - 1) // max_futures
+            for DASK_batch in tqdm(range(n_batches), desc='determine_transformations_ECC DASK batches'):
+                start = DASK_batch * max_futures
+                stop  = min(start + max_futures, n_tasks)
+                if verbose:
+                    print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                          + '   Starting DASK batch {:d}/{:d} with {:d} jobs ({:d} remaining after this batch)'.format(
+                                DASK_batch + 1, n_batches, stop - start, n_tasks - stop))
+                futures_ECC = DASK_client.map(find_Transform_ECC_DASK,
+                                              params_ECC[start:stop],
+                                              deformation_field=shared_data_future,
+                                              retries=DASK_client_retries)
+                transformations_results_3D += DASK_client.gather(futures_ECC)
         else:
             transformations_results_3D = []
             for param_ECC in tqdm(params_ECC, desc = 'Extracting transformation parameters: ', display=verbose):

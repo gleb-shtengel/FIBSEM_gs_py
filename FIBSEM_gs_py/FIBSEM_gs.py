@@ -12365,13 +12365,21 @@ class FIBSEM_dataset:
         if self.ftype ==0 :
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Creating .tif files using DASK distributed')
             t00 = time.time()
+            # save_images_tif only reads 'image_names' and 'tif_folder' from kwargs;
+            # strip the rest so each task carries ~few bytes instead of whatever
+            # big arrays the caller may have stuffed into kwargs.
+            _SAVE_TIF_KWARG_KEYS = ('image_names', 'tif_folder')
+            worker_kwargs = {k: kwargs[k] for k in _SAVE_TIF_KWARG_KEYS if k in kwargs}
+
             if use_DASK:
-                futures = DASK_client.map(save_data_tif, self.fls, retries = DASK_client_retries, **kwargs)
+                futures = DASK_client.map(save_data_tif, self.fls,
+                                          retries=DASK_client_retries,
+                                          **worker_kwargs)
                 fls_new = DASK_client.gather(futures)
             else:
                 fls_new = []
-                for fl in tqdm(self.fls, desc = 'Converting .dat data files into .tif format'):
-                        fls_new.append(save_data_tif(fl, **kwargs))
+                for fl in tqdm(self.fls, desc='Converting .dat data files into .tif format'):
+                    fls_new.append(save_data_tif(fl, **worker_kwargs))
 
             t01 = time.time()
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Elapsed time: {:.2f} seconds'.format(t01 - t00))
@@ -14509,7 +14517,17 @@ class FIBSEM_dataset:
         fls_info = pd.concat([fls_df, eval_bounds_df, tr_mx_df], axis=1)
 
         for j, frame_ind in enumerate(tqdm(frame_inds, desc='Building the Parameter Sets Analyzing Resolution using Blobs ', display=verbose)):
-            params_single = [fls, frame_ind, ftype, image_name, eval_bounds[j], offsets_sizes, invert_data, flipY, zbin_factor, perform_transformation, self.tr_matr_cum_residual[frame_ind], int_order, pad_edges, min_sigma, max_sigma, threshold,  overlap, pixel_size, subset_size, bounds, bands, min_thr, transition_low_limit, transition_high_limit, nbins, verbose, disp_res, False, save_good_blobs_only]
+            # Pass only the (up to zbin_factor) filenames this task actually needs.
+            # Slice safely; trailing-edge frames may have fewer than zbin_factor neighbours.
+            needed_fls = fls[frame_ind : frame_ind + zbin_factor]
+            # Worker still uses `fls[frame_ind]` / `fls[frame_ind + j]` internally, so rebase
+            # frame_ind to 0 — the slice's local indexing.
+            params_single = [needed_fls, 0, ftype, image_name, eval_bounds[j], offsets_sizes,
+                             invert_data, flipY, zbin_factor, perform_transformation,
+                             self.tr_matr_cum_residual[frame_ind], int_order, pad_edges,
+                             min_sigma, max_sigma, threshold, overlap, pixel_size, subset_size,
+                             bounds, bands, min_thr, transition_low_limit, transition_high_limit,
+                             nbins, verbose, disp_res, False, save_good_blobs_only]
             papams_blob_analysis.append(params_single)
 
         if use_DASK:
