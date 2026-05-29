@@ -2969,7 +2969,7 @@ class FIBSEM_mosaic_dataset:
         -------
         method : 'mean' or 'percentile'.    Default 'percentile'.
         I0 : float.                          Default self.Scaling[1, 0].
-        detector_id_pattern : raw str.       Default r'sfov_(\d+)'.
+        detector_id_pattern : raw str.       Default r'sfov_(\\d+)'.
         min_tiles_per_detector : int.        Default 5.
         verbose : bool.                      Default False.
 
@@ -5151,9 +5151,9 @@ class FIBSEM_mosaic_dataset:
                 print(time.strftime('%Y/%m/%d  %H:%M:%S  ') + ' saving images into .jpg files')
             imf1, imf2 = os.path.splitext(image_fname)
             for j, layer_mosaic in enumerate(layer_mosaics):
-                sx = 10.0
-                sy = sx / layer_mosaic.shape[1] * layer_mosaic.shape[0]
-                fig, ax = plt.subplots(1,1, figsize=(sx,sy))
+                siy, six = layer_mosaic.shape
+                s = max((six, siy))
+                fig, ax = plt.subplots(1,1, figsize=(10.0*six/s,10.0*siy/s))
                 fig.subplots_adjust(left=0.0, bottom=0.0, right=1.0, top=1.0, wspace=0.01, hspace=0.01)
                 if j == 0:
                     if not save_snapshot:

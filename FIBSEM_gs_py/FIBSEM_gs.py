@@ -9448,8 +9448,15 @@ def extract_keypoints_descr_files(params, deformation_field):
 
         kps, dess = sift.detectAndCompute(img[yi_eval:ya_eval, xi_eval:xa_eval], None)
 
-        coords = np.flip(np.array([kp.pt for kp in kps]), axis=1)
-        kpt_ints = extract_image_intensity(img[yi_eval:ya_eval, xi_eval:xa_eval], smoothing_kernel, coords, order=order) / 255.0 * (d2-d1) + d1
+        if len(kps) > 0:
+            coords = np.flip(np.array([kp.pt for kp in kps]), axis=1)
+            kpt_ints = extract_image_intensity(img[yi_eval:ya_eval, xi_eval:xa_eval], smoothing_kernel, coords, order=order) / 255.0 * (d2-d1) + d1
+        else:
+            coords = np.empty((0, 2))
+            kpt_ints = np.empty((0,))
+            dess = np.empty((0, 128), dtype=np.float32)   # SIFT returns None for descriptors when kps is empty; normalize for downstream consumers
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   File: ', fl, ', SIFT found 0 keypoints in evaluation box; skipping coord/intensity computation.')
 
         if xi_eval >0 or yi_eval>0:   # add shifts to key-pint coordinates to convert them to full image coordinated
             for j, kp in enumerate(kps):
