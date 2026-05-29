@@ -8799,8 +8799,17 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
     verbose = kwargs.get("verbose", False)
     use_existing_data = kwargs.get('use_existing_data', False)
 
-    if use_existing_data and os.path.exists(FIBSEM_Data_xlsx_path):
-        int_results = pd.read_excel(FIBSEM_Data_xlsx_path, sheet_name='FIBSEM Data')
+    # Cache may have been written as .csv if the dataset exceeded Excel's row limit.
+    # Look for both extensions; prefer the .xlsx variant when both exist.
+    csv_path = os.path.splitext(FIBSEM_Data_xlsx_path)[0] + '.csv'
+    cache_path = (FIBSEM_Data_xlsx_path if os.path.exists(FIBSEM_Data_xlsx_path)
+                  else csv_path if os.path.exists(csv_path)
+                  else None)
+    if use_existing_data and cache_path is not None:
+        if cache_path.endswith('.csv'):
+            int_results = pd.read_csv(cache_path)
+        else:
+            int_results = pd.read_excel(cache_path, sheet_name='FIBSEM Data')
         fr = int_results['Frame']
         data_min = int_results['Min']
         data_max = int_results['Max']
@@ -8945,10 +8954,6 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
             SEMAlnX       = np.array([r['SEMAlnX']      for r in results_s2])
             SEMAlnY       = np.array([r['SEMAlnY']      for r in results_s2])
 
-    if verbose:
-        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Saving the FIBSEM dataset statistics (Min/Max, Mill Rate, FOV Shifts into the file: ', FIBSEM_Data_xlsx_path)
-        # Create a Pandas Excel writer using XlsxWriter as the engine.
-    xlsx_writer = pd.ExcelWriter(FIBSEM_Data_xlsx_path, engine='xlsxwriter')
     columns = ['Frame', 'Min', 'Max', 'Mean', 'Percentile', 'Sliding Min', 'Sliding Max',
            'Working Distance (mm)', 'Milling Y Voltage (V)',
            'FOV X Center (Pix)', 'FOV Y Center (Pix)',
@@ -8964,13 +8969,9 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
         ScanRate.T, EHT.T, SEMSpecimenI.T,
         SEMStiX.T, SEMStiY.T, SEMAlnX.T, SEMAlnY.T,
         np.array(errors_s2).T)).T, columns=columns, index=None)
-    minmax_df.to_excel(xlsx_writer, index=None, sheet_name='FIBSEM Data')
-    kwargs_info = pd.DataFrame([kwargs]).T   # prepare to be save in transposed format
-    kwargs_info.to_excel(xlsx_writer, header=False, sheet_name='kwargs Info')
-    #xlsx_writer.save()
-    xlsx_writer.close()
-           
-    return {
+
+    # Build the result dict FIRST so it's always returned, even if the save below fails.
+    result = {
             'FIBSEM_Data_xlsx': FIBSEM_Data_xlsx_path,
             'data_min_glob':    data_min_glob,
             'data_max_glob':    data_max_glob,
@@ -8990,9 +8991,39 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
             'SEMAlnX':          SEMAlnX,
             'SEMAlnY':          SEMAlnY,
             'dmeans':           dmeans,
-            'dpercentiles': dpercentiles,
-            'errors':           errors_s2
+            'dpercentiles':     dpercentiles,
+            'errors':           errors_s2,
         }
+
+    # Save to disk. Excel has a 1,048,576-row sheet limit; fall back to CSV when
+    # the dataset exceeds it. Wrap the whole thing in try/except so any unexpected
+    # IO failure doesn't cost the user the just-computed in-memory results.
+    EXCEL_MAX_ROWS = 1_048_576
+    n_rows = len(minmax_df)
+    try:
+        if n_rows > EXCEL_MAX_ROWS:
+            csv_path = os.path.splitext(FIBSEM_Data_xlsx_path)[0] + '.csv'
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                      + '   Dataset has {:d} rows (> Excel max {:d}). Saving to CSV: {:s}'.format(
+                            n_rows, EXCEL_MAX_ROWS, csv_path))
+            minmax_df.to_csv(csv_path, index=False)
+            result['FIBSEM_Data_xlsx'] = csv_path           # update path in result
+        else:
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                      + '   Saving the FIBSEM dataset statistics to file: ' + FIBSEM_Data_xlsx_path)
+            xlsx_writer = pd.ExcelWriter(FIBSEM_Data_xlsx_path, engine='xlsxwriter')
+            minmax_df.to_excel(xlsx_writer, index=None, sheet_name='FIBSEM Data')
+            kwargs_info = pd.DataFrame([kwargs]).T
+            kwargs_info.to_excel(xlsx_writer, header=False, sheet_name='kwargs Info')
+            xlsx_writer.close()
+    except Exception as e:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')
+              + '   WARNING: failed to save FIBSEM data to disk ({}): {}. '
+                'In-memory result still returned.'.format(type(e).__name__, e))
+
+    return result
 
 # Routines to extract Key-Points and Descriptors
 def extract_image_intensity(image, smoothing_kernel, pts, **kwargs):
