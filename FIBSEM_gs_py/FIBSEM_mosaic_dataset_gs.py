@@ -1937,6 +1937,8 @@ class FIBSEM_mosaic_dataset:
 
         self.fls = np.array(fls)
         fname0 = self.fls.ravel()[0]
+        if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Started data set initialization')
 
         # Try to auto-detect image coordinates files
         image_coordinates_files_default = [os.path.join(os.path.split(os.path.split(fl.ravel()[0])[0])[0], 'full_image_coordinates.txt') for fl in self.fls]
@@ -2164,7 +2166,7 @@ class FIBSEM_mosaic_dataset:
                 ii, jj = np.where((dx_abs < self.XResolution) & (dy_abs < self.YResolution))
                 inter_index_pairs.append(np.column_stack([ii, jj]) if len(ii) > 0 else np.empty((0, 2), dtype=int))
         else:
-            for l in tqdm(range(L - 1), , desc = 'Determining inter-layer pairs', display=verbose):
+            for l in tqdm(range(L - 1), desc = 'Determining inter-layer pairs', display=verbose):
                 inter_index_pairs.append(
                     np.array([(i, i) for i in range(self.n_tiles_per_layer)]))
 
@@ -2190,7 +2192,7 @@ class FIBSEM_mosaic_dataset:
 
         # Intra-layer adjacent pairs
         if verbose:
-            print('Building image pair list')
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Building image pair list')
         for l in range(L):
             for i in range(len(intra_index_pairs_x[l])):
                 idx1 = l * self.n_tiles_per_layer + intra_index_pairs_x[l][i, 0]
