@@ -1037,6 +1037,118 @@ def generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs):
     return save_fname
 
 
+def generate_report_mill_rate_montage_parquet(Mill_Rate_Data_parquet, **kwargs):
+    '''
+    Generate Report Plot for mill rate evaluation from Parquet file. (c) G.Shtengel 05/2026 gleb.shtengel@gmail.com
+
+    Parameters:
+    ----------
+    Mill_Rate_Data_parquet : str
+        Path to the Parquet file containing the Working Distance (WD), Milling Y Voltage (MV), and FOV center shifts data.
+
+    kwargs:
+    ----------
+    Mill_Volt_Rate_um_per_V : np.float32
+        Milling Voltage to Z conversion (um/V). Default is 31.235258870176065.
+    mosaic_shape : tuple or list of 2 ints
+        Mosaic shape (ny_tiles, nx_tiles). Default is (1,1).
+    tile_id : tuple or list of 2 ints
+        Y and X indices of the tile for which the WD vs frame will be evaluated. Default is (0, 0).
+    data_dir : str
+        Directory for saving PNG output. Default is the directory containing Mill_Rate_Data_parquet.
+    Sample_ID : str
+        Identifier shown above the plot. Default is ''.
+    save_png : boolean
+        If True (default), the plot is saved into PNG file.
+    dpi : int
+        DPI for PNG. Default is 300.
+    save_fname : string
+        File name to save the PNG image. Default is os.path.join(data_dir, <parquet stem>_Mill_Rate.png).
+    verbose : boolean
+        Display intermediate results. Default is False.
+
+    Returns:
+    ----------
+    save_fname : str
+    '''
+    mosaic_shape = kwargs.get('mosaic_shape', (1, 1))
+    nxny = np.prod(mosaic_shape)
+    tile_id = kwargs.get('tile_id', (0, 0))
+    data_dir = kwargs.get('data_dir', os.path.dirname(Mill_Rate_Data_parquet))
+    ldm = 70
+    data_dir_short = data_dir if len(data_dir) < ldm else '... ' + data_dir[-ldm:]
+    verbose = kwargs.get('verbose', False)
+    save_png = kwargs.get('save_png', True)
+    dpi = kwargs.get('dpi', 300)
+    Sample_ID = kwargs.get('Sample_ID', '')
+    Mill_Volt_Rate_um_per_V = kwargs.get('Mill_Volt_Rate_um_per_V', 31.235258870176065)
+
+    if save_png:
+        parquet_stem = os.path.splitext(os.path.basename(Mill_Rate_Data_parquet))[0]
+        default_save_fname = os.path.join(data_dir, parquet_stem + '_Mill_Rate.png')
+        save_fname = kwargs.get('save_fname', default_save_fname)
+    else:
+        save_fname = 'Image not saved'
+
+    if verbose:
+        print('Loading Working Distance and Milling Y Voltage Data')
+    int_results_all = pd.read_parquet(Mill_Rate_Data_parquet)
+
+    int_results = int_results_all.iloc[mosaic_shape[0]*tile_id[0]+tile_id[1]::nxny, :]
+    fr = int_results['Frame']/nxny
+    WD = int_results['Working Distance (mm)']
+    MillingYVoltage = int_results['Milling Y Voltage (V)']
+
+    if verbose:
+        print('Generating Plot')
+    fs = 12
+    fig, axs = plt.subplots(3, 1, figsize=(6, 10), sharex=True)
+    fig.subplots_adjust(left=0.15, bottom=0.06, right=0.99, top=0.97, wspace=0.05, hspace=0.05)
+
+    for k in np.arange(nxny):
+        my_col = plt.get_cmap("gist_rainbow_r")((nxny-k)/(nxny-1))
+        WDk = int_results_all.iloc[k::nxny, :]['Working Distance (mm)']
+        if k == mosaic_shape[1]*tile_id[0]+tile_id[1]:
+            axs[0].plot(fr, WDk, color=my_col, marker='x', markersize=4)
+        else:
+            axs[0].plot(fr, WDk, color=my_col)
+    fr_all = np.repeat(np.array(fr), nxny)
+    WD_all = np.array(int_results_all['Working Distance (mm)'])
+    WD_all_fit_coef = np.polyfit(fr_all, WD_all, 1)
+    WD_fit_all = np.polyval(WD_all_fit_coef, fr)
+    axs[0].plot(fr, WD_fit_all, label='All Tiles: Fit, slope = {:.2f} nm/line'.format(WD_all_fit_coef[0]*1.0e6), color='black', linestyle='dashed', linewidth=2)
+    axs[0].legend(fontsize=12, loc='lower right')
+    axs[0].grid(True)
+    axs[0].set_ylabel('Working Distance (mm)')
+    axs[0].text(0.40, 0.92, 'All Tiles', transform=axs[0].transAxes, fontsize=12)
+    axs[0].text(0.2, 1.04, Sample_ID, fontsize=fs, transform=axs[0].transAxes)
+    axs[1].plot(fr, WD, label='WD, Exp. Data', color='blue')
+    axs[1].grid(True)
+    axs[1].set_ylabel('Working Distance (mm)')
+    WD_fit_coef = np.polyfit(fr, WD, 1)
+    WD_fit = np.polyval(WD_fit_coef, fr)
+    axs[1].plot(fr, WD_fit, label='Tile={:d},{:d}: Fit, slope = {:.2f} nm/line'.format(*tile_id, WD_fit_coef[0]*1.0e6), color='red', linestyle='dashed', linewidth=2)
+    axs[1].text(0.40, 0.92, 'Tile={:d},{:d}'.format(*tile_id), transform=axs[1].transAxes, fontsize=12)
+    axs[1].legend(fontsize=12)
+
+    axs[2].plot(fr, MillingYVoltage, label='Mill. Y Volt. Exp. Data', color='green')
+    axs[2].grid(True)
+    axs[2].set_ylabel('Milling Y Voltage (V)')
+    MV_fit_coef = np.polyfit(fr, MillingYVoltage, 1)
+    MV_fit = np.polyval(MV_fit_coef, fr)
+    axs[2].plot(fr, MV_fit, label='Fit, slope = {:.3f} nm/line'.format(MV_fit_coef[0]*Mill_Volt_Rate_um_per_V*-1.0e3), color='orange')
+    axs[2].legend(fontsize=12)
+    axs[2].text(0.02, 0.05, 'Milling Voltage to Z conversion: {:.4f} um/V'.format(Mill_Volt_Rate_um_per_V), transform=axs[2].transAxes, fontsize=12)
+    axs[2].set_xlabel('Frame')
+
+    if save_png:
+        axs[2].text(-0.12, -0.17, save_fname, fontsize=5, transform=axs[2].transAxes)
+        fig.savefig(save_fname, dpi=dpi)
+    display(fig)
+    plt.close(fig)
+    return save_fname
+
+
 def generate_report_SEM_param_mosaic_stack_xlsx(FIBSEM_Data_xlsx, **kwargs):
     '''
     Generate Report Plot SEM parameter vs frame from XLSX spreadsheet file. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
@@ -1132,6 +1244,105 @@ def generate_report_SEM_param_mosaic_stack_xlsx(FIBSEM_Data_xlsx, **kwargs):
         else:
             save_fname = 'Image not saved'
         save_fnames.append(save_fname) 
+        display(fig)
+        plt.close(fig)
+    return save_fnames
+
+
+def generate_report_SEM_param_mosaic_stack_parquet(FIBSEM_Data_parquet, **kwargs):
+    '''
+    Generate Report Plot SEM parameter vs frame from Parquet file. (c) G.Shtengel 05/2026 gleb.shtengel@gmail.com
+
+    Parameters:
+    ----------
+    FIBSEM_Data_parquet : str
+        Path to the Parquet file containing the FIBSEM data.
+
+    kwargs:
+    ----------
+    SEM_params : list of str
+        SEM parameters to analyze. Options are: 'WD', 'SEMStiX', 'SEMStiY', 'SEMAlnX', 'SEMAlnY'. Default is ['SEMStiX', 'SEMStiY'].
+    mosaic_shape : tuple or list of 2 ints
+        Mosaic shape (ny_tiles, nx_tiles). Default is (1,1).
+    tile_id : tuple or list of 2 ints
+        Y and X indices of the tile for which the WD vs frame will be evaluated. Default is (0, 0).
+    data_dir : str
+        Directory for saving PNG output. Default is the directory containing FIBSEM_Data_parquet.
+    Sample_ID : str
+        Identifier shown in the plot title. Default is ''.
+    save_png : boolean
+        If True (default), the plot is saved into PNG file.
+    dpi : int
+        DPI for PNG. Default is 300.
+    save_fname : string
+        File name to save the PNG image. Default is os.path.join(data_dir, <parquet stem>_<SEM_param>.png).
+    verbose : boolean
+        Display intermediate results. Default is False.
+
+    Returns:
+    ----------
+    save_fnames : list of str
+    '''
+    SEM_params = kwargs.get('SEM_params', ['SEMStiX', 'SEMStiY'])
+    num_SEM_params = len(SEM_params)
+    linestyles = kwargs.get('linestyles', ['-', ':', '--', '-.', '-'])
+    SEM_keys = []
+    for SEM_param in SEM_params:
+        if SEM_param == 'WD':
+            SEM_keys.append('Working Distance (mm)')
+        else:
+            SEM_keys.append(SEM_param)
+    mosaic_shape = kwargs.get('mosaic_shape', (1, 1))
+    nxny = np.prod(mosaic_shape)
+    tile_id = kwargs.get('tile_id', (0, 0))
+    data_dir = kwargs.get('data_dir', os.path.dirname(FIBSEM_Data_parquet))
+    ldm = 70
+    data_dir_short = data_dir if len(data_dir) < ldm else '... ' + data_dir[-ldm:]
+    verbose = kwargs.get('verbose', False)
+    save_png = kwargs.get('save_png', True)
+    dpi = kwargs.get('dpi', 300)
+    Sample_ID = kwargs.get('Sample_ID', '')
+    if verbose:
+        print('Loading FIBSEM Data')
+    int_results_all = pd.read_parquet(FIBSEM_Data_parquet)
+    int_results = int_results_all.iloc[mosaic_shape[0]*tile_id[0]+tile_id[1]::nxny, :]
+    fr = int_results['Frame']/nxny
+
+    if verbose:
+        print('Generating Plots')
+    save_fnames = []
+    parquet_stem = os.path.splitext(os.path.basename(FIBSEM_Data_parquet))[0]
+    for k, SEM_key in enumerate(SEM_keys):
+        fs = 12
+        fig, axs = plt.subplots(2, 1, figsize=(6, 6), sharex=True)
+        fig.subplots_adjust(left=0.12, bottom=0.1, right=0.99, top=0.96, wspace=0.05, hspace=0.05)
+
+        for l in np.arange(nxny):
+            my_col = plt.get_cmap("gist_rainbow_r")((nxny-l)/(nxny-1))
+            SEMl = int_results_all.iloc[l::nxny, :][SEM_key]
+            if l == mosaic_shape[1]*tile_id[0]+tile_id[1]:
+                label = SEM_params[k] + ', Tile={:d},{:d}'.format(*tile_id)
+                axs[0].plot(fr, SEMl, color=my_col, label=label)
+                axs[1].plot(fr, SEMl, color=my_col, label=label)
+            else:
+                axs[0].plot(fr, SEMl, color=my_col)
+        axs[0].legend(fontsize=12, loc='lower right')
+        axs[0].text(0.40, 0.92, 'All Tiles', transform=axs[0].transAxes, fontsize=12)
+        axs[0].text(0.2, 1.04, Sample_ID, fontsize=fs, transform=axs[0].transAxes)
+        axs[1].text(0.40, 0.92, 'Tile={:d},{:d}'.format(*tile_id), transform=axs[1].transAxes, fontsize=12)
+        axs[1].set_xlabel('Frame')
+        for ax in axs:
+            ax.grid(True)
+            ax.set_ylabel(SEM_key)
+            ax.legend(fontsize=12, loc='lower right')
+        if save_png:
+            default_save_fname = os.path.join(data_dir, parquet_stem + '_' + SEM_params[k] + '.png')
+            save_fname = kwargs.get('save_fname', default_save_fname)
+            axs[-1].text(-0.12, -0.23, save_fname, fontsize=5, transform=axs[-1].transAxes)
+            fig.savefig(save_fname, dpi=dpi)
+        else:
+            save_fname = 'Image not saved'
+        save_fnames.append(save_fname)
         display(fig)
         plt.close(fig)
     return save_fnames
@@ -1261,78 +1472,209 @@ def generate_report_SEM_param_mosaic_layer_xlsx(FIBSEM_Data_xlsx, **kwargs):
     return save_fname
 
 
-def generate_report_data_minmax_montage_xlsx(minmax_xlsx_file, **kwargs):
+def generate_report_SEM_param_mosaic_layer_parquet(FIBSEM_Data_parquet, **kwargs):
     '''
-    Generate Report Plot for data Min-Max from XLSX spreadsheet file. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
-    
+    Generate Report Plot for mill rate evaluation from Parquet file. (c) G.Shtengel 05/2026 gleb.shtengel@gmail.com
+
     Parameters:
     ----------
-    minmax_xlsx_file : str
-        Path to the XLSX spreadsheet file containing Min-Max data
+    FIBSEM_Data_parquet : str
+        Path to the Parquet file containing the FIBSEM data.
+
+    kwargs:
+    ----------
+    SEM_params : list of str
+        SEM parameters to analyze. Options are: 'WD', 'SEMStiX', 'SEMStiY', 'SEMAlnX', 'SEMAlnY'. Default is ['SEMStiX', 'SEMStiY'].
+    mosaic_shape : tuple or list of 2 ints
+        Mosaic shape (ny_tiles, nx_tiles). Default is (1,1).
+    frame_id : int
+        ID of the frame to show the SEM parameter map over the tile mosaic. Default is -1 (last frame).
+    data_dir : str
+        Directory for saving PNG output. Default is the directory containing FIBSEM_Data_parquet.
+    Sample_ID : str
+        Identifier shown in the plot title. Default is ''.
+    save_png : boolean
+        If True (default), the plot is saved into PNG file.
+    dpi : int
+        DPI for PNG. Default is 300.
+    save_fname : string
+        File name to save the PNG image. Default is os.path.join(data_dir, <parquet stem>_<SEM_params suffix>_frame<frame_id>.png).
+    verbose : boolean
+        Display intermediate results. Default is False.
+
+    Returns:
+    ----------
+    save_fname : str
+    '''
+    SEM_params = kwargs.get('SEM_params', ['SEMStiX', 'SEMStiY'])
+    num_SEM_params = len(SEM_params)
+    linestyles = kwargs.get('linestyles', ['-', ':', '--', '-.', '-'])
+    SEM_keys = []
+    Yaxis_title = ''
+    fname_repl_suffix = ''
+    for SEM_param in SEM_params:
+        Yaxis_title = Yaxis_title + SEM_param + ', '
+        if SEM_param == 'WD':
+            SEM_keys.append('Working Distance (mm)')
+            fname_repl_suffix = fname_repl_suffix + '_WD'
+        else:
+            SEM_keys.append(SEM_param)
+            fname_repl_suffix = fname_repl_suffix + '_' + SEM_param
+    mosaic_shape = kwargs.get('mosaic_shape', (1, 1))
+    nxny = np.prod(mosaic_shape)
+    frame_id = kwargs.get('frame_id', -1)
+    data_dir = kwargs.get('data_dir', os.path.dirname(FIBSEM_Data_parquet))
+    ldm = 70
+    data_dir_short = data_dir if len(data_dir) < ldm else '... ' + data_dir[-ldm:]
+    verbose = kwargs.get('verbose', False)
+    save_png = kwargs.get('save_png', True)
+    dpi = kwargs.get('dpi', 300)
+    Sample_ID = kwargs.get('Sample_ID', '')
+    if verbose:
+        print('Loading FIBSEM Data')
+    int_results_all = pd.read_parquet(FIBSEM_Data_parquet)
+
+    if verbose:
+        print('Generating Plot')
+    fs = 12
+    fig, axs = plt.subplots(num_SEM_params+1, 1, figsize=(6, num_SEM_params*3+1),
+                            gridspec_kw={"height_ratios": [1.5]*num_SEM_params + [2]})
+    fig.subplots_adjust(left=0.12, bottom=0.02, right=0.99, top=0.98, wspace=0.05, hspace=0.25)
+
+    nz = int(len(int_results_all)/nxny)
+    if frame_id == -1:
+        frame_id = nz-1
+    ny, nx = mosaic_shape
+    all_params = []
+
+    for j, SEM_key in enumerate(SEM_keys):
+        SEMk = np.array(int_results_all[SEM_key]).reshape(nz, ny, nx)
+        all_params.append(SEMk[frame_id])
+
+    all_params = np.array(all_params)
+    All_strs = []
+    for j in np.arange(ny):
+        for i in np.arange(nx):
+            loc_str = ''
+            for k, SEM_param in enumerate(SEM_params):
+                if k == 0:
+                    loc_str = loc_str + SEM_param + '={:.6f}'.format(all_params[k, j, i])
+                else:
+                    loc_str = loc_str + '\n' + SEM_param + '={:.6f}'.format(all_params[k, j, i])
+            All_strs.append(loc_str)
+    All_strs = np.array(All_strs).reshape(mosaic_shape)
+
+    for k, SEM_key in enumerate(SEM_keys):
+        for j in np.arange(ny):
+            my_col = plt.get_cmap("gist_rainbow_r")((ny-j)/(ny-1))
+            label = 'Y Tile = {:d}'.format(j)
+            axs[k].plot(all_params[k, j, :], color=my_col, marker='x', markersize=4, label=label)
+        axs[k].set_ylabel(SEM_keys[k])
+        axs[k].grid(True)
+        axs[k].set_xlabel('X Tile #')
+        axs[k].legend(fontsize=10, loc='lower right')
+
+    axs[-1].axis(False)
+    axs[0].set_title(Sample_ID + ', frame={:d}'.format(frame_id))
+    llw1 = 0.9 / mosaic_shape[1]
+    clw = [llw1 for k in np.arange(mosaic_shape[1])]
+    tbl = axs[-1].table(cellText=All_strs,
+                        colWidths=clw,
+                        cellLoc='center',
+                        colLoc='center',
+                        bbox=[0.02, 0, 0.96, 1.0],
+                        zorder=10)
+    if save_png:
+        parquet_stem = os.path.splitext(os.path.basename(FIBSEM_Data_parquet))[0]
+        default_save_fname = os.path.join(data_dir,
+                                          parquet_stem + fname_repl_suffix + '_frame{:d}.png'.format(frame_id))
+        save_fname = kwargs.get('save_fname', default_save_fname)
+        axs[-1].text(-0.12, -0.07, save_fname, fontsize=4, transform=axs[-1].transAxes)
+        fig.savefig(save_fname, dpi=dpi)
+    else:
+        save_fname = 'Image not saved'
+    display(fig)
+    plt.close(fig)
+    return save_fname
+
+
+def generate_report_data_minmax_montage_parquet(minmax_parquet_file, **kwargs):
+    '''
+    Generate Report Plot for data Min-Max from Parquet file. (c) G.Shtengel 05/2026 gleb.shtengel@gmail.com
+
+    Parameters:
+    ----------
+    minmax_parquet_file : str
+        Path to the Parquet file containing Min-Max data.
 
     kwargs:
     ----------
     mosaic_shape : tuple or list of 2 ints
         Mosaic shape (ny_tiles, nx_tiles). Default is (1,1).
     tile_id : tuple or list of 2 ints
-        Y and X indices of the tile for which the WD fs frame will be evaluated. Default is (0, 0).
+        Y and X indices of the tile to highlight on the per-tile axis. Default is (0, 0).
+    data_dir : str
+        Directory for saving PNG output. Default is the directory containing minmax_parquet_file.
+    Sample_ID : str
+        Identifier shown above the plot. Default is ''.
+    thr_min : float
+        Min CDF threshold value shown as annotation. Default is 0.0.
+    thr_max : float
+        Max CDF threshold value shown as annotation. Default is 0.0.
+    fit_params : list
+        Savitzky-Golay fit parameters [type, window, polyorder] for the sliding bands. Default is ['SG', 101, 3]. Set type to 'None' to skip smoothing.
     save_png : boolean
         If True (default), the plot is saved into PNG file.
     dpi : int
         DPI for PNG. Default is 300.
     save_fname : string
-        File name to save the PNG image. Default is os.path.join(data_dir, minmax_xlsx_file.replace('.xlsx','_Min_Max.png')).
+        File name to save the PNG image. Default is os.path.join(data_dir, <parquet stem>_Min_Max.png).
     verbose : boolean
         Display intermediate results. Default is False.
 
     Returns:
     ----------
-    save_fname
+    save_fname : str
     '''
-    saved_kwargs = read_kwargs_xlsx(minmax_xlsx_file, 'kwargs Info', **kwargs)
     mosaic_shape = kwargs.get('mosaic_shape', (1, 1))
     nxny = np.prod(mosaic_shape)
     tile_id = kwargs.get('tile_id', (0, 0))
-    data_dir = saved_kwargs.get("data_dir", '')
+    data_dir = kwargs.get('data_dir', os.path.dirname(minmax_parquet_file))
     ldm = 70
-    data_dir_short = data_dir if len(data_dir)<ldm else '... '+ data_dir[-ldm:]
+    data_dir_short = data_dir if len(data_dir) < ldm else '... ' + data_dir[-ldm:]
     verbose = kwargs.get('verbose', False)
     save_png = kwargs.get('save_png', True)
     dpi = kwargs.get('dpi', 300)
+    Sample_ID = kwargs.get('Sample_ID', '')
+    thr_min = kwargs.get('thr_min', 0.0)
+    thr_max = kwargs.get('thr_max', 0.0)
+    fit_params = kwargs.get('fit_params', ['SG', 101, 3])
+
     if save_png:
-        save_fname = kwargs.get('save_fname', os.path.join(data_dir, minmax_xlsx_file.replace('.xlsx','_Min_Max.png')))
+        parquet_stem = os.path.splitext(os.path.basename(minmax_parquet_file))[0]
+        default_save_fname = os.path.join(data_dir, parquet_stem + '_Min_Max.png')
+        save_fname = kwargs.get('save_fname', default_save_fname)
     else:
         save_fname = 'Image not saved'
-    if verbose:
-        print('Loading kwarg Data')
-    Sample_ID = kwargs.get('Sample_ID', saved_kwargs.get('Sample_ID', ''))
-    thr_min = saved_kwargs.get("thr_min", 0.0)
-    thr_max = saved_kwargs.get("thr_max", 0.0)
-    fit_params_saved = saved_kwargs.get("fit_params", ['SG', 101, 3])
-    fit_params = kwargs.get("fit_params", fit_params_saved)
-    preserve_scales =  saved_kwargs.get("preserve_scales", True)  # If True, the transformation matrix will be adjusted using the settings defined by fit_params below
-    
+
     if verbose:
         print('Loading MinMax Data')
-    try:
-        int_results_all = pd.read_excel(minmax_xlsx_file, sheet_name='FIBSEM Data')
-    except:
-        int_results_all = pd.read_excel(minmax_xlsx_file, sheet_name='MinMax Data')
-    
+    int_results_all = pd.read_parquet(minmax_parquet_file)
+
     int_results = int_results_all.iloc[mosaic_shape[0]*tile_id[0]+tile_id[1]::nxny, :]
     frames = int_results['Frame']/nxny
     frame_min = np.array(int_results['Min'])
     frame_max = np.array(int_results['Max'])
-    data_min_glob  = np.min(frame_min)
-    data_max_glob  = np.max(frame_max)
+    data_min_glob = np.min(frame_min)
+    data_max_glob = np.max(frame_max)
 
     if verbose:
         print('Generating Plots')
     fs = 12
 
-    fig, axs = plt.subplots(3,1, figsize = (6,10), sharex=True)
+    fig, axs = plt.subplots(3, 1, figsize=(6, 10), sharex=True)
     fig.subplots_adjust(left=0.15, bottom=0.06, right=0.99, top=0.97, wspace=0.05, hspace=0.05)
-    
+
     for k in np.arange(nxny):
         my_col = plt.get_cmap("gist_rainbow_r")((nxny-k)/(nxny-1))
         framek_min = int_results_all.iloc[k::nxny, :]['Min']
@@ -1341,26 +1683,28 @@ def generate_report_data_minmax_montage_xlsx(minmax_xlsx_file, **kwargs):
             axs[0].plot(frames, framek_min, color=my_col, marker='x', markersize=4)
             axs[1].plot(frames, framek_max, color=my_col, marker='x', markersize=4)
         else:
-            axs[0].plot(frames, framek_min, color=my_col, linewidth = 0.5)
-            axs[1].plot(frames, framek_max, color=my_col, linewidth = 0.5)
+            axs[0].plot(frames, framek_min, color=my_col, linewidth=0.5)
+            axs[1].plot(frames, framek_max, color=my_col, linewidth=0.5)
     axs[0].set_ylabel('All Tiles Minima Values')
     axs[1].set_ylabel('All Tiles Maxima Values')
 
     if fit_params[0] != 'None':
         sv_apert = min([fit_params[1], len(frames)//8*2+1])
-        print('Using fit_params: ', 'SG', sv_apert, fit_params[2])
+        if verbose:
+            print('Using fit_params: ', 'SG', sv_apert, fit_params[2])
         sliding_min = savgol_filter(frame_min.astype(np.double), sv_apert, fit_params[2])
         sliding_max = savgol_filter(frame_max.astype(np.double), sv_apert, fit_params[2])
     else:
-        print('Not smoothing the Min/Max data')
+        if verbose:
+            print('Not smoothing the Min/Max data')
         sliding_min = frame_min.astype(np.double)
         sliding_max = frame_max.astype(np.double)
 
-    axs[0].text(0.2, 1.04, Sample_ID, fontsize = fs, transform=axs[0].transAxes)
+    axs[0].text(0.2, 1.04, Sample_ID, fontsize=fs, transform=axs[0].transAxes)
     axs[2].plot(frame_min, 'b', linewidth=1, label='Frame Minima')
-    axs[2].plot(sliding_min, 'b', linewidth=2, linestyle = 'dotted', label='Sliding Minima')
+    axs[2].plot(sliding_min, 'b', linewidth=2, linestyle='dotted', label='Sliding Minima')
     axs[2].plot(frame_max, 'r', linewidth=1, label='Frame Maxima')
-    axs[2].plot(sliding_max, 'r', linewidth=2, linestyle = 'dotted', label='Sliding Maxima')
+    axs[2].plot(sliding_max, 'r', linewidth=2, linestyle='dotted', label='Sliding Maxima')
     axs[2].legend()
     axs[2].grid(True)
     axs[2].set_xlabel('Frame')
@@ -1370,16 +1714,16 @@ def generate_report_data_minmax_montage_xlsx(minmax_xlsx_file, **kwargs):
     xminmax = [0, len(frame_min)]
     y_min = [data_min_glob, data_min_glob]
     y_max = [data_max_glob, data_max_glob]
-    axs[2].plot(xminmax, y_min, 'b', linestyle = '--')
-    axs[2].plot(xminmax, y_max, 'r', linestyle = '--')
-    axs[2].text(len(frame_min)/20.0, data_min_glob-dxn/1.75, 'data_min_glob={:.1f}'.format(data_min_glob), fontsize = fs-2, c='b')
-    axs[2].text(len(frame_min)/20.0, data_max_glob+dxn/2.25, 'data_max_glob={:.1f}'.format(data_max_glob), fontsize = fs-2, c='r')
-    axs[2].text(len(frame_min)/20.0, data_min_glob+dxn*4.5, 'thr_min={:.1e}'.format(thr_min), fontsize = fs-2, c='b')
-    axs[2].text(len(frame_min)/20.0, data_min_glob+dxn*5.5, 'thr_max={:.1e}'.format(thr_max), fontsize = fs-2, c='r')
+    axs[2].plot(xminmax, y_min, 'b', linestyle='--')
+    axs[2].plot(xminmax, y_max, 'r', linestyle='--')
+    axs[2].text(len(frame_min)/20.0, data_min_glob-dxn/1.75, 'data_min_glob={:.1f}'.format(data_min_glob), fontsize=fs-2, c='b')
+    axs[2].text(len(frame_min)/20.0, data_max_glob+dxn/2.25, 'data_max_glob={:.1f}'.format(data_max_glob), fontsize=fs-2, c='r')
+    axs[2].text(len(frame_min)/20.0, data_min_glob+dxn*4.5, 'thr_min={:.1e}'.format(thr_min), fontsize=fs-2, c='b')
+    axs[2].text(len(frame_min)/20.0, data_min_glob+dxn*5.5, 'thr_max={:.1e}'.format(thr_max), fontsize=fs-2, c='r')
     for ax in axs:
         ax.grid(True)
     if save_png:
-        axs[2].text(-0.12, -0.17, save_fname, fontsize = 5, transform=axs[2].transAxes)
+        axs[2].text(-0.12, -0.17, save_fname, fontsize=5, transform=axs[2].transAxes)
         fig.savefig(save_fname, dpi=dpi)
     display(fig)
     plt.close(fig)
@@ -1455,14 +1799,14 @@ def generate_outliers_report(outliers, fls, **kwargs):
         plt.close(fig)
 
     
-def analyze_minmax_outliers_montage_xlsx(minmax_xlsx_file, **kwargs):
+def analyze_minmax_outliers_montage_parquet(minmax_parquet_file, **kwargs):
     '''
-    Generate Report Plot for data Min-Max from XLSX spreadsheet file. ©G.Shtengel 01/2026 gleb.shtengel@gmail.com
-    
+    Generate Report Plot for data Min-Max with outlier marking from Parquet file. (c) G.Shtengel 05/2026 gleb.shtengel@gmail.com
+
     Parameters:
     -----------
-    minmax_xlsx_file : str
-        Path to the XLSX spreadsheet file containing Min-Max data
+    minmax_parquet_file : str
+        Path to the Parquet file containing Min-Max data.
 
     kwargs:
     -----------
@@ -1472,12 +1816,18 @@ def analyze_minmax_outliers_montage_xlsx(minmax_xlsx_file, **kwargs):
         Mosaic shape (ny_tiles, nx_tiles). Default is (1,1).
     tile_id : tuple or list of 2 ints
         Y and X indices of the tile for which the WD fs frame will be evaluated. Default is (0, 0).
+    data_dir : str
+        Directory for saving PNG output. Default is the directory containing minmax_parquet_file.
+    Sample_ID : str
+        Identifier shown above the plot. Default is ''.
+    fit_params : list
+        Savitzky-Golay fit parameters [type, window, polyorder]. Default is ['SG', 11, 3]. Set type to 'None' to use mean-based outlier detection.
     save_png : boolean
         If True (default), the plot is saved into PNG file.
     dpi : int
         DPI for PNG. Default is 300.
     save_fname : string
-        File name to save the PNG image. Default is os.path.join(data_dir, minmax_xlsx_file.replace('.xlsx','_Min_Max.png')).
+        File name to save the PNG image. Default is os.path.join(data_dir, <parquet stem>_Min_Max_Outliers.png).
     verbose : boolean
         Display intermediate results. Default is False.
     mark_outliers : boolean
@@ -1487,32 +1837,28 @@ def analyze_minmax_outliers_montage_xlsx(minmax_xlsx_file, **kwargs):
     ----------
     outliers_min, outliers_max
     '''
-    saved_kwargs = read_kwargs_xlsx(minmax_xlsx_file, 'kwargs Info', **kwargs)
     sigma_thr = kwargs.get('sigma_thr', 6.0)
     mosaic_shape = kwargs.get('mosaic_shape', (1, 1))
     nxny = np.prod(mosaic_shape)
-    data_dir = saved_kwargs.get("data_dir", '')
+    data_dir = kwargs.get('data_dir', os.path.dirname(minmax_parquet_file))
     verbose = kwargs.get('verbose', False)
     mark_outliers = kwargs.get('mark_outliers', True)
     save_png = kwargs.get('save_png', True)
     dpi = kwargs.get('dpi', 300)
+    Sample_ID = kwargs.get('Sample_ID', '')
+    fit_params = kwargs.get('fit_params', ['SG', 11, 3])
+
     if save_png:
-        save_fname = kwargs.get('save_fname', os.path.join(data_dir, minmax_xlsx_file.replace('.xlsx','_Min_Max_Outliers.png')))
+        parquet_stem = os.path.splitext(os.path.basename(minmax_parquet_file))[0]
+        default_save_fname = os.path.join(data_dir, parquet_stem + '_Min_Max_Outliers.png')
+        save_fname = kwargs.get('save_fname', default_save_fname)
     else:
         save_fname = 'Image not saved'
-    if verbose:
-        print('Loading kwarg Data')
-    Sample_ID = kwargs.get('Sample_ID', saved_kwargs.get('Sample_ID', ''))
-    fit_params_saved = saved_kwargs.get("fit_params", ['SG', 11, 3])
-    fit_params = kwargs.get("fit_params", fit_params_saved)
-     
+
     if verbose:
         print('Loading MinMax Data')
-    try:
-        int_results_all = pd.read_excel(minmax_xlsx_file, sheet_name='FIBSEM Data')
-    except:
-        int_results_all = pd.read_excel(minmax_xlsx_file, sheet_name='MinMax Data')
-    
+    int_results_all = pd.read_parquet(minmax_parquet_file)
+
     frames = np.array(int_results_all.iloc[0::nxny, :]['Frame'])//nxny
 
     if verbose:
@@ -1520,7 +1866,7 @@ def analyze_minmax_outliers_montage_xlsx(minmax_xlsx_file, **kwargs):
     fs = 12
     fsmark = 6
 
-    fig, axs = plt.subplots(2,1, figsize = (6,7), sharex=True)
+    fig, axs = plt.subplots(2, 1, figsize=(6, 7), sharex=True)
     fig.subplots_adjust(left=0.15, bottom=0.06, right=0.99, top=0.97, wspace=0.05, hspace=0.05)
 
     if fit_params[0] != 'None':
@@ -1534,8 +1880,8 @@ def analyze_minmax_outliers_montage_xlsx(minmax_xlsx_file, **kwargs):
         my_col = plt.get_cmap("gist_rainbow_r")(0.0 if nxny == 1 else (nxny-k)/(nxny-1))
         framek_min = np.array(int_results_all.iloc[k::nxny, :]['Min'])
         framek_max = np.array(int_results_all.iloc[k::nxny, :]['Max'])
-        axs[0].plot(frames, framek_min, color=my_col, linewidth = 0.5)
-        axs[1].plot(frames, framek_max, color=my_col, linewidth = 0.5)
+        axs[0].plot(frames, framek_min, color=my_col, linewidth=0.5)
+        axs[1].plot(frames, framek_max, color=my_col, linewidth=0.5)
         if fit_params[0] != 'None':
             sliding_min = savgol_filter(framek_min.astype(np.double), sv_apert, fit_params[2])
             sliding_max = savgol_filter(framek_max.astype(np.double), sv_apert, fit_params[2])
@@ -1559,18 +1905,18 @@ def analyze_minmax_outliers_montage_xlsx(minmax_xlsx_file, **kwargs):
                 axs[1].text(frames[outlier_k_max], framek_max[outlier_k_max], '{:d}, {:d}'.format(k, frames[outlier_k_max]), fontsize=fsmark)
         if len(outliersk_max) > 0:
             outliers_max.append([k, outliersk_max])
-    outliers_min = reformat_outliers_data(outliers_min, mosaic_shape)
-    outliers_max = reformat_outliers_data(outliers_max, mosaic_shape)
-    
+    outliers_min = reformat_outliers_data(outliers_min)        # bug fix: xlsx version passed (outliers, mosaic_shape) but reformat_outliers_data takes 1 arg, causing TypeError when outliers were found
+    outliers_max = reformat_outliers_data(outliers_max)        # bug fix: same as above
+
     axs[0].set_ylabel('All Tiles Minima Values')
     axs[1].set_ylabel('All Tiles Maxima Values')
     axs[1].set_xlabel('Frame')
 
-    axs[0].text(0.2, 1.04, Sample_ID, fontsize = fs, transform=axs[0].transAxes)
+    axs[0].text(0.2, 1.04, Sample_ID, fontsize=fs, transform=axs[0].transAxes)
     for ax in axs:
         ax.grid(True)
     if save_png:
-        axs[1].text(-0.12, -0.17, save_fname, fontsize = 5, transform=axs[1].transAxes)
+        axs[1].text(-0.12, -0.17, save_fname, fontsize=5, transform=axs[1].transAxes)
         fig.savefig(save_fname, dpi=dpi)
     display(fig)
     plt.close(fig)
@@ -2477,19 +2823,19 @@ class FIBSEM_mosaic_dataset:
             Number of histogram bins for building the PDF and CDF. Default is object attribute.
         percentile : int
             Percentile value for data evaluation. Default is obect attribute (50).
-        FIBSEM_Data_xlsx : str
-            File path of the Excell file for the FIBSEM data set data to be saved (Data Min/Max, Working Distance, Milling Y Voltage, FOV center positions).
+        FIBSEM_Data_parquet : str
+            File path of the Parquet file for the FIBSEM data set data to be saved (Data Min/Max, Working Distance, Milling Y Voltage, FOV center positions).
         use_existing_data : boolean
-            Default is False. If True and the data exists (saved into XLSX), use that.            
+            Default is False. If True and the data exists (saved to Parquet), use that.            
         verbose : boolean
             If True, intermediate messages and results will be displayed. Default is False.
 
         Returns:
         ----------
         FIBSEM_Data : list of 20 parameters
-            FIBSEM_Data_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding, mill_rate_WD, mill_rate_MV, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolutions, YResolutions, SEMStiX, SEMStiY, SEMAlnX, SEMAlnY, errors_s2
-                FIBSEM_Data_xlsx : str
-                    path to Excel file with the FIBSEM data
+            FIBSEM_Data_parquet, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding, mill_rate_WD, mill_rate_MV, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolutions, YResolutions, SEMStiX, SEMStiY, SEMAlnX, SEMAlnY, errors_s2
+                FIBSEM_Data_parquet : str
+                    path to Parquet file with the FIBSEM data
                 data_min_glob : np.float32   
                     min data value for I8 conversion (open CV SIFT requires I8)
                 data_max_glob : np.float32   
@@ -2521,8 +2867,8 @@ class FIBSEM_mosaic_dataset:
         thr_max = kwargs.get("thr_max", self.thr_max)
         nbins = kwargs.get("nbins", self.nbins)
         fit_params = kwargs.get('fit_params', ['SG', 3, 1])
-        FIBSEM_Data_xlsx_default = os.path.join(data_dir, os.path.splitext(self.fnm_mosaic_stack)[0] + '_FIBSEM_Data.xlsx')
-        FIBSEM_Data_xlsx = kwargs.get('FIBSEM_Data_xlsx', FIBSEM_Data_xlsx_default)
+        FIBSEM_Data_parquet_default = os.path.join(data_dir, os.path.splitext(self.fnm_mosaic_stack)[0] + '_FIBSEM_Data.parquet')
+        FIBSEM_Data_parquet = kwargs.get('FIBSEM_Data_parquet', FIBSEM_Data_parquet_default)
         use_existing_data = kwargs.get('use_existing_data', False)
         if hasattr(self, 'Mill_Volt_Rate_um_per_V'):
             Mill_Volt_Rate_um_per_V = kwargs.get("Mill_Volt_Rate_um_per_V", self.Mill_Volt_Rate_um_per_V)
@@ -2542,14 +2888,14 @@ class FIBSEM_mosaic_dataset:
                         'percentile' : percentile,
                         'sliding_minmax' : False,
                         'fit_params' : fit_params,
-                        'FIBSEM_Data_xlsx' : FIBSEM_Data_xlsx,
+                        'FIBSEM_Data_parquet' : FIBSEM_Data_parquet,
                         'verbose' : verbose,
                         'use_existing_data' : use_existing_data}
 
         if verbose:
             print('Evaluating the parameters of FIBSEM data set (data Min/Max, Working Distance, FOV center positions, Scan Rate, EHT)')
         self.FIBSEM_Data = evaluate_FIBSEM_frames_dataset(self.fls.ravel(), DASK_client, **local_kwargs)
-        self.data_minmax = [self.FIBSEM_Data['FIBSEM_Data_xlsx'],
+        self.data_minmax = [self.FIBSEM_Data['FIBSEM_Data_parquet'],
                     self.FIBSEM_Data['data_min_glob'],
                     self.FIBSEM_Data['data_max_glob'],
                     self.FIBSEM_Data['data_min_sliding'],
@@ -2957,8 +3303,8 @@ class FIBSEM_mosaic_dataset:
         U8_conversion : str
             Range selection for U8 conversion. Options are: 'global', 'sliding', and 'local'. Default is 'local'.
         data_minmax : list of 5 parameters
-            minmax_xlsx : str
-                path to Excel file with Min/Max data.
+            minmax_parquet : str
+                path to Parquet file with Min/Max data.
             data_min_glob : np.float32   
                 min data value for I8 conversion (open CV SIFT requires I8).
             data_min_sliding : np.float32 array
@@ -3011,7 +3357,7 @@ class FIBSEM_mosaic_dataset:
         U8_conversion = kwargs.get('U8_conversion', self.U8_conversion)
         if U8_conversion != 'local':
             data_minmax = kwargs.get("data_minmax", self.data_minmax)
-            minmax_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding = data_minmax
+            minmax_parquet, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding = data_minmax
         SIFT_nfeatures = kwargs.get("SIFT_nfeatures", self.SIFT_nfeatures)
         SIFT_nOctaveLayers = kwargs.get("SIFT_nOctaveLayers", self.SIFT_nOctaveLayers)
         SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", self.SIFT_contrastThreshold)
@@ -3419,8 +3765,8 @@ class FIBSEM_mosaic_dataset:
         nbins : int
             Number of histogram bins for building the PDF and CDF. Default is object attribute.
         data_minmax : list of 5 parameters
-            minmax_xlsx : str
-                path to Excel file with Min/Max data.
+            minmax_parquet : str
+                path to Parquet file with Min/Max data.
             data_min_glob : np.float32   
                 min data value for I8 conversion (open CV SIFT requires I8).
             data_min_sliding : np.float32 array

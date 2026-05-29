@@ -5165,6 +5165,76 @@ def generate_report_mill_rate_xlsx(Mill_Rate_Data_xlsx, **kwargs):
     fig.savefig(os.path.join(data_dir, Mill_Rate_Data_xlsx.replace('.xlsx','_Mill_Rate.png')), dpi=300)
 
 
+def generate_report_mill_rate_parquet(Mill_Rate_Data_parquet, **kwargs):
+    '''
+    Generate Report Plot for mill rate evaluation from Parquet file. (c) G.Shtengel 05/2026 gleb.shtengel@gmail.com
+
+    Parameters:
+    ----------
+    Mill_Rate_Data_parquet : str
+        Path to the Parquet file containing the Working Distance (WD), Milling Y Voltage (MV), and FOV center shifts data.
+
+    kwargs:
+    ----------
+    data_dir : str
+        Directory for saving PNG output. Default is the directory containing Mill_Rate_Data_parquet.
+    Sample_ID : str
+        Identifier shown in the plot title. Default is ''.
+    Mill_Volt_Rate_um_per_V : float
+        Milling Voltage to Z conversion (um/V). Default is 31.235258870176065.
+    xlim : tuple of two values
+        Optional range for X-axis. If it is not (0,0) (default, ignored) - the axis limits will be set to this range.
+    verbose : boolean
+        if True, intermediate printouts are enabled. Default is False.
+    '''
+    verbose = kwargs.get('verbose', False)
+    data_dir = kwargs.get('data_dir', os.path.dirname(Mill_Rate_Data_parquet))
+    Sample_ID = kwargs.get('Sample_ID', '')
+    Mill_Volt_Rate_um_per_V = kwargs.get('Mill_Volt_Rate_um_per_V', 31.235258870176065)
+    xlim = kwargs.get('xlim', (0, 0))
+
+    if verbose:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Loading Working Distance and Milling Y Voltage Data')
+    int_results = pd.read_parquet(Mill_Rate_Data_parquet)
+    fr = int_results['Frame']
+    WD = int_results['Working Distance (mm)']
+    MillingYVoltage = int_results['Milling Y Voltage (V)']
+
+    if verbose:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Generating Plot')
+    fs = 12
+
+    fig, axs = plt.subplots(2, 1, figsize=(6, 7), sharex=True)
+    fig.subplots_adjust(left=0.12, bottom=0.06, right=0.99, top=0.96, wspace=0.05, hspace=0.05)
+    axs[0].plot(fr, WD, label='WD, Exp. Data', color='blue')
+    axs[0].grid(True)
+    axs[0].set_ylabel('Working Distance (mm)')
+    WD_fit_coef = np.polyfit(fr, WD, 1)
+    WD_fit = np.polyval(WD_fit_coef, fr)
+    axs[0].plot(fr, WD_fit, label='Fit, slope = {:.2f} nm/line'.format(WD_fit_coef[0]*1.0e6), color='red')
+    axs[0].legend(fontsize=12)
+
+    axs[1].plot(fr, MillingYVoltage, label='Mill. Y Volt. Exp. Data', color='green')
+    axs[1].grid(True)
+    axs[1].set_ylabel('Milling Y Voltage (V)')
+    MV_fit_coef = np.polyfit(fr, MillingYVoltage, 1)
+    MV_fit = np.polyval(MV_fit_coef, fr)
+    axs[1].plot(fr, MV_fit, label='Fit, slope = {:.3f} nm/line'.format(MV_fit_coef[0]*Mill_Volt_Rate_um_per_V*-1.0e3), color='orange')
+    axs[1].legend(fontsize=12)
+    axs[1].text(0.02, 0.05, 'Milling Voltage to Z conversion: {:.4f} um/V'.format(Mill_Volt_Rate_um_per_V), transform=axs[1].transAxes, fontsize=12)
+    axs[1].set_xlabel('Frame')
+    ldm = 70
+    data_dir_short = data_dir if len(data_dir) < ldm else '... ' + data_dir[-ldm:]
+    if xlim != (0, 0):
+        axs[1].set_xlim(xlim)
+    try:
+        axs[0].text(-0.15, 1.05, Sample_ID + '    ' + data_dir_short, fontsize=fs-2, transform=axs[0].transAxes)
+    except:
+        axs[0].text(-0.15, 1.05, data_dir_short, fontsize=fs-2, transform=axs[0].transAxes)
+    parquet_stem = os.path.splitext(os.path.basename(Mill_Rate_Data_parquet))[0]
+    fig.savefig(os.path.join(data_dir, parquet_stem + '_Mill_Rate.png'), dpi=300)
+
+
 def generate_report_ScanRate_EHT_xlsx(ScanRate_EHT_Data_xlsx, **kwargs):
     '''
     Generate Report Plot for Scan Rate and EHT from XLSX spreadsheet file. ©G.Shtengel 09/2023 gleb.shtengel@gmail.com
@@ -5227,6 +5297,69 @@ def generate_report_ScanRate_EHT_xlsx(ScanRate_EHT_Data_xlsx, **kwargs):
         axs[1].set_xlim(xlim)
     axs[0].set_title(data_dir)
     fig.savefig(os.path.join(data_dir, ScanRate_EHT_Data_xlsx.replace('.xlsx','_FIBSEM_Data_ScanRate_EHT.png')), dpi=300)
+
+
+def generate_report_ScanRate_EHT_parquet(ScanRate_EHT_Data_parquet, **kwargs):
+    '''
+    Generate Report Plot for Scan Rate and EHT from Parquet file. (c) G.Shtengel 05/2026 gleb.shtengel@gmail.com
+
+    Parameters:
+    ----------
+    ScanRate_EHT_Data_parquet : str
+        Path to the Parquet file containing the Scan Rate and EHT data.
+
+    kwargs:
+    ----------
+    data_dir : str
+        Directory for saving PNG output. Default is the directory containing ScanRate_EHT_Data_parquet.
+    Sample_ID : str
+        Identifier shown in the plot title. Default is ''.
+    xlim : tuple of two values
+        Optional range for X-axis. If it is not (0,0) (default, ignored) - the axis limits will be set to this range.
+    verbose : boolean
+        if True, intermediate printouts are enabled. Default is False.
+    '''
+    verbose = kwargs.get('verbose', False)
+    data_dir = kwargs.get('data_dir', os.path.dirname(ScanRate_EHT_Data_parquet))
+    Sample_ID = kwargs.get('Sample_ID', '')
+    xlim = kwargs.get('xlim', (0, 0))
+
+    if verbose:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Loading Scan Rate and EHT Data')
+    int_results = pd.read_parquet(ScanRate_EHT_Data_parquet)
+    fr = int_results['Frame']
+    ScanRate = int_results['Scan Rate (Hz)']
+    EHT = int_results['EHT (kV)']
+    try:
+        SEMSpecimenI = int_results['SEMSpecimenI (nA)']
+    except KeyError:
+        SEMSpecimenI = EHT * 0.0
+
+    if verbose:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Generating Plot')
+    fs = 12
+
+    fig, axs = plt.subplots(2, 1, figsize=(6, 7), sharex=True)
+    fig.subplots_adjust(left=0.12, bottom=0.06, right=0.88, top=0.96, wspace=0.05, hspace=0.05)
+    axs[0].plot(ScanRate/1000.0, 'b', label='Scan Rate')
+    ax2 = axs[0].twinx()
+    ax2.plot(EHT, 'r', linestyle='dashed', label='EHT')
+    ax2.set_ylabel('EHT (kV)', color='red')
+    ax2.legend(loc='upper right')
+
+    axs[1].plot(SEMSpecimenI, 'g', label='SEM Specimen I')
+    axs[1].set_xlabel('Frame')
+    axs[0].set_ylabel('Scan Rate (kHz)', color='blue')
+    axs[1].set_ylabel('SEM Specimen I (nA)', color='g')
+    for ax in axs:
+        ax.grid(True)
+        ax.legend(loc='upper left')
+    if xlim != (0, 0):
+        axs[1].set_xlim(xlim)
+    title = (Sample_ID + '   ' + data_dir) if Sample_ID else data_dir
+    axs[0].set_title(title)
+    parquet_stem = os.path.splitext(os.path.basename(ScanRate_EHT_Data_parquet))[0]
+    fig.savefig(os.path.join(data_dir, parquet_stem + '_ScanRate_EHT.png'), dpi=300)
 
 
 def generate_report_FOV_center_shift_xlsx(FOV_center_shift_xlsx, **kwargs):
@@ -5295,6 +5428,72 @@ def generate_report_FOV_center_shift_xlsx(FOV_center_shift_xlsx, **kwargs):
     except:
         axs[0].text(-0.15, 1.05, data_dir_short, fontsize = fs-2, transform=axs[0].transAxes)
     fig.savefig(os.path.join(data_dir, FOV_center_shift_xlsx.replace('.xlsx','_FOV_XYcenter.png')), dpi=300)
+    return
+
+
+def generate_report_FOV_center_shift_parquet(FOV_center_shift_parquet, **kwargs):
+    '''
+    Generate Report Plot for FOV center shift from Parquet file. (c) G.Shtengel 05/2026 gleb.shtengel@gmail.com
+
+    Parameters:
+    ----------
+    FOV_center_shift_parquet : str
+        Path to the Parquet file containing the Working Distance (WD), Milling Y Voltage (MV), and FOV center shifts data.
+
+    kwargs:
+    ----------
+    data_dir : str
+        Directory for saving PNG output. Default is the directory containing FOV_center_shift_parquet.
+    Sample_ID : str
+        Identifier shown in the plot title. Default is ''.
+    xlim : tuple of two values
+        Optional range for X-axis. If it is not (0,0) (default, ignored) - the axis limits will be set to this range.
+    verbose : boolean
+        if True, intermediate printouts are enabled. Default is False.
+    '''
+    verbose = kwargs.get('verbose', False)
+    data_dir = kwargs.get('data_dir', os.path.dirname(FOV_center_shift_parquet))
+    Sample_ID = kwargs.get('Sample_ID', '')
+    xlim = kwargs.get('xlim', (0, 0))
+
+    if verbose:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Loading FOV Center Location Data')
+    int_results = pd.read_parquet(FOV_center_shift_parquet)
+    fr = int_results['Frame']
+    center_x = int_results['FOV X Center (Pix)']
+    center_y = int_results['FOV Y Center (Pix)']
+    sv_apert = np.min((51, len(fr)//8*2+1))
+    trend_x = savgol_filter(center_x*1.0, sv_apert, 1) - center_x[0]
+    trend_y = savgol_filter(center_y*1.0, sv_apert, 1) - center_y[0]
+
+    if verbose:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Generating Plot')
+    fs = 12
+
+    fig, axs = plt.subplots(2, 1, figsize=(6, 7), sharex=True)
+    fig.subplots_adjust(left=0.12, bottom=0.06, right=0.99, top=0.96, wspace=0.05, hspace=0.05)
+    axs[0].plot(fr, center_x, label='FOV X center, Data', color='red')
+    axs[0].plot(fr, center_y, label='FOV Y center, Data', color='blue')
+    axs[0].grid(True)
+    axs[0].set_ylabel('FOV Center (Pix)')
+    axs[0].legend(fontsize=12)
+
+    axs[1].plot(fr, trend_x, label='FOV X center shift, smoothed', color='red')
+    axs[1].plot(fr, trend_y, label='FOV Y center shift, smoothed', color='blue')
+    axs[1].grid(True)
+    axs[1].set_ylabel('FOV Center Shift (Pix)')
+    axs[1].legend(fontsize=12)
+    axs[1].set_xlabel('Frame')
+    ldm = 70
+    data_dir_short = data_dir if len(data_dir) < ldm else '... ' + data_dir[-ldm:]
+    if xlim != (0, 0):
+        axs[1].set_xlim(xlim)
+    try:
+        axs[0].text(-0.15, 1.05, Sample_ID + '    ' + data_dir_short, fontsize=fs-2, transform=axs[0].transAxes)
+    except:
+        axs[0].text(-0.15, 1.05, data_dir_short, fontsize=fs-2, transform=axs[0].transAxes)
+    parquet_stem = os.path.splitext(os.path.basename(FOV_center_shift_parquet))[0]
+    fig.savefig(os.path.join(data_dir, parquet_stem + '_FOV_XYcenter.png'), dpi=300)
     return
 
 
@@ -5386,6 +5585,97 @@ def generate_report_data_minmax_xlsx(minmax_xlsx_file, **kwargs):
         ax0.text(-0.15, 1.05, data_dir_short, fontsize = fs-2, transform=ax0.transAxes)
 
     fig0.savefig(os.path.join(data_dir, minmax_xlsx_file.replace('.xlsx','_Min_Max.png')), dpi=300)
+
+
+def generate_report_data_minmax_parquet(minmax_parquet_file, **kwargs):
+    '''
+    Generate Report Plot for data Min-Max from Parquet file. (c) G.Shtengel 05/2026 gleb.shtengel@gmail.com
+
+    Parameters:
+    minmax_parquet_file : str
+        Path to the Parquet file containing Min-Max data
+
+    kwargs:
+    ----------
+    data_dir : str
+        Directory for saving PNG output. Default is the directory containing minmax_parquet_file.
+    Sample_ID : str
+        Identifier shown in the plot title. Default is ''.
+    thr_min : float
+        Min threshold value shown as annotation. Default is 0.0.
+    thr_max : float
+        Max threshold value shown as annotation. Default is 0.0.
+    fit_params : list
+        Savitzky-Golay fit parameters [type, window, polyorder] for the sliding bands. Default is ['SG', 101, 3]. Set type to 'None' to skip smoothing.
+    xlim : tuple of two values
+        Optional range for X-axis. If it is not (0,0) (default, ignored) - the axis limits will be set to this range.
+    verbose : boolean
+        if True, intermediate printouts are enabled. Default is False.
+    '''
+    verbose = kwargs.get('verbose', False)
+    data_dir = kwargs.get('data_dir', os.path.dirname(minmax_parquet_file))
+    Sample_ID = kwargs.get('Sample_ID', '')
+    thr_min = kwargs.get('thr_min', 0.0)
+    thr_max = kwargs.get('thr_max', 0.0)
+    fit_params = kwargs.get('fit_params', ['SG', 101, 3])
+    xlim = kwargs.get('xlim', (0, 0))
+
+    if verbose:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Loading MinMax Data')
+    int_results = pd.read_parquet(minmax_parquet_file)
+    frames = int_results['Frame']
+    frame_min = int_results['Min']
+    frame_max = int_results['Max']
+    data_min_glob = np.min(frame_min)
+    data_max_glob = np.max(frame_max)
+
+    if fit_params[0] != 'None':
+        sv_apert = min([fit_params[1], len(frames)//8*2+1])
+        if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Using fit_params: ', 'SG', sv_apert, fit_params[2])
+        sliding_min = savgol_filter(frame_min.astype(np.double), sv_apert, fit_params[2])
+        sliding_max = savgol_filter(frame_max.astype(np.double), sv_apert, fit_params[2])
+    else:
+        if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Not smoothing the Min/Max data')
+        sliding_min = frame_min.astype(np.double)
+        sliding_max = frame_max.astype(np.double)   # bug fix: was frame_min in xlsx version
+
+    if verbose:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Generating Plot')
+    fs = 12
+    fig0, ax0 = plt.subplots(1, 1, figsize=(6, 4))
+    fig0.subplots_adjust(left=0.14, bottom=0.11, right=0.99, top=0.94)
+    ax0.plot(frame_min, 'b', linewidth=1, label='Frame Minima')
+    ax0.plot(sliding_min, 'b', linewidth=2, linestyle='dotted', label='Sliding Minima')
+    ax0.plot(frame_max, 'r', linewidth=1, label='Frame Maxima')
+    ax0.plot(sliding_max, 'r', linewidth=2, linestyle='dotted', label='Sliding Maxima')
+    ax0.legend()
+    ax0.grid(True)
+    ax0.set_xlabel('Frame')
+    ax0.set_ylabel('Minima and Maxima Values')
+    dxn = (data_max_glob - data_min_glob)*0.1
+    ax0.set_ylim((data_min_glob - dxn, data_max_glob+dxn))
+    xminmax = [0, len(frame_min)]
+    y_min = [data_min_glob, data_min_glob]
+    y_max = [data_max_glob, data_max_glob]
+    ax0.plot(xminmax, y_min, 'b', linestyle='--')
+    ax0.plot(xminmax, y_max, 'r', linestyle='--')
+    ax0.text(len(frame_min)/20.0, data_min_glob-dxn/1.75, 'data_min_glob={:.1f}'.format(data_min_glob), fontsize=fs-2, c='b')
+    ax0.text(len(frame_min)/20.0, data_max_glob+dxn/2.25, 'data_max_glob={:.1f}'.format(data_max_glob), fontsize=fs-2, c='r')
+    ax0.text(len(frame_min)/20.0, data_min_glob+dxn*4.5, 'thr_min={:.1e}'.format(thr_min), fontsize=fs-2, c='b')
+    ax0.text(len(frame_min)/20.0, data_min_glob+dxn*5.5, 'thr_max={:.1e}'.format(thr_max), fontsize=fs-2, c='r')
+    ldm = 70
+    data_dir_short = data_dir if len(data_dir) < ldm else '... ' + data_dir[-ldm:]
+    if xlim != (0, 0):
+        ax0.set_xlim(xlim)               # bug fix: was axs[1] in xlsx version (undefined name)
+    try:
+        ax0.text(-0.15, 1.05, Sample_ID + '    ' + data_dir_short, fontsize=fs-2, transform=ax0.transAxes)
+    except:
+        ax0.text(-0.15, 1.05, data_dir_short, fontsize=fs-2, transform=ax0.transAxes)
+
+    parquet_stem = os.path.splitext(os.path.basename(minmax_parquet_file))[0]
+    fig0.savefig(os.path.join(data_dir, parquet_stem + '_Min_Max.png'), dpi=300)
 
 
 def generate_report_transf_matrix_from_xlsx(transf_matrix_xlsx_file, **kwargs):
@@ -8740,19 +9030,19 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
             ['PF', 2]  - use polynomial fit (in this case of order 2)
     Mill_Volt_Rate_um_per_V : float
         Milling Voltage to Z conversion (µm/V). Default is 31.235258870176065.
-    FIBSEM_Data_xlsx : str
-        Filepath of the Excell file for the FIBSEM data set data to be saved (Data Min/Max, Working Distance, Milling Y Voltage, FOV center positions)
+    FIBSEM_Data_parquet : str
+        Filepath of the Parquet file for the FIBSEM data set data to be saved (Data Min/Max, Working Distance, Milling Y Voltage, FOV center positions)
     verbose : boolean
         If True (default), intermediate messages and results will be displayed.
     use_existing_data : boolean
-        Default is False. If True and the data exists (saved into XLSX), use that.   
+        Default is False. If True and the data exists (saved to Parquet), use that.   
 
     Returns:
     ----------
     FIBSEM_Data : list of 20 parameters
-        FIBSEM_Data_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding, mill_rate_WD, mill_rate_MV, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolutions, YResolutions, SEMStiX, SEMStiY, SEMAlnX, SEMAlnY, errors_s2
-            FIBSEM_Data_xlsx : str
-                path to Excel file with the FIBSEM data
+        FIBSEM_Data_parquet, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding, mill_rate_WD, mill_rate_MV, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolutions, YResolutions, SEMStiX, SEMStiY, SEMAlnX, SEMAlnY, errors_s2
+            FIBSEM_Data_parquet : str
+                path to Parquet file with the FIBSEM data
             data_min_glob : np.float32   
                 min data value for I8 conversion (open CV SIFT requires I8)
             data_man_glob : np.float32   
@@ -8794,22 +9084,13 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
     Mill_Volt_Rate_um_per_V = kwargs.get("Mill_Volt_Rate_um_per_V", 31.235258870176065)
     kwargs['Mill_Volt_Rate_um_per_V'] = Mill_Volt_Rate_um_per_V
     
-    FIBSEM_Data_xlsx = kwargs.get('FIBSEM_Data_xlsx', 'FIBSEM_Data.xlsx')
-    FIBSEM_Data_xlsx_path = os.path.join(data_dir, FIBSEM_Data_xlsx)
+    FIBSEM_Data_parquet = kwargs.get('FIBSEM_Data_parquet', 'FIBSEM_Data.parquet')
+    FIBSEM_Data_parquet_path = os.path.join(data_dir, FIBSEM_Data_parquet)
     verbose = kwargs.get("verbose", False)
     use_existing_data = kwargs.get('use_existing_data', False)
 
-    # Cache may have been written as .csv if the dataset exceeded Excel's row limit.
-    # Look for both extensions; prefer the .xlsx variant when both exist.
-    csv_path = os.path.splitext(FIBSEM_Data_xlsx_path)[0] + '.csv'
-    cache_path = (FIBSEM_Data_xlsx_path if os.path.exists(FIBSEM_Data_xlsx_path)
-                  else csv_path if os.path.exists(csv_path)
-                  else None)
-    if use_existing_data and cache_path is not None:
-        if cache_path.endswith('.csv'):
-            int_results = pd.read_csv(cache_path)
-        else:
-            int_results = pd.read_excel(cache_path, sheet_name='FIBSEM Data')
+    if use_existing_data and os.path.exists(FIBSEM_Data_parquet_path):
+        int_results = pd.read_parquet(FIBSEM_Data_parquet_path)
         fr = int_results['Frame']
         data_min = int_results['Min']
         data_max = int_results['Max']
@@ -8972,7 +9253,7 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
 
     # Build the result dict FIRST so it's always returned, even if the save below fails.
     result = {
-            'FIBSEM_Data_xlsx': FIBSEM_Data_xlsx_path,
+            'FIBSEM_Data_parquet': FIBSEM_Data_parquet_path,
             'data_min_glob':    data_min_glob,
             'data_max_glob':    data_max_glob,
             'data_min_sliding': data_min_sliding,
@@ -8995,29 +9276,13 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
             'errors':           errors_s2,
         }
 
-    # Save to disk. Excel has a 1,048,576-row sheet limit; fall back to CSV when
-    # the dataset exceeds it. Wrap the whole thing in try/except so any unexpected
-    # IO failure doesn't cost the user the just-computed in-memory results.
-    EXCEL_MAX_ROWS = 1_048_576
-    n_rows = len(minmax_df)
+    # Save to Parquet (columnar, type-preserving, no row limit). Wrap in try/except
+    # so any IO failure doesn't cost the user the just-computed in-memory results.
+    if verbose:
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')
+              + '   Saving the FIBSEM dataset statistics to file: ' + FIBSEM_Data_parquet_path)
     try:
-        if n_rows > EXCEL_MAX_ROWS:
-            csv_path = os.path.splitext(FIBSEM_Data_xlsx_path)[0] + '.csv'
-            if verbose:
-                print(time.strftime('%Y/%m/%d  %H:%M:%S')
-                      + '   Dataset has {:d} rows (> Excel max {:d}). Saving to CSV: {:s}'.format(
-                            n_rows, EXCEL_MAX_ROWS, csv_path))
-            minmax_df.to_csv(csv_path, index=False)
-            result['FIBSEM_Data_xlsx'] = csv_path           # update path in result
-        else:
-            if verbose:
-                print(time.strftime('%Y/%m/%d  %H:%M:%S')
-                      + '   Saving the FIBSEM dataset statistics to file: ' + FIBSEM_Data_xlsx_path)
-            xlsx_writer = pd.ExcelWriter(FIBSEM_Data_xlsx_path, engine='xlsxwriter')
-            minmax_df.to_excel(xlsx_writer, index=None, sheet_name='FIBSEM Data')
-            kwargs_info = pd.DataFrame([kwargs]).T
-            kwargs_info.to_excel(xlsx_writer, header=False, sheet_name='kwargs Info')
-            xlsx_writer.close()
+        minmax_df.to_parquet(FIBSEM_Data_parquet_path, compression='snappy', index=False)
     except Exception as e:
         print(time.strftime('%Y/%m/%d  %H:%M:%S')
               + '   WARNING: failed to save FIBSEM data to disk ({}): {}. '
@@ -12448,19 +12713,19 @@ class FIBSEM_dataset:
                 ['PF', 2]  - use polynomial fit (in this case of order 2)
         Mill_Volt_Rate_um_per_V : float
             Milling Voltage to Z conversion (µm/V). Default is 31.235258870176065.
-        FIBSEM_Data_xlsx : str
-            File path of the Excell file for the FIBSEM data set data to be saved (Data Min/Max, Working Distance, Milling Y Voltage, FOV center positions).
+        FIBSEM_Data_parquet : str
+            File path of the Parquet file for the FIBSEM data set data to be saved (Data Min/Max, Working Distance, Milling Y Voltage, FOV center positions).
         use_existing_data : boolean
-            Default is False. If True and the data exists (saved into XLSX), use that.            
+            Default is False. If True and the data exists (saved to Parquet), use that.            
         verbose : boolean
             If True (default), intermediate messages and results will be displayed.
 
         Returns:
         ----------
         FIBSEM_Data : list of 20 parameters
-            FIBSEM_Data_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding, mill_rate_WD, mill_rate_MV, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolutions, YResolutions, SEMStiX, SEMStiY, SEMAlnX, SEMAlnY, errors_s2
-                FIBSEM_Data_xlsx : str
-                    path to Excel file with the FIBSEM data
+            FIBSEM_Data_parquet, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding, mill_rate_WD, mill_rate_MV, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolutions, YResolutions, SEMStiX, SEMStiY, SEMAlnX, SEMAlnY, errors_s2
+                FIBSEM_Data_parquet : str
+                    path to Parquet file with the FIBSEM data
                 data_min_glob : np.float32   
                     min data value for I8 conversion (open CV SIFT requires I8)
                 data_man_glob : np.float32   
@@ -12507,8 +12772,8 @@ class FIBSEM_dataset:
         else:
             Mill_Volt_Rate_um_per_V = kwargs.get("Mill_Volt_Rate_um_per_V", 31.235258870176065)
 
-        FIBSEM_Data_xlsx_default = os.path.join(data_dir, self.fnm_reg.replace('.mrc', '_FIBSEM_Data.xlsx'))
-        FIBSEM_Data_xlsx = kwargs.get('FIBSEM_Data_xlsx', FIBSEM_Data_xlsx_default)
+        FIBSEM_Data_parquet_default = os.path.join(data_dir, self.fnm_reg.replace('.mrc', '_FIBSEM_Data.parquet'))
+        FIBSEM_Data_parquet = kwargs.get('FIBSEM_Data_parquet', FIBSEM_Data_parquet_default)
         verbose = kwargs.get('verbose', True)
         use_existing_data = kwargs.get('use_existing_data', False)
 
@@ -12522,14 +12787,14 @@ class FIBSEM_dataset:
                         'nbins' : nbins,
                         'fit_params' : fit_params,
                         'Mill_Volt_Rate_um_per_V' : Mill_Volt_Rate_um_per_V,
-                        'FIBSEM_Data_xlsx' : FIBSEM_Data_xlsx,
+                        'FIBSEM_Data_parquet' : FIBSEM_Data_parquet,
                         'verbose' : verbose,
                         'use_existing_data' : use_existing_data}
 
         if verbose:
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Evaluating the parameters of FIBSEM data set (data Min/Max, Working Distance, Milling Y Voltage, FOV center positions, Scan Rate, EHT)')
         self.FIBSEM_Data = evaluate_FIBSEM_frames_dataset(self.fls, DASK_client, **local_kwargs)
-        self.data_minmax = [self.FIBSEM_Data['FIBSEM_Data_xlsx'],
+        self.data_minmax = [self.FIBSEM_Data['FIBSEM_Data_parquet'],
                     self.FIBSEM_Data['data_min_glob'],
                     self.FIBSEM_Data['data_max_glob'],
                     self.FIBSEM_Data['data_min_sliding'],
@@ -12598,8 +12863,8 @@ class FIBSEM_dataset:
         U8_conversion : str
             Range selection for U8 conversion. Options are: 'global', 'sliding', and 'local'. Default is 'local'.
         data_minmax : list of 5 parameters
-            minmax_xlsx : str
-                path to Excel file with Min/Max data.
+            minmax_parquet : str
+                path to Parquet file with Min/Max data.
             data_min_glob : np.float32   
                 min data value for I8 conversion (open CV SIFT requires I8).
             data_min_sliding : np.float32 array
@@ -12662,7 +12927,7 @@ class FIBSEM_dataset:
                 U8_conversion = kwargs.get('U8_conversion', 'local')
             if U8_conversion != 'local':
                 data_minmax = kwargs.get("data_minmax", self.data_minmax)
-                minmax_xlsx, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding = data_minmax
+                minmax_parquet, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding = data_minmax
             SIFT_nfeatures = kwargs.get("SIFT_nfeatures", self.SIFT_nfeatures)
             SIFT_nOctaveLayers = kwargs.get("SIFT_nOctaveLayers", self.SIFT_nOctaveLayers)
             SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", self.SIFT_contrastThreshold)
