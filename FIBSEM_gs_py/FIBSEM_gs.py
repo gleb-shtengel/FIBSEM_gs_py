@@ -9104,11 +9104,27 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
         try:
             errors_s2 = int_results['Error Code']
         except:
-            errors_s2 = fr * 0
+            errors_s2 = fr * 0 
         try:
             SEMSpecimenI = int_results['SEMSpecimenI (nA)']
         except:
             SEMSpecimenI = EHT*0.0
+        try:
+            SEMStiX = int_results['SEMStiX']
+        except:
+            SEMStiX = fr * 0.0
+        try:
+            SEMStiY = int_results['SEMStiY']
+        except:
+            SEMStiY = fr * 0.0
+        try:
+            SEMAlnX = int_results['SEMAlnX']
+        except:
+            SEMAlnX = fr * 0.0
+        try:
+            SEMAlnY = int_results['SEMAlnY']
+        except:
+            SEMAlnY = fr * 0.0
         try:
             XResolutions = int_results['XResolutions']
         except:
@@ -9143,6 +9159,10 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
         if frame.EightBit == 1 and ftype == 1:
             if verbose:
                 print('Original data is 8-bit, no need to find Min and Max for 8-bit conversion')
+            SEMStiX = np.zeros(nfrs, dtype=np.float32)
+            SEMStiY = np.zeros(nfrs, dtype=np.float32)
+            SEMAlnX = np.zeros(nfrs, dtype=np.float32)
+            SEMAlnY = np.zeros(nfrs, dtype=np.float32)
             data_min_glob = np.uint8(0)
             data_max_glob =  np.uint8(255)
             data_min_sliding = np.zeros(nfrs, dtype=np.uint8)
