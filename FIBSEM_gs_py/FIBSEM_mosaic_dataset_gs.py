@@ -2933,6 +2933,10 @@ class FIBSEM_mosaic_dataset:
         DASK_client : DASK client. If empty string '' (Default), local computations are performed.
         DASK_client_retries : int
             Number of allowed automatic retries if a task fails. Default is object attribute.
+        max_futures : int
+            Max number of running DASK futures per batch. Default is self.max_futures (50000).
+            Reduces scheduler load by submitting in waves. Each wave's gather completes
+            before the next is submitted.
         ftype : int
             File type (0 - Shan Xu's .dat, 1 - tif). Default is object attribute.
         EightBit : int
@@ -3043,10 +3047,26 @@ class FIBSEM_mosaic_dataset:
             else:
                 params_s3 = [[fl, -1, -1, kpt_kwargs] for fl in self.fls.ravel()]
   
+        max_futures = kwargs.get('max_futures', self.max_futures)
         if use_DASK:
+            # Scatter deformation_field once — all tasks reference it via the future.
             shared_data_future = DASK_client.scatter(deformation_field, broadcast=True)
-            futures_s3 = DASK_client.map(extract_keypoints_descr_files, params_s3, deformation_field = shared_data_future, retries = DASK_client_retries)
-            results_s3 = DASK_client.gather(futures_s3)
+            # Stage submissions to avoid choking the scheduler on million-task jobs.
+            results_s3 = []
+            n_tasks   = len(params_s3)
+            n_batches = (n_tasks + max_futures - 1) // max_futures
+            for DASK_batch in tqdm(range(n_batches), desc='extract_keypoints DASK batches'):
+                start = DASK_batch * max_futures
+                stop  = min(start + max_futures, n_tasks)
+                if verbose:
+                    print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                          + '   Starting DASK batch {:d}/{:d} with {:d} jobs ({:d} remaining after this batch)'.format(
+                                DASK_batch + 1, n_batches, stop - start, n_tasks - stop))
+                futures_s3 = DASK_client.map(extract_keypoints_descr_files,
+                                             params_s3[start:stop],
+                                             deformation_field=shared_data_future,
+                                             retries=DASK_client_retries)
+                results_s3 += DASK_client.gather(futures_s3)
         else:
             results_s3 = []
             for j, param_s3 in enumerate(tqdm(params_s3, desc='Extracting Key Points and Descriptors: ', display=verbose)):
@@ -3179,6 +3199,10 @@ class FIBSEM_mosaic_dataset:
         DASK_client : DASK client. If empty string '' (default), local computations are performed.
         DASK_client_retries : int
             Number of allowed automatic retries if a task fails. Default is object attribute.
+        max_futures : int
+            Max number of running DASK futures per batch. Default is self.max_futures (50000).
+            Reduces scheduler load by submitting in waves. Each wave's gather completes
+            before the next is submitted.
         ftype : int
             File type (0 - Shan Xu's .dat, 1 - tif). Default is object attribute.
         left_crop : int 
@@ -3325,9 +3349,23 @@ class FIBSEM_mosaic_dataset:
                     print('Added a set: ')
                     print([fname1, fname2, dt_kwargs])
 
+            max_futures = kwargs.get('max_futures', self.max_futures)
             if use_DASK:
-                futures_SIFT = DASK_client.map(determine_transformations_files, params_SIFT, retries = DASK_client_retries)                
-                transformations_results_3D = DASK_client.gather(futures_SIFT)
+                # Stage submissions to avoid choking the scheduler on million-pair jobs.
+                transformations_results_3D = []
+                n_tasks   = len(params_SIFT)
+                n_batches = (n_tasks + max_futures - 1) // max_futures
+                for DASK_batch in tqdm(range(n_batches), desc='determine_transformations_SIFT DASK batches'):
+                    start = DASK_batch * max_futures
+                    stop  = min(start + max_futures, n_tasks)
+                    if verbose:
+                        print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                              + '   Starting DASK batch {:d}/{:d} with {:d} jobs ({:d} remaining after this batch)'.format(
+                                    DASK_batch + 1, n_batches, stop - start, n_tasks - stop))
+                    futures_SIFT = DASK_client.map(determine_transformations_files,
+                                                   params_SIFT[start:stop],
+                                                   retries=DASK_client_retries)
+                    transformations_results_3D += DASK_client.gather(futures_SIFT)
             else:
                 transformations_results_3D = []
                 for param_SIFT in tqdm(params_SIFT, desc = 'Extracting Transformation Parameters: ', display=verbose):

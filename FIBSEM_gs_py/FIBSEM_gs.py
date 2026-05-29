@@ -8893,19 +8893,18 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
                 if verbose:
                     print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Using DASK distributed')
                 # In case of a large source file, need to stage the DASK jobs - cannot start all at once.
-                DASK_batch = 0
-                while len(params_s2) > max_futures:
+                n_tasks   = len(params_s2)
+                n_batches = (n_tasks + max_futures - 1) // max_futures
+                for DASK_batch in tqdm(range(n_batches), desc='evaluate_FIBSEM_frames DASK batches'):
+                    start = DASK_batch * max_futures
+                    stop  = min(start + max_futures, n_tasks)
                     if verbose:
-                        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Starting DASK batch {:d} with {:d} jobs, {:d} jobs remaining'.format(DASK_batch, max_futures, (len(params_s2)-max_futures)))
-                    futures = DASK_client.map(evaluate_FIBSEM_frame, params_s2[0:max_futures], retries = DASK_client_retries)
-                    params_s2 = params_s2[max_futures:]
+                        print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                              + '   Starting DASK batch {:d}/{:d} with {:d} jobs ({:d} remaining after this batch)'.format(
+                                    DASK_batch + 1, n_batches, stop - start, n_tasks - stop))
+                    futures = DASK_client.map(evaluate_FIBSEM_frame, params_s2[start:stop],
+                                              retries=DASK_client_retries)
                     results_s2 += DASK_client.gather(futures)
-                    DASK_batch += 1
-                if len(params_s2) > 0:
-                    if verbose:
-                        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Starting DASK batch {:d} with {:d} jobs'.format(DASK_batch, len(params_s2)))
-                    futures = DASK_client.map(evaluate_FIBSEM_frame, params_s2, retries = DASK_client_retries)
-                    results_s2 += DASK_client.gather(futures)            
                 for res_temp in tqdm(results_s2, desc='Converting the Results', display=verbose):
                     errors_s2.append(res_temp['ex_error'])
             else:
