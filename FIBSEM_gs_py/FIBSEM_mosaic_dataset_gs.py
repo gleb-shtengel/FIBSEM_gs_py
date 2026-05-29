@@ -2091,7 +2091,7 @@ class FIBSEM_mosaic_dataset:
 
         if len(image_coordinates_files)>0: # user-defined grid with FirstPixels determined from the image_coordinates_files files        
             FirstPixels = np.zeros((L, self.n_tiles_per_layer, 3))
-            for j, fls_layer in enumerate(self.fls):
+            for j, fls_layer in enumerate(tqdm(self.fls, desc = 'Reading image coordinates from .txt files', display=verbose)):
                 coord_dict = read_image_coordinates(image_coordinates_files[j])
                 for i, fl in enumerate(fls_layer.ravel()):
                     p, p1 = os.path.split(fl)
@@ -2104,7 +2104,7 @@ class FIBSEM_mosaic_dataset:
             # neighbour and up to 2 top/bottom neighbours.
         else:   # standard recti-linear grid with FirstPixels determined from the headers of .dat files
             FirstPixels_layer0 = []
-            for fl in fls[0].ravel():
+            for fl in tqdm(fls[0].ravel(), desc = 'Reading image coordinates from headers', display=verbose):
                 fr = FIBSEM_frame(fl, read_header_only=True)
                 FirstPixels_layer0.append([fr.FirstPixelX, fr.FirstPixelY, 0])
             FirstPixels_layer0 = np.array(FirstPixels_layer0)          # shape (n_tiles, 3)
@@ -2114,7 +2114,7 @@ class FIBSEM_mosaic_dataset:
         intra_index_pairs_x = []
         intra_index_pairs_y = []
         diag_thresh = self.diagonal_exclusion_threshold * (self.XResolution + self.YResolution)
-        for l in range(L):
+        for l in tqdm(range(L), desc = 'Determining intra-layer pairs', display=verbose):
             x = self.FirstPixels[l, :, 0]                          # shape (N,)
             y = self.FirstPixels[l, :, 1]
             dx = x[np.newaxis, :] - x[:, np.newaxis]               # dx[i,j] = x[j] - x[i]
@@ -2154,7 +2154,7 @@ class FIBSEM_mosaic_dataset:
         inter_index_pairs = []   # list of (L-1) arrays, shape (n_inter_pairs_l, 2)
                                   # columns: (tile_index_in_layer_l, tile_index_in_layer_l+1)
         if len(image_coordinates_files) > 0:
-            for l in range(L - 1):
+            for l in tqdm(range(L - 1), desc = 'Determining inter-layer pairs', display=verbose):
                 x_l  = self.FirstPixels[l,   :, 0]                 # shape (N,)
                 y_l  = self.FirstPixels[l,   :, 1]
                 x_l1 = self.FirstPixels[l+1, :, 0]
@@ -2164,7 +2164,7 @@ class FIBSEM_mosaic_dataset:
                 ii, jj = np.where((dx_abs < self.XResolution) & (dy_abs < self.YResolution))
                 inter_index_pairs.append(np.column_stack([ii, jj]) if len(ii) > 0 else np.empty((0, 2), dtype=int))
         else:
-            for l in range(L - 1):
+            for l in tqdm(range(L - 1), , desc = 'Determining inter-layer pairs', display=verbose):
                 inter_index_pairs.append(
                     np.array([(i, i) for i in range(self.n_tiles_per_layer)]))
 
@@ -2189,6 +2189,8 @@ class FIBSEM_mosaic_dataset:
         # each entry is a single sparse matrix element, there are two elements per pairwise translation condition, they enter with opposite signs
 
         # Intra-layer adjacent pairs
+        if verbose:
+            print('Building image pair list')
         for l in range(L):
             for i in range(len(intra_index_pairs_x[l])):
                 idx1 = l * self.n_tiles_per_layer + intra_index_pairs_x[l][i, 0]
