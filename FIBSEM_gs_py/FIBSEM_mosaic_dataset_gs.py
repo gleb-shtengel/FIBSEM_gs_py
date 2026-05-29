@@ -2193,7 +2193,7 @@ class FIBSEM_mosaic_dataset:
         # Intra-layer adjacent pairs
         if verbose:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Building image pair list')
-        for l in range(L):
+        for l in tqdm(range(L), desc = 'Adding intra-layer horizontal pairs', display=verbose):
             for i in range(len(intra_index_pairs_x[l])):
                 idx1 = l * self.n_tiles_per_layer + intra_index_pairs_x[l][i, 0]
                 idx2 = l * self.n_tiles_per_layer + intra_index_pairs_x[l][i, 1]
@@ -2201,7 +2201,7 @@ class FIBSEM_mosaic_dataset:
                 col_ind.extend([idx1, idx2])
                 data.extend([-w_sqrt_intra, w_sqrt_intra])
                 row += 1
-        for l in range(L):
+        for l in tqdm(range(L), desc = 'Adding intra-layer vertical pairs', display=verbose):
             for i in range(len(intra_index_pairs_y[l])):
                 idx1 = l * self.n_tiles_per_layer + intra_index_pairs_y[l][i, 0]
                 idx2 = l * self.n_tiles_per_layer + intra_index_pairs_y[l][i, 1]
@@ -2210,7 +2210,7 @@ class FIBSEM_mosaic_dataset:
                 data.extend([-w_sqrt_intra, w_sqrt_intra])
                 row += 1
         # Inter-layer adjacent pairs
-        for l in range(L - 1):
+        for l in tqdm(range(L - 1), desc = 'Adding inter-layer pairs', display=verbose):
             for k in range(len(inter_index_pairs[l])):
                 i = inter_index_pairs[l][k, 0]   # tile index in layer l
                 j = inter_index_pairs[l][k, 1]   # tile index in layer l+1
@@ -2262,7 +2262,7 @@ class FIBSEM_mosaic_dataset:
         # Each entry: (x_min_a, x_max_a, y_min_a, y_max_a,
         #              x_min_b, x_max_b, y_min_b, y_max_b)  — all in local pixel coords
         pair_overlap_bounds = []
-        for abs_a, abs_b in self.index_pairs:
+        for abs_a, abs_b in tqdm(self.index_pairs, desc = 'Determining pair overlap bounds', display=verbose):
             la = int(abs_a) // self.n_tiles_per_layer
             ta = int(abs_a) % self.n_tiles_per_layer
             lb = int(abs_b) // self.n_tiles_per_layer
