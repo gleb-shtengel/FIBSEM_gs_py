@@ -5191,7 +5191,7 @@ class FIBSEM_mosaic_dataset:
                     if hasattr(self, 'DetA'):
                         image_fname_loc = imf1 + '_' + self.DetA.strip('\x00') + imf2
                     else:
-                        image_fname_loc = imf1 + '_' + imf2
+                        image_fname_loc = image_fname
                 fig.savefig(image_fname_loc, dpi=dpi)
                 display(fig)
                 plt.close(fig)
