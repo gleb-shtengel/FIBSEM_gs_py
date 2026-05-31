@@ -3052,7 +3052,7 @@ class FIBSEM_mosaic_dataset:
         '''
         Compute fresh per-pair overlap rectangles from the CURRENT (post-solve)
         translations in self.tr_matr, instead of the init-time FirstPixels.
-        ©G.Shtengel gleb.shtengel@gmail.com
+        Vectorized over all C pairs in one numpy pass. (c)G.Shtengel gleb.shtengel@gmail.com
 
         Only the translation component is used; affine scale/rotation in tr_matr
         is ignored (acceptable for ShiftTransform and a good approximation for
@@ -3060,37 +3060,36 @@ class FIBSEM_mosaic_dataset:
 
         Returns
         -------
-        bounds : list of length C, each element a tuple
-            (x_min_a, x_max_a, y_min_a, y_max_a,
-             x_min_b, x_max_b, y_min_b, y_max_b)  in local tile pixel coords.
-        areas  : 1D np.int64 array, shape (C,)
+        bounds : np.ndarray of shape (C, 8), dtype int64
+            Per-pair overlap rectangle columns:
+            (x_min_a, x_max_a, y_min_a, y_max_a, x_min_b, x_max_b, y_min_b, y_max_b)
+            All zeros for pairs with no overlap.
+        areas  : np.ndarray of shape (C,), dtype int64
             Number of overlap pixels per pair (0 when there is no overlap).
 
         Side effects
         ------------
-        Stores results as self.solved_pair_overlap_bounds and self.pair_overlap_areas.
+        Stores results as self.solved_pair_overlap_bounds (now an ndarray, was a list)
+        and self.pair_overlap_areas.
         '''
-        positions = -self.tr_matr[:, :, 0:2, 2]   # (nz_tiles, n_tiles_per_layer, 2)
-        bounds = []
-        areas  = np.zeros(self.C, dtype=np.int64)
-        for j, (abs_a, abs_b) in enumerate(self.index_pairs):
-            la, ta = int(abs_a) // self.n_tiles_per_layer, int(abs_a) % self.n_tiles_per_layer
-            lb, tb = int(abs_b) // self.n_tiles_per_layer, int(abs_b) % self.n_tiles_per_layer
-            dx = positions[lb, tb, 0] - positions[la, ta, 0]
-            dy = positions[lb, tb, 1] - positions[la, ta, 1]
-            x_ov = self.XResolution - abs(dx)
-            y_ov = self.YResolution - abs(dy)
-            if x_ov <= 0 or y_ov <= 0:
-                bounds.append((0, 0, 0, 0, 0, 0, 0, 0))
-                areas[j] = 0
-                continue
-            x_min_a = int(max(0,  dx)); x_max_a = int(x_min_a + x_ov)
-            y_min_a = int(max(0,  dy)); y_max_a = int(y_min_a + y_ov)
-            x_min_b = int(max(0, -dx)); x_max_b = int(x_min_b + x_ov)
-            y_min_b = int(max(0, -dy)); y_max_b = int(y_min_b + y_ov)
-            bounds.append((x_min_a, x_max_a, y_min_a, y_max_a,
-                           x_min_b, x_max_b, y_min_b, y_max_b))
-            areas[j] = int(x_ov) * int(y_ov)
+        positions = -self.tr_matr[:, :, 0:2, 2]        # (nz_tiles, n_tiles_per_layer, 2)
+        positions_flat = positions.reshape(-1, 2)      # (total_tiles, 2)
+        abs_a = self.index_pairs[:, 0].astype(int)
+        abs_b = self.index_pairs[:, 1].astype(int)
+        dx = positions_flat[abs_b, 0] - positions_flat[abs_a, 0]   # (C,)
+        dy = positions_flat[abs_b, 1] - positions_flat[abs_a, 1]
+        x_ov = (self.XResolution - np.abs(dx))                     # (C,)
+        y_ov = (self.YResolution - np.abs(dy))
+        valid = (x_ov > 0) & (y_ov > 0)
+        x_ov = np.where(valid, x_ov, 0.0).astype(np.int64)
+        y_ov = np.where(valid, y_ov, 0.0).astype(np.int64)
+        x_min_a = np.where(valid, np.maximum(0,  dx), 0).astype(np.int64)
+        y_min_a = np.where(valid, np.maximum(0,  dy), 0).astype(np.int64)
+        x_min_b = np.where(valid, np.maximum(0, -dx), 0).astype(np.int64)
+        y_min_b = np.where(valid, np.maximum(0, -dy), 0).astype(np.int64)
+        bounds = np.stack([x_min_a, x_min_a + x_ov, y_min_a, y_min_a + y_ov,
+                           x_min_b, x_min_b + x_ov, y_min_b, y_min_b + y_ov], axis=1)
+        areas = x_ov * y_ov
         self.solved_pair_overlap_bounds = bounds
         self.pair_overlap_areas         = areas
         return bounds, areas
@@ -3175,6 +3174,10 @@ class FIBSEM_mosaic_dataset:
         DASK_client_retries : int. Default self.DASK_client_retries (or 3).
         ftype : int. Default self.ftype.
         verbose : bool. Default False.
+        max_futures : int
+            Max number of running DASK futures per batch. Default is self.max_futures (50000).
+            Reduces scheduler load by submitting in waves. Each wave's gather completes
+            before the next is submitted.
 
         Returns
         -------
@@ -3220,15 +3223,25 @@ class FIBSEM_mosaic_dataset:
         params = [[fls_flat[t], rois, worker_kwargs] for t, rois in per_tile_rois.items()]
 
         # --- Dispatch (mirrors evaluate_FIBSEM_frames_dataset). ---
+        max_futures = kwargs.get('max_futures', self.max_futures)
         results = []
         if len(params) > 0:
             if use_DASK:
                 if verbose:
                     print(time.strftime('%Y/%m/%d  %H:%M:%S')
                           + '   Using DASK distributed for overlap intensity computation')
-                futures = DASK_client.map(compute_tile_overlap_intensities, params,
-                                          retries=DASK_client_retries)
-                results = DASK_client.gather(futures)
+                n_tasks   = len(params)
+                n_batches = (n_tasks + max_futures - 1) // max_futures
+                for DASK_batch in tqdm(range(n_batches), desc='compute_overlap_intensity_ratios DASK batches'):
+                    start = DASK_batch * max_futures
+                    stop  = min(start + max_futures, n_tasks)
+                    if verbose:
+                        print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                              + '   Starting DASK batch {:d}/{:d} with {:d} jobs ({:d} remaining after this batch)'.format(
+                                    DASK_batch + 1, n_batches, stop - start, n_tasks - stop))
+                    futures = DASK_client.map(compute_tile_overlap_intensities, params[start:stop],
+                                              retries=DASK_client_retries)
+                    results += DASK_client.gather(futures)
             else:
                 if verbose:
                     print(time.strftime('%Y/%m/%d  %H:%M:%S')
@@ -4267,7 +4280,7 @@ class FIBSEM_mosaic_dataset:
 
         if method not in valid_methods:
             if verbose:
-                print('Method ' + method +' is not among valid methods: ', valid_methods)
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Method ' + method +' is not among valid methods: ', valid_methods)
             return np.nan
 
         if method == 'SIFT-Affine':
@@ -4288,7 +4301,11 @@ class FIBSEM_mosaic_dataset:
                 self.SIFT_residual_error_y = np.full(self.C, np.nan)
                 bx = self.SIFT_transformation_matrices[:, 0, 2] * weights
                 by = self.SIFT_transformation_matrices[:, 1, 2] * weights
+                if verbose:
+                    print(time.strftime('%Y/%m/%d  %H:%M:%S') + f',  Solving for X displacement using method {method}')
                 res_x_all = lsqr(self.A_csr[self.SIFT_transformation_valid], bx[self.SIFT_transformation_valid])
+                if verbose:
+                    print(time.strftime('%Y/%m/%d  %H:%M:%S') + f',  Solving for Y displacement using method {method}')
                 res_y_all = lsqr(self.A_csr[self.SIFT_transformation_valid], by[self.SIFT_transformation_valid])
                 # calculate weighted residuals: b_weighted - A_weighted x
                 self.SIFT_residual_error_x[self.SIFT_transformation_valid] = bx[self.SIFT_transformation_valid] - self.A_csr[self.SIFT_transformation_valid] @ res_x_all[0]
@@ -4303,7 +4320,11 @@ class FIBSEM_mosaic_dataset:
                 self.ECC_residual_error_y = np.full(self.C, np.nan)
                 bx = self.ECC_transformation_matrices[:, 0, 2] * weights
                 by = self.ECC_transformation_matrices[:, 1, 2] * weights
+                if verbose:
+                    print(time.strftime('%Y/%m/%d  %H:%M:%S') + f',  Solving for X displacement using method {method}')
                 res_x_all = lsqr(self.A_csr[self.ECC_transformation_valid], bx[self.ECC_transformation_valid])
+                if verbose:
+                    print(time.strftime('%Y/%m/%d  %H:%M:%S') + f',  Solving for Y displacement using method {method}')
                 res_y_all = lsqr(self.A_csr[self.ECC_transformation_valid], by[self.ECC_transformation_valid])
                 self.ECC_residual_error_x[self.ECC_transformation_valid] = bx[self.ECC_transformation_valid] - self.A_csr[self.ECC_transformation_valid] @ res_x_all[0]
                 self.ECC_residual_error_y[self.ECC_transformation_valid] = by[self.ECC_transformation_valid] - self.A_csr[self.ECC_transformation_valid] @ res_y_all[0]
@@ -4362,7 +4383,8 @@ class FIBSEM_mosaic_dataset:
             n_total = self.nz_tiles * self.n_tiles_per_layer
             n_updated = len(valid_tile_flat)
             n_skipped = n_total - n_updated
-            print(f'  solve_stack_stitching ({method}): '
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + f':   solve_stack_stitching ({method}): '
                   f'updated {n_updated}/{n_total} tiles; '
                   f'{n_skipped} tile(s) with no valid constraints left unchanged.')
 
