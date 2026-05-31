@@ -3203,7 +3203,7 @@ class FIBSEM_mosaic_dataset:
         if method not in ('mean', 'percentile'):
             raise ValueError("method '{}' not supported. Use 'mean' or 'percentile'.".format(method))
 
-        use_DASK, _ = check_DASK(DASK_client, verbose=verbose)
+        use_DASK, _ = check_DASK(DASK_client, verbose=True)
 
         bounds, areas = self.compute_solved_pair_overlap_bounds()
         pair_valid_by_area = areas >= min_overlap_pixels
@@ -3361,7 +3361,7 @@ class FIBSEM_mosaic_dataset:
         '''
         verbose = kwargs.get('verbose', True)
         DASK_client = kwargs.get('DASK_client', '')
-        use_DASK, status_update_address = check_DASK(DASK_client, verbose = verbose)
+        use_DASK, status_update_address = check_DASK(DASK_client, verbose = True)
         DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
         ftype = kwargs.get("ftype", self.ftype)
         thr_min = kwargs.get("thr_min", self.thr_min)
@@ -5689,7 +5689,7 @@ class FIBSEM_mosaic_dataset:
         # ---- 0. Read kwargs ----------------------------------------------
         verbose = kwargs.get('verbose', False)
         DASK_client = kwargs.get('DASK_client', '')
-        use_DASK, _ = check_DASK(DASK_client, verbose=verbose)
+        use_DASK, _ = check_DASK(DASK_client, verbose=True)
         DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
 
         image_name = kwargs.get('image_name', 'RawImageA')
