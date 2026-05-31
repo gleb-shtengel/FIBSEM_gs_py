@@ -3200,7 +3200,6 @@ class FIBSEM_mosaic_dataset:
         ftype              = kwargs.get('ftype', self.ftype)
         verbose            = kwargs.get('verbose', False)
 
-        use_DASK, status_update_address = check_DASK(DASK_client, verbose = True)
         if method not in ('mean', 'percentile'):
             raise ValueError("method '{}' not supported. Use 'mean' or 'percentile'.".format(method))
 
