@@ -5641,6 +5641,9 @@ class FIBSEM_mosaic_dataset:
         ----------
         DASK_client            : DASK client; '' for local (default '').
         DASK_client_retries    : int.  Default self.DASK_client_retries.
+        max_futures            : int.  Default self.max_futures (50000).
+            Max DASK futures per batch. Caps driver memory and scheduler graph size
+            when writing very large stacks (100 TB scale: ~820k s0 shards).
         output_zarr_path       : str.  Default = splitext(self.fnm_mosaic_stack)[0] + '.zarr'.
         image_name             : 'RawImageA' | 'RawImageB'.  Default 'RawImageA'.
         weight_min, weight_max : floats.  Defaults 1.0, 512.0.
@@ -5691,7 +5694,7 @@ class FIBSEM_mosaic_dataset:
         DASK_client = kwargs.get('DASK_client', '')
         use_DASK, _ = check_DASK(DASK_client, verbose=True)
         DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
-
+        max_futures = kwargs.get('max_futures', self.max_futures)
         image_name = kwargs.get('image_name', 'RawImageA')
         weight_min = kwargs.get('weight_min', 1.0)
         weight_max = kwargs.get('weight_max', 512.0)
@@ -5865,78 +5868,109 @@ class FIBSEM_mosaic_dataset:
 
         fls_flat_by_layer = [self.fls[lid].ravel() for lid in range(nz)]
 
-        params_s0 = []
-        for origin_out in tqdm(s0_origins, desc = 'Preparing s0 shard tasks', display = verbose):
-            # Convert output-axis-order origin/size → canvas ZYX coords.
-            origin_zyx_shard = tuple(origin_out[axis_order.index(a)] for a in 'zyx')
-            size_zyx_shard   = tuple(use_s0[axis_order.index(a)]    for a in 'zyx')
-            z0, y0, x0 = origin_zyx_shard
-            sz, sy, sx = size_zyx_shard
-            # Clip to volume.
-            sz = min(sz, nz - z0); sy = min(sy, ny - y0); sx = min(sx, nx - x0)
-            if sz <= 0 or sy <= 0 or sx <= 0:
-                continue
+        # ---- 5. Build & dispatch s0 shards (streamed + staged + vectorized) ---
+        # At 100 TB / 820k shards scale, materializing params_s0 as a list would
+        # consume ~300+ GB of driver RAM. Instead: yield one shard at a time;
+        # the staging loop pulls max_futures-sized batches and submits each.
+        n_total_origins = len(s0_origins)
 
-            layer_ids = list(range(z0, z0 + sz))
+        def _iter_s0_params():
+            for origin_out in s0_origins:
+                # Convert output-axis-order origin/size to canvas ZYX coords.
+                origin_zyx_shard = tuple(origin_out[axis_order.index(a)] for a in 'zyx')
+                size_zyx_shard   = tuple(use_s0[axis_order.index(a)]    for a in 'zyx')
+                z0, y0, x0 = origin_zyx_shard
+                sz, sy, sx = size_zyx_shard
+                sz = min(sz, nz - z0); sy = min(sy, ny - y0); sx = min(sx, nx - x0)
+                if sz <= 0 or sy <= 0 or sx <= 0:
+                    continue
 
-            # Vectorised overlap test across the entire z-slab of this shard.
-            # overlap[li, t] = True iff tile t of layer (z0+li) overlaps the
-            # shard's canvas xy region [x0, x0+sx) × [y0, y0+sy).
-            tx_slab  = tile_tx [z0:z0 + sz]      # shape (sz, n_tiles)
-            ty_slab  = tile_ty [z0:z0 + sz]
-            tx1_slab = tile_tx1[z0:z0 + sz]
-            ty1_slab = tile_ty1[z0:z0 + sz]
-            overlap = ~((tx1_slab <= x0) | (tx_slab >= x0 + sx) |
-                        (ty1_slab <= y0) | (ty_slab >= y0 + sy))
+                layer_ids = list(range(z0, z0 + sz))
 
-            tiles_per_layer = []
-            for li, lid in enumerate(layer_ids):
-                contrib_tiles = np.where(overlap[li])[0]
-                contribs = [(int(t),
-                             fls_flat_by_layer[lid][t],
-                             tr_matr_all[lid, t],
-                             float(tile_I0s_all[lid, t]),
-                             float(tile_scales_all[lid, t]))
-                            for t in contrib_tiles]
-                tiles_per_layer.append(contribs)
+                # Vectorised overlap test across the z-slab.
+                tx_slab  = tile_tx [z0:z0 + sz]
+                ty_slab  = tile_ty [z0:z0 + sz]
+                tx1_slab = tile_tx1[z0:z0 + sz]
+                ty1_slab = tile_ty1[z0:z0 + sz]
+                overlap = ~((tx1_slab <= x0) | (tx_slab >= x0 + sx) |
+                            (ty1_slab <= y0) | (ty_slab >= y0 + sy))
 
-            params_s0.append([
-                str(output_zarr_path),
-                int(x0), int(y0), int(z0),
-                int(sx), int(sy), int(sz),
-                layer_ids,
-                tiles_per_layer,
-                image_name, fill_value,
-                weight_min, weight_max,
-                left_crop,
-                flatten_kwargs_global,
-                axis_perm,
-                dtp,
-                U8_range,
-                False,                        # verbose inside worker (driver prints progress)
-            ])
+                # Vectorised contrib gathering — single np.argwhere over the
+                # entire (sz, n_tiles) overlap mask, then bucket-sort by layer.
+                # Replaces the per-layer Python loop in the original code.
+                tiles_per_layer = [[] for _ in range(sz)]
+                if overlap.any():
+                    li_t = np.argwhere(overlap)                        # (n_contribs, 2)
+                    li_arr = li_t[:, 0]
+                    t_arr  = li_t[:, 1]
+                    order = np.argsort(li_arr, kind='stable')
+                    li_arr = li_arr[order]
+                    t_arr  = t_arr [order]
+                    for li, t in zip(li_arr.tolist(), t_arr.tolist()):
+                        lid = z0 + li
+                        tiles_per_layer[li].append((
+                            t,
+                            fls_flat_by_layer[lid][t],
+                            tr_matr_all[lid, t],
+                            float(tile_I0s_all[lid, t]),
+                            float(tile_scales_all[lid, t]),
+                        ))
+
+                yield [
+                    str(output_zarr_path),
+                    int(x0), int(y0), int(z0),
+                    int(sx), int(sy), int(sz),
+                    layer_ids,
+                    tiles_per_layer,
+                    image_name, fill_value,
+                    weight_min, weight_max,
+                    left_crop,
+                    flatten_kwargs_global,
+                    axis_perm,
+                    dtp,
+                    U8_range,
+                    False,                        # verbose inside worker (driver prints progress)
+                ]
 
         if verbose:
-            print(f"\nWriting s0:  {len(params_s0)} shards, "
-                  f"output shape={dst_shape}, dtype={dtp}")
+            print(f"\nWriting s0:  up to {n_total_origins} shards "
+                  f"(empties skipped), output shape={dst_shape}, dtype={dtp}")
 
-        # ---- 5. Submit s0 tasks ------------------------------------------
         kwargs_tt = {'interpolation': interpolation,
                      'border_value':  border_value,
                      'border_mode':   border_mode}
+
         if use_DASK:
             df_future = DASK_client.scatter(deformation_field, broadcast=True)
-            futures = DASK_client.map(
-                _write_zarr3_shard_s0_from_tiles, params_s0,
-                deformation_field=df_future,
-                retries=DASK_client_retries, **kwargs_tt,
-            )
-            for fut in tqdm(as_completed(futures), total=len(futures),
-                            desc='Writing s0 shards'):
-                fut.result()
-                fut.cancel()
+            s0_iter = _iter_s0_params()
+            n_batches_est = (n_total_origins + max_futures - 1) // max_futures
+            batch_idx = 0
+            pbar_batches = tqdm(total=n_batches_est, desc='Writing s0 (DASK batches)')
+            while True:
+                batch = list(itertools.islice(s0_iter, max_futures))
+                if not batch:
+                    break
+                batch_idx += 1
+                if verbose:
+                    print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                          + '   Submitting s0 batch {:d}: {:d} shards'.format(batch_idx, len(batch)))
+                futures = DASK_client.map(
+                    _write_zarr3_shard_s0_from_tiles, batch,
+                    deformation_field=df_future,
+                    retries=DASK_client_retries, **kwargs_tt,
+                )
+                for fut in tqdm(as_completed(futures), total=len(futures),
+                                desc=f'  s0 shards (batch {batch_idx})',
+                                leave=False):
+                    fut.result()
+                    fut.cancel()
+                # Release ~22 GB of contrib lists before building the next batch.
+                del batch, futures
+                pbar_batches.update(1)
+            pbar_batches.close()
         else:
-            for p in tqdm(params_s0, desc='Writing s0 shards', display=verbose):
+            for p in tqdm(_iter_s0_params(), total=n_total_origins,
+                          desc='Writing s0 shards', display=verbose):
                 _write_zarr3_shard_s0_from_tiles(p, deformation_field, **kwargs_tt)
 
         # ---- 6. Build pyramid (s1, s2, ...) ------------------------------
@@ -5966,14 +6000,26 @@ class FIBSEM_mosaic_dataset:
             if verbose:
                 print(f"\nBuilding s{lvl}:  {len(params_lvl)} shards from s{lvl - 1}")
             if use_DASK:
-                futures = DASK_client.map(
-                    _downsample_zarr3_shard, params_lvl,
-                    retries=DASK_client_retries,
-                )
-                for fut in tqdm(as_completed(futures), total=len(futures),
-                                desc=f'Downsampling to s{lvl}'):
-                    fut.result()
-                    fut.cancel()
+                n_tasks_lvl   = len(params_lvl)
+                n_batches_lvl = (n_tasks_lvl + max_futures - 1) // max_futures
+                for batch_idx in tqdm(range(n_batches_lvl),
+                                      desc=f'Downsampling to s{lvl} (DASK batches)'):
+                    start = batch_idx * max_futures
+                    stop  = min(start + max_futures, n_tasks_lvl)
+                    if verbose:
+                        print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                              + '   Submitting s{:d} batch {:d}/{:d}: shards [{:d}, {:d})'.format(
+                                    lvl, batch_idx + 1, n_batches_lvl, start, stop))
+                    futures = DASK_client.map(
+                        _downsample_zarr3_shard, params_lvl[start:stop],
+                        retries=DASK_client_retries,
+                    )
+                    for fut in tqdm(as_completed(futures), total=len(futures),
+                                    desc=f'  s{lvl} shards (batch {batch_idx + 1}/{n_batches_lvl})',
+                                    leave=False):
+                        fut.result()
+                        fut.cancel()
+                    del futures
             else:
                 for p in tqdm(params_lvl, desc=f'Downsampling to s{lvl}',
                               display=verbose):
