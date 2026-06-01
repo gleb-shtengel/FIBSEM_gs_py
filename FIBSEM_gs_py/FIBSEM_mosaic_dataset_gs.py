@@ -5724,6 +5724,22 @@ class FIBSEM_mosaic_dataset:
         flatten_mosaic = kwargs.get('flatten_mosaic', False)
         dtp = kwargs.get('dtp', np.int16)
         U8_range = kwargs.get('U8_range', None)
+        if dtp == np.uint8:
+            if U8_range is None:
+                raise ValueError(
+                    "save_stack_zarr3: dtp=np.uint8 requires U8_range=[umin, umax] "
+                    "to define the float-to-uint8 scaling window. Got U8_range=None.")
+            if len(U8_range) != 2 or float(U8_range[1]) <= float(U8_range[0]):
+                raise ValueError(
+                    "save_stack_zarr3: U8_range must be [umin, umax] with umax > umin. "
+                    "Got {}.".format(list(U8_range)))
+        elif U8_range is not None:
+            # Caller passed U8_range with a non-uint8 dtype — it would be silently ignored.
+            # Warn rather than error so existing scripts that pass U8_range out of habit still work.
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                      + '   Warning: U8_range={} ignored because dtp={} is not np.uint8.'
+                          .format(list(U8_range), dtp))
         interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
         border_value  = kwargs.get('border_value', np.nan)
         border_mode   = kwargs.get('border_mode', cv2.BORDER_CONSTANT)
