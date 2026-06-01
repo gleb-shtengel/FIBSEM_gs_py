@@ -219,8 +219,7 @@ def _write_zarr3_shard_s0_from_tiles(params, deformation_field, **kwargs):
          x0, y0, z0,                       # canvas-coords shard origin (XYZ)
          sx, sy, sz,                       # shard size at s0 (XYZ); edge shards may clip
          layer_ids,                        # list of layer indices in [z0, z0+sz)
-         tile_idx_pairs,           # (n_contribs, 2) np.int32 array of (layer_idx, tile_idx)
-                                   # pairs; workers bucket by layer_idx via searchsorted
+         tile_indices_per_layer,   # list of np.int32 arrays, one per layer
          image_name, fill_value,
          weight_min, weight_max,
          left_crop,
@@ -249,7 +248,7 @@ def _write_zarr3_shard_s0_from_tiles(params, deformation_field, **kwargs):
      x0, y0, z0,
      sx, sy, sz,
      layer_ids,
-    tile_idx_pairs,
+     tile_indices_per_layer,
      image_name, fill_value,
      weight_min, weight_max,
      left_crop,
@@ -276,21 +275,10 @@ def _write_zarr3_shard_s0_from_tiles(params, deformation_field, **kwargs):
     # Allocate ZYX shard buffer.
     shard_buf_zyx = np.empty((sz, sy, sx), dtype=dtp)
 
-    # Bucket tile_idx_pairs by layer index. Cheap: just sort once + use boundaries.
-    if len(tile_idx_pairs) > 0:
-        order = np.argsort(tile_idx_pairs[:, 0], kind='stable')
-        pairs_sorted = tile_idx_pairs[order]
-        breaks = np.searchsorted(pairs_sorted[:, 0], np.arange(sz + 1))
-    else:
-        pairs_sorted = tile_idx_pairs
-        breaks = np.zeros(sz + 1, dtype=np.int64)
-
-    for layer_idx, layer_id in enumerate(layer_ids):
+    for layer_idx, (layer_id, tile_idx_arr) in enumerate(zip(layer_ids, tile_indices_per_layer)):
         layer_mosaic   = np.zeros((sy, sx), dtype=np.float32)
         layer_weights  = np.zeros((sy, sx), dtype=np.float32)
 
-        # Per-layer tile indices via boundary slicing.
-        tile_idx_arr = pairs_sorted[breaks[layer_idx]:breaks[layer_idx + 1], 1]
         n_tiles_in_layer = len(tile_idx_arr)
         for t in tile_idx_arr:
             j = int(t)
@@ -2194,7 +2182,11 @@ class FIBSEM_mosaic_dataset:
         memory_profiling : boolean
             Perform memory profiling during the data load and output it. Default is False.
         max_futures : int
-            max number of running DASK futures. Default is 50000.
+            max number of running DASK futures per batch. Default is 10000.
+            Smaller batches reduce scheduler placement-decision overhead for
+            tasks with future-kwarg dependencies (non-rootish in DASK terms).
+            Override at call time on a per-routine basis if you have evidence
+            a different value works better for your workload.
         intralayer_weight : np.float32, default 1.0
             Weight for pairwise constraints within a single Z-layer.
         interlayer_weight : np.float32, default 100.0
@@ -5957,17 +5949,16 @@ class FIBSEM_mosaic_dataset:
                 overlap = ~((tx1_slab <= x0) | (tx_slab >= x0 + sx) |
                             (ty1_slab <= y0) | (ty_slab >= y0 + sy))
 
-                # Single (n_contribs, 2) int32 array of (layer_idx, tile_idx) pairs.
-                # Avoids putting hundreds of tiny ndarrays per shard into the task graph,
-                # which slows scheduler-side graph deserialization at scale.
-                tile_idx_pairs = np.argwhere(overlap).astype(np.int32)
+                # Per-layer tile-index arrays.
+                tile_indices_per_layer = [overlap[li].nonzero()[0].astype(np.int32)
+                                          for li in range(sz)]
 
                 yield [
                     str(output_zarr_path),
                     int(x0), int(y0), int(z0),
                     int(sx), int(sy), int(sz),
                     layer_ids,
-                    tile_idx_pairs,
+                    tile_indices_per_layer,
                     image_name, fill_value,
                     weight_min, weight_max,
                     left_crop,
@@ -5992,13 +5983,10 @@ class FIBSEM_mosaic_dataset:
             # per-shard task closure carries just ~5-15 KB of indices instead of
             # ~600 KB of duplicated tile data. Cuts batch graph size by ~50-100x.
             df_future          = DASK_client.scatter(deformation_field, broadcast=True)
-            # The four shared tile arrays are larger and (for the list-of-arrays case) pickle slowly
-            # under broadcast. Use broadcast=False so scatter returns immediately; workers pull the
-            # data on-demand via efficient peer-to-peer transfer when their first task needs it.
-            fls_future         = DASK_client.scatter(fls_flat_by_layer,  broadcast=False)
-            tr_matr_future     = DASK_client.scatter(tr_matr_all,        broadcast=False)
-            tile_I0s_future    = DASK_client.scatter(tile_I0s_all,       broadcast=False)
-            tile_scales_future = DASK_client.scatter(tile_scales_all,    broadcast=False)
+            fls_future         = DASK_client.scatter(fls_flat_by_layer,  broadcast=True)
+            tr_matr_future     = DASK_client.scatter(tr_matr_all,        broadcast=True)
+            tile_I0s_future    = DASK_client.scatter(tile_I0s_all,       broadcast=True)
+            tile_scales_future = DASK_client.scatter(tile_scales_all,    broadcast=True)
             s0_iter = _iter_s0_params()
             n_batches_est = (n_total_origins + max_futures - 1) // max_futures
             batch_idx = 0
