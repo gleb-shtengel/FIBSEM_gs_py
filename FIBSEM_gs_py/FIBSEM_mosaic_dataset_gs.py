@@ -219,8 +219,8 @@ def _write_zarr3_shard_s0_from_tiles(params, deformation_field, **kwargs):
          x0, y0, z0,                       # canvas-coords shard origin (XYZ)
          sx, sy, sz,                       # shard size at s0 (XYZ); edge shards may clip
          layer_ids,                        # list of layer indices in [z0, z0+sz)
-         tile_indices_per_layer,           # list of np.int32 arrays, one per layer; contains
-                                           # absolute tile indices into the shared tile tables
+         tile_idx_pairs,           # (n_contribs, 2) np.int32 array of (layer_idx, tile_idx)
+                                   # pairs; workers bucket by layer_idx via searchsorted
          image_name, fill_value,
          weight_min, weight_max,
          left_crop,
@@ -249,7 +249,7 @@ def _write_zarr3_shard_s0_from_tiles(params, deformation_field, **kwargs):
      x0, y0, z0,
      sx, sy, sz,
      layer_ids,
-     tile_indices_per_layer,
+    tile_idx_pairs,
      image_name, fill_value,
      weight_min, weight_max,
      left_crop,
@@ -276,11 +276,21 @@ def _write_zarr3_shard_s0_from_tiles(params, deformation_field, **kwargs):
     # Allocate ZYX shard buffer.
     shard_buf_zyx = np.empty((sz, sy, sx), dtype=dtp)
 
-    for layer_idx, (layer_id, tile_idx_arr) in enumerate(zip(layer_ids, tile_indices_per_layer)):
-        # Shard-local mosaic + weights for this layer.
+    # Bucket tile_idx_pairs by layer index. Cheap: just sort once + use boundaries.
+    if len(tile_idx_pairs) > 0:
+        order = np.argsort(tile_idx_pairs[:, 0], kind='stable')
+        pairs_sorted = tile_idx_pairs[order]
+        breaks = np.searchsorted(pairs_sorted[:, 0], np.arange(sz + 1))
+    else:
+        pairs_sorted = tile_idx_pairs
+        breaks = np.zeros(sz + 1, dtype=np.int64)
+
+    for layer_idx, layer_id in enumerate(layer_ids):
         layer_mosaic   = np.zeros((sy, sx), dtype=np.float32)
         layer_weights  = np.zeros((sy, sx), dtype=np.float32)
 
+        # Per-layer tile indices via boundary slicing.
+        tile_idx_arr = pairs_sorted[breaks[layer_idx]:breaks[layer_idx + 1], 1]
         n_tiles_in_layer = len(tile_idx_arr)
         for t in tile_idx_arr:
             j = int(t)
@@ -292,8 +302,6 @@ def _write_zarr3_shard_s0_from_tiles(params, deformation_field, **kwargs):
                            sy, sx,                # NOT used by transform_tile for output sizing
                            left_crop, tile_I0, tile_scale]
             tile_warped, xi, yi = transform_tile(tile_params, deformation_field, **kwargs_tt)
-            # xi, yi are the tile's placement in CANVAS coords.
-            # Convert to shard-local coords and let _add_warped_to_mosaic clip:
             _add_warped_to_mosaic(
                 tile_warped, xi - x0, yi - y0,
                 layer_mosaic, layer_weights,
@@ -5949,20 +5957,17 @@ class FIBSEM_mosaic_dataset:
                 overlap = ~((tx1_slab <= x0) | (tx_slab >= x0 + sx) |
                             (ty1_slab <= y0) | (ty_slab >= y0 + sy))
 
-                # Per-layer tile-index arrays. The full (filename, tr_matr, I0, scale)
-                # tuples are NOT embedded here — workers dereference from scattered
-                # shared arrays (fls_flat_by_layer, tr_matr_all, tile_I0s_all,
-                # tile_scales_all) using these indices. This shrinks per-task pickle
-                # from ~600 KB to ~5-15 KB at typical mosaic geometry.
-                tile_indices_per_layer = [overlap[li].nonzero()[0].astype(np.int32)
-                                          for li in range(sz)]
+                # Single (n_contribs, 2) int32 array of (layer_idx, tile_idx) pairs.
+                # Avoids putting hundreds of tiny ndarrays per shard into the task graph,
+                # which slows scheduler-side graph deserialization at scale.
+                tile_idx_pairs = np.argwhere(overlap).astype(np.int32)
 
                 yield [
                     str(output_zarr_path),
                     int(x0), int(y0), int(z0),
                     int(sx), int(sy), int(sz),
                     layer_ids,
-                    tile_indices_per_layer,
+                    tile_idx_pairs,
                     image_name, fill_value,
                     weight_min, weight_max,
                     left_crop,
