@@ -2285,6 +2285,45 @@ class FIBSEM_mosaic_dataset:
 
         self.fls = np.array(fls)
         self.max_futures = kwargs.get('max_futures', 50000)
+        # ---- Early recall path -----------------------------------------------
+        # If a parameter dump exists and recall_parameters=True, restore the
+        # full saved state and skip the expensive init (reading image coords,
+        # determining intra/inter-layer pairs, building image pair list,
+        # determining pair overlap bounds, etc.).
+        if kwargs.get("recall_parameters", False):
+            dump_filename = kwargs.get("dump_filename", '')
+            try:
+                with open(dump_filename, 'rb') as f:
+                    dump_data = pickle.load(f)
+                if verbose:
+                    print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                          + '   Loading saved parameters from dump: ' + dump_filename)
+                for key in tqdm(dump_data, desc='Recalling the data set parameters',
+                                display=verbose):
+                    setattr(self, key, dump_data[key])
+                # max_futures is a runtime / per-session knob — let the kwarg override the dump.
+                self.max_futures = kwargs.get('max_futures', getattr(self, 'max_futures', 50000))
+                if verbose:
+                    print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                          + '   Recalled FIBSEM_mosaic_dataset instance from dump (skipped full init).')
+                    print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Initialized FIBSEM_mosaic_dataset instance:')
+                    print('Total number of tile files: {:d}'.format(len(self.fls.ravel())))
+                    print('Number of tiles per Z-layer: {:d}'.format(self.n_tiles_per_layer))
+                    print('Number of Z-slices (nz_tiles): {:d}'.format(self.nz_tiles))
+                    print('')
+                    print('Total number of left-right intra-layer pairs: ', self.nh)
+                    print('Total number of up-down intra-layer pairs: ', self.nv)
+                    print('Total number of intra-layer pairs: ', self.nh + self.nv)
+                    print('Total number of inter-layer pairs: ', self.nl)
+                    print('Total number of pairwise transformations : {:d}'.format(self.C))
+                return                                # Skip all expensive setup below.
+
+            except Exception as ex:
+                if verbose:
+                    print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                          + '   Failed to load dump ({}); falling back to full init: '.format(dump_filename) + str(ex))
+
+        # Standard initialization path.
         fname0 = self.fls.ravel()[0]
         if verbose:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Started data set initialization')
@@ -2698,27 +2737,6 @@ class FIBSEM_mosaic_dataset:
                         format_bytes(vms_after - vms_before),
                         format_bytes(shared_after - shared_before),
                         elapsed_time))
-        if kwargs.get("recall_parameters", False):
-            dump_filename = kwargs.get("dump_filename", '')
-            try:
-                dump_data = pickle.load(open(dump_filename, 'rb'))
-                print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Loaded the data from the dump filename: ', dump_filename)
-                dump_loaded = True
-            except Exception as ex1:
-                dump_loaded = False
-                if verbose:
-                    print('')
-                    print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Failed to open Parameter dump filename: ', dump_filename)
-                    print(str(ex1))
-            if dump_loaded:
-                try:
-                    for key in tqdm(dump_data, desc='Recalling the data set parameters'):
-                        setattr(self, key, dump_data[key])
-                except Exception as ex2:
-                    if verbose:
-                        print('')
-                        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Failed to restore the object parameters from dump filename: ', dump_filename)
-                        print(str(ex2))
 
     def find_tile_pairs(self, layer_id, tile_id, **kwargs):
         '''
