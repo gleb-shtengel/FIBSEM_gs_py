@@ -4830,7 +4830,7 @@ class FIBSEM_mosaic_dataset:
         if verbose:
             print('Generating Plot')
         fig, axs = plt.subplots(3,1, figsize = (6,10), sharex=True)
-        fig.subplots_adjust(left=0.12, bottom=0.06, right=0.99, top=0.97, wspace=0.05, hspace=0.03)
+        fig.subplots_adjust(left=0.15, bottom=0.06, right=0.99, top=0.97, wspace=0.05, hspace=0.03)
 
         for k in np.arange(n_tiles_per_layer):
             my_col = plt.get_cmap("gist_rainbow_r")((n_tiles_per_layer-k)/(n_tiles_per_layer-1))
