@@ -5987,10 +5987,13 @@ class FIBSEM_mosaic_dataset:
             # per-shard task closure carries just ~5-15 KB of indices instead of
             # ~600 KB of duplicated tile data. Cuts batch graph size by ~50-100x.
             df_future          = DASK_client.scatter(deformation_field, broadcast=True)
-            fls_future         = DASK_client.scatter(fls_flat_by_layer,  broadcast=True)
-            tr_matr_future     = DASK_client.scatter(tr_matr_all,        broadcast=True)
-            tile_I0s_future    = DASK_client.scatter(tile_I0s_all,       broadcast=True)
-            tile_scales_future = DASK_client.scatter(tile_scales_all,    broadcast=True)
+            # The four shared tile arrays are larger and (for the list-of-arrays case) pickle slowly
+            # under broadcast. Use broadcast=False so scatter returns immediately; workers pull the
+            # data on-demand via efficient peer-to-peer transfer when their first task needs it.
+            fls_future         = DASK_client.scatter(fls_flat_by_layer,  broadcast=False)
+            tr_matr_future     = DASK_client.scatter(tr_matr_all,        broadcast=False)
+            tile_I0s_future    = DASK_client.scatter(tile_I0s_all,       broadcast=False)
+            tile_scales_future = DASK_client.scatter(tile_scales_all,    broadcast=False)
             s0_iter = _iter_s0_params()
             n_batches_est = (n_total_origins + max_futures - 1) // max_futures
             batch_idx = 0
