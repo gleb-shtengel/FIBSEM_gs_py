@@ -5933,8 +5933,9 @@ class FIBSEM_mosaic_dataset:
                 ]
 
         if verbose:
-            print(f"\nWriting s0:  up to {n_total_origins} shards "
-                  f"(empties skipped), output shape={dst_shape}, dtype={dtp}")
+            print('\n' + time.strftime('%Y/%m/%d  %H:%M:%S')
+                  + f"   Writing s0:  up to {n_total_origins} shards "
+                  + f"(empties skipped), output shape={dst_shape}, dtype={dtp}")
 
         kwargs_tt = {'interpolation': interpolation,
                      'border_value':  border_value,
@@ -5998,7 +5999,8 @@ class FIBSEM_mosaic_dataset:
                 ])
 
             if verbose:
-                print(f"\nBuilding s{lvl}:  {len(params_lvl)} shards from s{lvl - 1}")
+                print('\n' + time.strftime('%Y/%m/%d  %H:%M:%S')
+                      + f"   Building s{lvl}:  {len(params_lvl)} shards from s{lvl - 1}")
             if use_DASK:
                 n_tasks_lvl   = len(params_lvl)
                 n_batches_lvl = (n_tasks_lvl + max_futures - 1) // max_futures
@@ -6027,7 +6029,8 @@ class FIBSEM_mosaic_dataset:
 
         elapsed = time.time() - t_start
         if verbose:
-            print(f"\nsave_stack_zarr3 done in {elapsed/60:.1f} min")
+            print('\n' + time.strftime('%Y/%m/%d  %H:%M:%S')
+                  + f"   save_stack_zarr3 done in {elapsed/60:.1f} min")
 
         # ---- 7. Neuroglancer link ----------------------------------------
         ng_link = generate_neuroglancer_link(
