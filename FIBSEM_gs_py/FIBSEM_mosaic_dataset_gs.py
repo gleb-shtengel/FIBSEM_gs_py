@@ -5920,7 +5920,7 @@ class FIBSEM_mosaic_dataset:
             except (ValueError, AttributeError):
                 flatten_kwargs_global = None
 
-        fls_flat_by_layer = [self.fls[lid].ravel() for lid in range(nz)]
+        fls_flat_by_layer = np.asarray([self.fls[lid].ravel() for lid in range(nz)], dtype=object)
 
         # ---- 5. Build & dispatch s0 shards (streamed + staged + vectorized) ---
         # At 100 TB / 820k shards scale, materializing params_s0 as a list would
