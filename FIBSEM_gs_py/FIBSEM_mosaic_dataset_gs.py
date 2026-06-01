@@ -219,7 +219,8 @@ def _write_zarr3_shard_s0_from_tiles(params, deformation_field, **kwargs):
          x0, y0, z0,                       # canvas-coords shard origin (XYZ)
          sx, sy, sz,                       # shard size at s0 (XYZ); edge shards may clip
          layer_ids,                        # list of layer indices in [z0, z0+sz)
-         tiles_per_layer,                  # list, per layer: [(tile_id, fl, tr_matr_single, I0, scale), ...]
+         tile_indices_per_layer,           # list of np.int32 arrays, one per layer; contains
+                                           # absolute tile indices into the shared tile tables
          image_name, fill_value,
          weight_min, weight_max,
          left_crop,
@@ -231,6 +232,13 @@ def _write_zarr3_shard_s0_from_tiles(params, deformation_field, **kwargs):
 
     deformation_field : 3D array | np.nan
         Shared by all workers; pass via DASK_client.scatter(..., broadcast=True).
+
+    kwargs (also scattered shared data):
+        fls_flat_by_layer  : list of 1D np.ndarray, len = nz; per-layer flattened tile filenames
+        tr_matr_all        : np.ndarray of shape (nz, n_tiles, 3, 3); per-tile affine matrices
+        tile_I0s_all       : np.ndarray of shape (nz, n_tiles); per-tile intensity I0
+        tile_scales_all    : np.ndarray of shape (nz, n_tiles); per-tile intensity scale
+        interpolation, border_value, border_mode : cv2 transform_tile kwargs
     """
     import os, time
     import numpy as np
@@ -241,7 +249,7 @@ def _write_zarr3_shard_s0_from_tiles(params, deformation_field, **kwargs):
      x0, y0, z0,
      sx, sy, sz,
      layer_ids,
-     tiles_per_layer,
+     tile_indices_per_layer,
      image_name, fill_value,
      weight_min, weight_max,
      left_crop,
@@ -250,6 +258,12 @@ def _write_zarr3_shard_s0_from_tiles(params, deformation_field, **kwargs):
      dtp,
      U8_range,
      verbose) = params
+
+    # Scattered shared arrays — broadcast once via DASK_client.scatter(..., broadcast=True).
+    fls_flat_by_layer = kwargs.pop('fls_flat_by_layer')
+    tr_matr_all       = kwargs.pop('tr_matr_all')
+    tile_I0s_all      = kwargs.pop('tile_I0s_all')
+    tile_scales_all   = kwargs.pop('tile_scales_all')
 
     kwargs_tt = {
         'verbose': False,
@@ -262,12 +276,18 @@ def _write_zarr3_shard_s0_from_tiles(params, deformation_field, **kwargs):
     # Allocate ZYX shard buffer.
     shard_buf_zyx = np.empty((sz, sy, sx), dtype=dtp)
 
-    for layer_idx, (layer_id, tile_list) in enumerate(zip(layer_ids, tiles_per_layer)):
+    for layer_idx, (layer_id, tile_idx_arr) in enumerate(zip(layer_ids, tile_indices_per_layer)):
         # Shard-local mosaic + weights for this layer.
         layer_mosaic   = np.zeros((sy, sx), dtype=np.float32)
         layer_weights  = np.zeros((sy, sx), dtype=np.float32)
 
-        for (j, fl, tr_matr_single, tile_I0, tile_scale) in tile_list:
+        n_tiles_in_layer = len(tile_idx_arr)
+        for t in tile_idx_arr:
+            j = int(t)
+            fl              = fls_flat_by_layer[layer_id][j]
+            tr_matr_single  = tr_matr_all[layer_id, j]
+            tile_I0         = float(tile_I0s_all[layer_id, j])
+            tile_scale      = float(tile_scales_all[layer_id, j])
             tile_params = [j, fl, image_name, tr_matr_single,
                            sy, sx,                # NOT used by transform_tile for output sizing
                            left_crop, tile_I0, tile_scale]
@@ -281,7 +301,7 @@ def _write_zarr3_shard_s0_from_tiles(params, deformation_field, **kwargs):
             )
 
         # Normalise (same idiom as assemble_layer).
-        np.clip(layer_weights, weight_min, weight_max * max(len(tile_list), 1),
+        np.clip(layer_weights, weight_min, weight_max * max(n_tiles_in_layer, 1),
                 out=layer_weights)
         np.divide(layer_mosaic, layer_weights, out=layer_mosaic)
         np.nan_to_num(layer_mosaic, nan=fill_value, copy=False)
@@ -5929,33 +5949,20 @@ class FIBSEM_mosaic_dataset:
                 overlap = ~((tx1_slab <= x0) | (tx_slab >= x0 + sx) |
                             (ty1_slab <= y0) | (ty_slab >= y0 + sy))
 
-                # Vectorised contrib gathering — single np.argwhere over the
-                # entire (sz, n_tiles) overlap mask, then bucket-sort by layer.
-                # Replaces the per-layer Python loop in the original code.
-                tiles_per_layer = [[] for _ in range(sz)]
-                if overlap.any():
-                    li_t = np.argwhere(overlap)                        # (n_contribs, 2)
-                    li_arr = li_t[:, 0]
-                    t_arr  = li_t[:, 1]
-                    order = np.argsort(li_arr, kind='stable')
-                    li_arr = li_arr[order]
-                    t_arr  = t_arr [order]
-                    for li, t in zip(li_arr.tolist(), t_arr.tolist()):
-                        lid = z0 + li
-                        tiles_per_layer[li].append((
-                            t,
-                            fls_flat_by_layer[lid][t],
-                            tr_matr_all[lid, t],
-                            float(tile_I0s_all[lid, t]),
-                            float(tile_scales_all[lid, t]),
-                        ))
+                # Per-layer tile-index arrays. The full (filename, tr_matr, I0, scale)
+                # tuples are NOT embedded here — workers dereference from scattered
+                # shared arrays (fls_flat_by_layer, tr_matr_all, tile_I0s_all,
+                # tile_scales_all) using these indices. This shrinks per-task pickle
+                # from ~600 KB to ~5-15 KB at typical mosaic geometry.
+                tile_indices_per_layer = [overlap[li].nonzero()[0].astype(np.int32)
+                                          for li in range(sz)]
 
                 yield [
                     str(output_zarr_path),
                     int(x0), int(y0), int(z0),
                     int(sx), int(sy), int(sz),
                     layer_ids,
-                    tiles_per_layer,
+                    tile_indices_per_layer,
                     image_name, fill_value,
                     weight_min, weight_max,
                     left_crop,
@@ -5976,7 +5983,14 @@ class FIBSEM_mosaic_dataset:
                      'border_mode':   border_mode}
 
         if use_DASK:
-            df_future = DASK_client.scatter(deformation_field, broadcast=True)
+            # Scatter the four large shared arrays ONCE to all workers, so each
+            # per-shard task closure carries just ~5-15 KB of indices instead of
+            # ~600 KB of duplicated tile data. Cuts batch graph size by ~50-100x.
+            df_future          = DASK_client.scatter(deformation_field, broadcast=True)
+            fls_future         = DASK_client.scatter(fls_flat_by_layer,  broadcast=True)
+            tr_matr_future     = DASK_client.scatter(tr_matr_all,        broadcast=True)
+            tile_I0s_future    = DASK_client.scatter(tile_I0s_all,       broadcast=True)
+            tile_scales_future = DASK_client.scatter(tile_scales_all,    broadcast=True)
             s0_iter = _iter_s0_params()
             n_batches_est = (n_total_origins + max_futures - 1) // max_futures
             batch_idx = 0
@@ -5991,7 +6005,11 @@ class FIBSEM_mosaic_dataset:
                           + '   Submitting s0 batch {:d}: {:d} shards'.format(batch_idx, len(batch)))
                 futures = DASK_client.map(
                     _write_zarr3_shard_s0_from_tiles, batch,
-                    deformation_field=df_future,
+                    deformation_field   = df_future,
+                    fls_flat_by_layer   = fls_future,
+                    tr_matr_all         = tr_matr_future,
+                    tile_I0s_all        = tile_I0s_future,
+                    tile_scales_all     = tile_scales_future,
                     retries=DASK_client_retries, **kwargs_tt,
                 )
                 for fut in tqdm(as_completed(futures), total=len(futures),
@@ -6006,7 +6024,14 @@ class FIBSEM_mosaic_dataset:
         else:
             for p in tqdm(_iter_s0_params(), total=n_total_origins,
                           desc='Writing s0 shards', display=verbose):
-                _write_zarr3_shard_s0_from_tiles(p, deformation_field, **kwargs_tt)
+                _write_zarr3_shard_s0_from_tiles(
+                    p, deformation_field,
+                    fls_flat_by_layer = fls_flat_by_layer,
+                    tr_matr_all       = tr_matr_all,
+                    tile_I0s_all      = tile_I0s_all,
+                    tile_scales_all   = tile_scales_all,
+                    **kwargs_tt,
+                )
 
         # ---- 6. Build pyramid (s1, s2, ...) ------------------------------
         for lvl in range(1, n_pyramid_levels):
