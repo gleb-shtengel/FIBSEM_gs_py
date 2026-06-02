@@ -207,7 +207,7 @@ def _add_warped_to_mosaic(tile, xi, yi, mosaic, mosaic_weight, **kwargs):
     mosaic_weight[cyi:cya, cxi:cxa] += tile_weight
 
 
-def _write_zarr3_shard_s0_from_tiles(params, deformation_field, **kwargs):
+def _write_zarr3_shard_s0_from_tiles(params, **kwargs):
     """
     DASK worker — build one s0 shard of a zarr v3 store from tile data.
     Composites contributing tiles into a shard-local (sz, sy, sx) ZYX buffer
@@ -245,6 +245,7 @@ def _write_zarr3_shard_s0_from_tiles(params, deformation_field, **kwargs):
 
     t0 = time.time()
     (output_zarr_path,
+     shared_path,
      x0, y0, z0,
      sx, sy, sz,
      layer_ids,
@@ -258,11 +259,22 @@ def _write_zarr3_shard_s0_from_tiles(params, deformation_field, **kwargs):
      U8_range,
      verbose) = params
 
-    # Scattered shared arrays — broadcast once via DASK_client.scatter(..., broadcast=True).
-    fls_flat_by_layer = kwargs.pop('fls_flat_by_layer')
-    tr_matr_all       = kwargs.pop('tr_matr_all')
-    tile_I0s_all      = kwargs.pop('tile_I0s_all')
-    tile_scales_all   = kwargs.pop('tile_scales_all')
+    # Load shared data from kwargs (non-DASK direct call) or from sidecar pickle (DASK path).
+    if 'fls_flat_by_layer' in kwargs:
+        fls_flat_by_layer = kwargs.pop('fls_flat_by_layer')
+        tr_matr_all       = kwargs.pop('tr_matr_all')
+        tile_I0s_all      = kwargs.pop('tile_I0s_all')
+        tile_scales_all   = kwargs.pop('tile_scales_all')
+        deformation_field = kwargs.pop('deformation_field')
+    else:
+        import pickle
+        with open(shared_path, 'rb') as f:
+            shared = pickle.load(f)
+        fls_flat_by_layer = shared['fls_flat_by_layer']
+        tr_matr_all       = shared['tr_matr_all']
+        tile_I0s_all      = shared['tile_I0s_all']
+        tile_scales_all   = shared['tile_scales_all']
+        deformation_field = shared['deformation_field']
 
     kwargs_tt = {
         'verbose': False,
@@ -5955,6 +5967,7 @@ class FIBSEM_mosaic_dataset:
 
                 yield [
                     str(output_zarr_path),
+                    shared_path,
                     int(x0), int(y0), int(z0),
                     int(sx), int(sy), int(sz),
                     layer_ids,
@@ -5968,7 +5981,6 @@ class FIBSEM_mosaic_dataset:
                     U8_range,
                     False,                        # verbose inside worker (driver prints progress)
                 ]
-
         if verbose:
             print('\n' + time.strftime('%Y/%m/%d  %H:%M:%S')
                   + f"   Writing s0:  up to {n_total_origins} shards "
@@ -5978,15 +5990,23 @@ class FIBSEM_mosaic_dataset:
                      'border_value':  border_value,
                      'border_mode':   border_mode}
 
+        # Write shared data to a sidecar pickle on shared storage. Workers read it
+        # directly per task — no DASK scatter, no caching. Robust to any cluster.
+        shared_path = os.path.join(os.path.dirname(output_zarr_path),
+                                   '.save_stack_zarr3_shared.pkl')
+        if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                  + '   Writing shared sidecar file: ' + shared_path)
+        with open(shared_path, 'wb') as f:
+            pickle.dump({
+                'deformation_field': deformation_field,
+                'fls_flat_by_layer': fls_flat_by_layer,
+                'tr_matr_all':       tr_matr_all,
+                'tile_I0s_all':      tile_I0s_all,
+                'tile_scales_all':   tile_scales_all,
+            }, f, protocol=pickle.HIGHEST_PROTOCOL)
+
         if use_DASK:
-            # Scatter the four large shared arrays ONCE to all workers, so each
-            # per-shard task closure carries just ~5-15 KB of indices instead of
-            # ~600 KB of duplicated tile data. Cuts batch graph size by ~50-100x.
-            df_future          = DASK_client.scatter(deformation_field, broadcast=True)
-            fls_future         = DASK_client.scatter(fls_flat_by_layer,  broadcast=True)
-            tr_matr_future     = DASK_client.scatter(tr_matr_all,        broadcast=True)
-            tile_I0s_future    = DASK_client.scatter(tile_I0s_all,       broadcast=True)
-            tile_scales_future = DASK_client.scatter(tile_scales_all,    broadcast=True)
             s0_iter = _iter_s0_params()
             n_batches_est = (n_total_origins + max_futures - 1) // max_futures
             batch_idx = 0
@@ -6001,11 +6021,6 @@ class FIBSEM_mosaic_dataset:
                           + '   Submitting s0 batch {:d}: {:d} shards'.format(batch_idx, len(batch)))
                 futures = DASK_client.map(
                     _write_zarr3_shard_s0_from_tiles, batch,
-                    deformation_field   = df_future,
-                    fls_flat_by_layer   = fls_future,
-                    tr_matr_all         = tr_matr_future,
-                    tile_I0s_all        = tile_I0s_future,
-                    tile_scales_all     = tile_scales_future,
                     retries=DASK_client_retries, **kwargs_tt,
                 )
                 for fut in tqdm(as_completed(futures), total=len(futures),
@@ -6021,7 +6036,8 @@ class FIBSEM_mosaic_dataset:
             for p in tqdm(_iter_s0_params(), total=n_total_origins,
                           desc='Writing s0 shards', display=verbose):
                 _write_zarr3_shard_s0_from_tiles(
-                    p, deformation_field,
+                    p,
+                    deformation_field = deformation_field,
                     fls_flat_by_layer = fls_flat_by_layer,
                     tr_matr_all       = tr_matr_all,
                     tile_I0s_all      = tile_I0s_all,
