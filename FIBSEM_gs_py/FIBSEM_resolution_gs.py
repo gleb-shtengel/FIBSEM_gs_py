@@ -299,7 +299,7 @@ def analyze_blob_transitions(amp, ** kwargs):
         ax.plot([rise_points[0], rise_points[1]], [rise_points[2], rise_points[3]], 'o', color = col, markersize = markersize,
             label = '{:.0f}%-{:.0f}%: {:.2f}nm'.format(bounds[0]*100, bounds[1]*100, abs(xa-xi)))
         ax.plot([fall_points[0], fall_points[1]], [fall_points[2], fall_points[3]], 's', markersize = markersize, color = col,
-                label = '{:.0f}%-{:.0f}%: {:.2f}nm'.format(bounds[0]*100, bounds[1]*100, abs(xa-xi)))
+                label = '{:.0f}%-{:.0f}%: {:.2f}nm'.format(bounds[0]*100, bounds[1]*100, abs(ya-yi)))
     return rise_points, fall_points, [ampi, ampa, amp_max]
 
 
