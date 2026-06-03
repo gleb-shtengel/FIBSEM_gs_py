@@ -2119,6 +2119,9 @@ class FIBSEM_mosaic_dataset:
 
     Methods:
     ----------
+    compute_index_pairs_and_geometry(**kwargs)
+        Computes all FirstPixels-derived state (index_pairs, montage size etc).
+
     find_tile_pairs(layer_id, tile_id)
         Searches self.index_pairs for all pairs containing the tile. Reports transformation records for each found pair. 
 
@@ -2308,6 +2311,11 @@ class FIBSEM_mosaic_dataset:
             If False, the intermediate printouts will be suppressed. Default is True.
         save_res_png  : boolean
             Save PNG images of the intermediate processing statistics and final registration quality check. Default is True.
+
+        Notes:
+        ------
+        Call self.compute_index_pairs_and_geometry() to refresh all FirstPixels-
+        derived state after manually editing self.FirstPixels.
         '''
         memory_profiling = kwargs.get('memory_profiling', False)
         verbose = kwargs.get('verbose', True)
@@ -2532,6 +2540,89 @@ class FIBSEM_mosaic_dataset:
             FirstPixels_layer0 = np.array(FirstPixels_layer0)          # shape (n_tiles, 3)
             self.FirstPixels = np.repeat(FirstPixels_layer0[np.newaxis, :, :], L, axis=0)
 
+        self.compute_index_pairs_and_geometry(verbose=verbose)
+
+        self.min_overlap_pixels                  = kwargs.get('min_overlap_pixels', 5000)
+        self.percentile = kwargs.get('percentile', 50)
+        self.SIFT_Affine_r2norm = np.nan    # residual 2-norm from the affine bundle solve
+        self.tile_I0s = np.zeros((self.nz_tiles, self.n_tiles_per_layer))
+        self.tile_scales = np.ones((self.nz_tiles, self.n_tiles_per_layer))
+        # Pre-init so that `len(self.fnms_kpts) == 0` works in determine_transformations_SIFT
+        # before extract_keypoints() has been called. Both are overwritten with shape
+        # (nz_tiles, n_tiles_per_layer) numpy arrays inside extract_keypoints (line 2854).
+        self.fnms_kpts = np.array([])
+        self.nkpts     = np.array([])
+
+        if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Initialized FIBSEM_mosaic_dataset instance:')
+            print('Total number of tile files: {:d}'.format(self.nz_tiles * self.n_tiles_per_layer))
+            print('Number of tiles per Z-layer: {:d}'.format(self.n_tiles_per_layer))
+            print('Number of Z-slices (nz_tiles): {:d}'.format(self.nz_tiles))
+            print('')
+            print('Total number of left-right intra-layer pairs: ', self.nh)
+            print('Total number of up-down intra-layer pairs: ', self.nv)
+            print('Total number of intra-layer pairs: ', self.nh + self.nv)
+            print('Total number of inter-layer pairs: ', self.nl)
+            print('Total number of pairwise transformations : {:d}'.format(self.C))
+
+        if memory_profiling:
+            elapsed_time = elapsed_since(start_time)
+            rss_after, vms_after, shared_after = get_process_memory()
+            print("Profiling: Start of Execution: RSS: {:>8} | VMS: {:>8} | SHR {"
+                  ":>8} | time: {:>8}"
+                .format(format_bytes(rss_after - rss_before),
+                        format_bytes(vms_after - vms_before),
+                        format_bytes(shared_after - shared_before),
+                        elapsed_time))
+
+
+    def compute_index_pairs_and_geometry(self, **kwargs):
+        '''
+        Compute (or recompute) the intra/inter-layer index pair lists, the sparse A_csr
+        matrix, pair_margins, pair_overlap_bounds, the pair-count-sized arrays that
+        hold registration results, AND the FirstPixels-derived geometry (Xsize, Ysize,
+        default_tr_matr, tr_matr). Reads self.FirstPixels and other __init__-set
+        config; writes back all pair- and geometry-derived state.
+
+        Called automatically by __init__. Can also be called manually after editing
+        self.FirstPixels (e.g., to fix a stage-shifted layer's coordinates) to refresh
+        every parameter that depends on tile positions.
+
+        WARNING: This resets ECC/SIFT transformation matrices to identity and marks
+        them invalid; sets self.tr_matr back to default_tr_matr. Any prior registration
+        results stored in SIFT_transformation_*, ECC_transformation_*, tr_matr, etc.
+        will be wiped. If you need to preserve them, save externally before calling.
+
+        kwargs:
+        -------
+        verbose : bool
+            Default True. Show tqdm progress bars and summary prints.
+        intralayer_weight : float
+            Override self.intralayer_weight for the A_csr build. Default self.intralayer_weight.
+        interlayer_weight : float
+            Override self.interlayer_weight for the A_csr build. Default self.interlayer_weight.
+
+        Side effects (sets all on self):
+        --------------------------------
+        Pair structure: nh, nv, nl, C, index_pairs,
+                        Xoverlap, Yoverlap, pair_margins, pair_overlap_bounds, A_csr.
+        Result arrays (reset): ECC_transformation_matrices, ECC_transformation_valid,
+                        SIFT_transformation_matrices, SIFT_transformation_valid,
+                        SIFT_fnms_matches, SIFT_nmatches, SIFT_intensity_ratios,
+                        mean_intensity_ratios, percentile_intensity_ratios,
+                        overlap_mean_intensity_ratios, overlap_percentile_intensity_ratios,
+                        overlap_intensity_ratios_valid,
+                        target_intensity_ratios, target_intensity_ratios_valid.
+        Geometry: Xsize, Ysize, default_tr_matr, tr_matr.
+        '''
+        verbose = kwargs.get('verbose', True)
+        L = self.nz_tiles
+        image_coordinates_files = self.image_coordinates_files
+        intralayer_weight = kwargs.get('intralayer_weight', self.intralayer_weight)
+        interlayer_weight = kwargs.get('interlayer_weight', self.interlayer_weight)
+        w_sqrt_intra = np.sqrt(intralayer_weight)
+        w_sqrt_inter = np.sqrt(interlayer_weight)
+
         # Build intra-layer index pairs — vectorized
         intra_index_pairs_x = []
         intra_index_pairs_y = []
@@ -2581,7 +2672,7 @@ class FIBSEM_mosaic_dataset:
                 y_l  = self.FirstPixels[l,   :, 1]
                 x_l1 = self.FirstPixels[l+1, :, 0]
                 y_l1 = self.FirstPixels[l+1, :, 1]
-                dx_abs = np.abs(x_l1[np.newaxis, :] - x_l[:, np.newaxis])   # [i,j]: layer l tile i vs layer l+1 tile j
+                dx_abs = np.abs(x_l1[np.newaxis, :] - x_l[:, np.newaxis])
                 dy_abs = np.abs(y_l1[np.newaxis, :] - y_l[:, np.newaxis])
                 ii, jj = np.where((dx_abs < self.XResolution) & (dy_abs < self.YResolution))
                 inter_index_pairs.append(np.column_stack([ii, jj]) if len(ii) > 0 else np.empty((0, 2), dtype=int))
@@ -2590,25 +2681,21 @@ class FIBSEM_mosaic_dataset:
                 inter_index_pairs.append(
                     np.array([(i, i) for i in range(self.n_tiles_per_layer)]))
 
-        nh = sum(len(intra_index_pairs_x[l]) for l in range(L))             # Total number of left-right intra-layer pairs
+        nh = sum(len(intra_index_pairs_x[l]) for l in range(L))
         self.nh = nh
-        nv = sum(len(intra_index_pairs_y[l]) for l in range(L))              # Total number of up-down intra-layer pairs
+        nv = sum(len(intra_index_pairs_y[l]) for l in range(L))
         self.nv = nv
         n_inter_base = sum(len(inter_index_pairs[l]) for l in range(L - 1))
         nl = n_inter_base * 2 if self.add_reverse_edges else n_inter_base
         self.nl = nl
         self.C = self.nh + self.nv + self.nl
-        V = L * self.n_tiles_per_layer                     # Total number of tiles
+        V = L * self.n_tiles_per_layer
 
         # Prepare data for sparse matrix A
         data = []
         row_ind = []
         col_ind = []
-        row = 0   # row (entry) in the sparse matrix A (not a tile row)
-
-        # Build a sparse matrix A for Ax=b lsqr equation
-        # idx1 and idx2 are absolute (in 1D sense) tile indices
-        # each entry is a single sparse matrix element, there are two elements per pairwise translation condition, they enter with opposite signs
+        row = 0
 
         # Intra-layer adjacent pairs
         if verbose:
@@ -2632,8 +2719,8 @@ class FIBSEM_mosaic_dataset:
         # Inter-layer adjacent pairs
         for l in tqdm(range(L - 1), desc = 'Adding inter-layer pairs', display=verbose):
             for k in range(len(inter_index_pairs[l])):
-                i = inter_index_pairs[l][k, 0]   # tile index in layer l
-                j = inter_index_pairs[l][k, 1]   # tile index in layer l+1
+                i = inter_index_pairs[l][k, 0]
+                j = inter_index_pairs[l][k, 1]
                 idx1 = l * self.n_tiles_per_layer + i
                 idx2 = (l + 1) * self.n_tiles_per_layer + j
                 row_ind.extend([row, row])
@@ -2646,7 +2733,7 @@ class FIBSEM_mosaic_dataset:
                     data.extend([-w_sqrt_inter, w_sqrt_inter])
                     row += 1
 
-        self.index_pairs = np.array(col_ind).reshape((row, 2))   # absolute (in 1D sense) tile indices for each pair
+        self.index_pairs = np.array(col_ind).reshape((row, 2))
         Xoverlap_per_layer = []
         Yoverlap_per_layer = []
         for l in range(L):
@@ -2662,7 +2749,6 @@ class FIBSEM_mosaic_dataset:
                     self.YResolution - np.abs(self.FirstPixels[l, i1, 1] - self.FirstPixels[l, i2, 1]))))
             else:
                 Yoverlap_per_layer.append(0)
-        # Scalar summaries for backward compatibility
         self.Xoverlap = Xoverlap_per_layer[0] if Xoverlap_per_layer else 0
         self.Yoverlap = Yoverlap_per_layer[0] if Yoverlap_per_layer else 0
         pair_margins = []
@@ -2677,10 +2763,6 @@ class FIBSEM_mosaic_dataset:
         self.pair_margins = pair_margins
 
         # Per-pair exact overlap rectangles derived from FirstPixels.
-        # Replaces the pair_margins assumption that img1 is always left/above img2.
-        # Works for rectangular grids and arbitrary layouts equally.
-        # Each entry: (x_min_a, x_max_a, y_min_a, y_max_a,
-        #              x_min_b, x_max_b, y_min_b, y_max_b)  — all in local pixel coords
         pair_overlap_bounds = []
         for abs_a, abs_b in tqdm(self.index_pairs, desc = 'Determining pair overlap bounds', display=verbose):
             la = int(abs_a) // self.n_tiles_per_layer
@@ -2699,9 +2781,11 @@ class FIBSEM_mosaic_dataset:
                                         x_min_b, x_max_b, y_min_b, y_max_b))
         self.pair_overlap_bounds = pair_overlap_bounds
 
-        self.A_csr = csr_matrix((data, (row_ind, col_ind)), shape=(self.C, V)) # sparse matrix
+        self.A_csr = csr_matrix((data, (row_ind, col_ind)), shape=(self.C, V))
 
-        eye3x3 = np.eye(3,3)
+        # ---- Reset all C-sized arrays that hold registration / per-pair results ----
+        # Any prior SIFT/ECC results are wiped — re-run registration after this call.
+        eye3x3 = np.eye(3, 3)
         self.ECC_transformation_matrices = np.repeat(eye3x3[np.newaxis, :, :], self.C, axis=0)
         self.ECC_transformation_valid = np.full(self.C, False)
         self.SIFT_transformation_matrices = np.repeat(eye3x3[np.newaxis, :, :], self.C, axis=0)
@@ -2716,59 +2800,35 @@ class FIBSEM_mosaic_dataset:
         self.overlap_intensity_ratios_valid        = np.full(self.C, False)
         self.target_intensity_ratios        = np.full(self.C, np.nan, dtype=np.float64)
         self.target_intensity_ratios_valid  = np.full(self.C, False)
-        self.min_overlap_pixels                  = kwargs.get('min_overlap_pixels', 5000)
-        self.percentile = kwargs.get('percentile', 50)
-        self.SIFT_Affine_r2norm = np.nan    # residual 2-norm from the affine bundle solve
-        self.tile_I0s = np.zeros((self.nz_tiles, self.n_tiles_per_layer))
-        self.tile_scales = np.ones((self.nz_tiles, self.n_tiles_per_layer))
-        # Pre-init so that `len(self.fnms_kpts) == 0` works in determine_transformations_SIFT
-        # before extract_keypoints() has been called. Both are overwritten with shape
-        # (nz_tiles, n_tiles_per_layer) numpy arrays inside extract_keypoints (line 2854).
-        self.fnms_kpts = np.array([])
-        self.nkpts     = np.array([])
 
-        if verbose:
-            print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   Initialized FIBSEM_mosaic_dataset instance:')
-            print('Total number of tile files: {:d}'.format(V))
-            print('Number of tiles per Z-layer: {:d}'.format(self.n_tiles_per_layer))
-            print('Number of Z-slices (nz_tiles): {:d}'.format(self.nz_tiles))
-            print('')
-            print('Total number of left-right intra-layer pairs: ', self.nh)
-            print('Total number of up-down intra-layer pairs: ', self.nv)
-            print('Total number of intra-layer pairs: ', self.nh + self.nv)
-            print('Total number of inter-layer pairs: ', self.nl)
-            print('Total number of pairwise transformations : {:d}'.format(self.C))
-
+        # ---- FirstPixels-derived geometry (canvas size + default translation matrix) ----
         self.Xsize = int(np.round(np.max(self.FirstPixels[:, :, 0]) - np.min(self.FirstPixels[:, :, 0]) + self.XResolution))
         self.Ysize = int(np.round(np.max(self.FirstPixels[:, :, 1]) - np.min(self.FirstPixels[:, :, 1]) + self.YResolution))
-        
+
         # Initialize the translation matrix for each tile.
         # tr_matr stores translations as NEGATIVE pixel offsets (tr_matr[:,:,i,2] = -position_i),
         # consistent with the convention that the transformation maps tile-local
         # coordinates to canvas coordinates: x_canvas = x_tile + tr_matr[0,2].
-        # tile_positions is no longer stored separately — derive it on demand as
-        # -tr_matr[:, :, 0:2, 2] whenever (positive) pixel positions are needed.
-        # shifts are per-layer: each layer normalised to its own origin
+        # shifts are per-layer: each layer normalised to its own origin.
         shifts_x = self.FirstPixels[:, :, 0] - np.min(self.FirstPixels[:, :, 0], axis=1, keepdims=True)
         shifts_y = self.FirstPixels[:, :, 1] - np.min(self.FirstPixels[:, :, 1], axis=1, keepdims=True)
-        # shape of shifts_x / shifts_y: (L, n_tiles_per_layer)
-
         default_tr_matr = np.broadcast_to(eye3x3, (L, self.n_tiles_per_layer, 3, 3)).copy()
-        # shape: (L, n_tiles_per_layer, 3, 3)
         default_tr_matr[:, :, 0, 2] = - shifts_x
         default_tr_matr[:, :, 1, 2] = - shifts_y
         self.default_tr_matr = default_tr_matr
         self.tr_matr = default_tr_matr.copy()   # .copy() so solver writes don't corrupt default
 
-        if memory_profiling:
-            elapsed_time = elapsed_since(start_time)
-            rss_after, vms_after, shared_after = get_process_memory()
-            print("Profiling: Start of Execution: RSS: {:>8} | VMS: {:>8} | SHR {"
-                  ":>8} | time: {:>8}"
-                .format(format_bytes(rss_after - rss_before),
-                        format_bytes(vms_after - vms_before),
-                        format_bytes(shared_after - shared_before),
-                        elapsed_time))
+        if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Computed index pairs and geometry:')
+            print('   Xsize: {:d}, Ysize: {:d}'.format(self.Xsize, self.Ysize))
+            print('   Total number of left-right intra-layer pairs: ', self.nh)
+            print('   Total number of up-down intra-layer pairs: ', self.nv)
+            print('   Total number of intra-layer pairs: ', self.nh + self.nv)
+            print('   Total number of inter-layer pairs: ', self.nl)
+            print('   Total number of pairwise transformations : {:d}'.format(self.C))
+
+
+
 
     def find_tile_pairs(self, layer_id, tile_id, **kwargs):
         '''
@@ -2813,11 +2873,11 @@ class FIBSEM_mosaic_dataset:
                 tile0 = pair[0] - layer0*nl
                 layer1 = pair[1]//nl
                 tile1 = pair[1] - layer1*nl
-                tile_pairs.append([layer0, tile0, layer1, tile1])
+                tile_pairs.append([pair_ind, layer0, tile0, layer1, tile1])
                 SIFT_shifts.append(self.SIFT_transformation_matrices[pair_ind, 0:2, 2])
                 SIFT_valid.append(self.SIFT_transformation_valid[pair_ind])
                 SIFT_nmatches.append(self.SIFT_nmatches[pair_ind])
-            pd_layers = pd.DataFrame(np.array(tile_pairs), columns = ['Layer 0', 'Tile 0', 'Layer 1', 'Tile 1'])
+            pd_layers = pd.DataFrame(np.array(tile_pairs), columns = ['Pair Index', 'Layer 0', 'Tile 0', 'Layer 1', 'Tile 1'])
             pd_SIFT_shifts = pd.DataFrame(np.array(SIFT_shifts), columns = ['SIFT x-shift', 'SIFT y-shift'])
             pd_SIFT_nmatches = pd.DataFrame(np.array(SIFT_nmatches), columns = ['SIFT nmatches'])
             pd_SIFT_valid = pd.DataFrame(np.array(SIFT_valid), columns = ['SIFT valid'])
@@ -3740,9 +3800,9 @@ class FIBSEM_mosaic_dataset:
                 path_base, f1 = os.path.split(fname1)
                 _, f2 = os.path.split(fname2)
                 if select_tiles:
-                    fnm_matches = os.path.join(path_base, 'pair{:d}_'.format(jj) + f1.replace('_kpdes.bin', '_')+f2.replace('_kpdes.bin', '_select_tile_matches.bin'))
+                    fnm_matches = os.path.join(path_base, 'fls_{:d}_{:d}'.format(*index_pair) + f1.replace('_kpdes.bin', '_')+f2.replace('_kpdes.bin', '_select_tile_matches.bin'))
                 else:
-                    fnm_matches = os.path.join(path_base, 'pair{:d}_'.format(jj) + f1.replace('_kpdes.bin', '_')+f2.replace('_kpdes.bin', '_matches.bin'))
+                    fnm_matches = os.path.join(path_base, 'fls_{:d}_{:d}'.format(*index_pair) + f1.replace('_kpdes.bin', '_')+f2.replace('_kpdes.bin', '_matches.bin'))
                 dt_kwargs['fnm_matches'] = fnm_matches
                 dt_kwargs['overlap_bounds'] = overlap_bounds   # (x_min_a, x_max_a, y_min_a, y_max_a,
                                                                 #  x_min_b, x_max_b, y_min_b, y_max_b)
