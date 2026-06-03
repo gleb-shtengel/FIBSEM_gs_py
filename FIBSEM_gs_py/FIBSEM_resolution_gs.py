@@ -884,7 +884,7 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
         print(kwargs)
         print('Using DASK delayed')
 
-    with Client() as client:
+    with Client(processes=False) as client:
         use_DASK, status_update_address = check_DASK(client)
         volume_dask0 = da.from_array(volume.astype(float), chunks=chunk_size)
         volume_dask = da.overlap.overlap(volume_dask0, depth=depth,
