@@ -884,7 +884,11 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
         print(kwargs)
         print('Using DASK delayed')
 
-    with Client(processes=False) as client:
+    client = kwargs.get('DASK_client', None)
+    close_client = client is None
+    if client is None:
+        client = Client(processes=False)
+    try:
         use_DASK, status_update_address = check_DASK(client)
         volume_dask0 = da.from_array(volume.astype(float), chunks=chunk_size)
         volume_dask = da.overlap.overlap(volume_dask0, depth=depth,
@@ -1054,7 +1058,13 @@ def select_blobs_LoG_analyze_transitions_3D(volume, **kwargs):
                 print(time.strftime('%Y/%m/%d  %H:%M:%S') + ' Step1: No blobs found using Laplacian of Gaussians')
                 print(time.strftime('%Y/%m/%d  %H:%M:%S') + ' Data is NOT saved')
         return results_file_xlsx, blobs_LoG, error_flags, tr_results, hst_datas
-        
+    finally:
+        if close_client:
+            try:
+                client.close(timeout=5)
+            except Exception:
+                pass
+
 
 ############################################
 #

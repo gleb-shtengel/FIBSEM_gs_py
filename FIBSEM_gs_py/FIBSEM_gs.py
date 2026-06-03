@@ -9446,7 +9446,9 @@ def extract_keypoints_descr_files(params, deformation_field):
         fill_value = kwargs.get('fill_value', 0)
 
         sift = cv2.SIFT_create(nfeatures=SIFT_nfeatures, nOctaveLayers=SIFT_nOctaveLayers, edgeThreshold=SIFT_edgeThreshold, contrastThreshold=SIFT_contrastThreshold, sigma=SIFT_sigma)
-        img, d1, d2 = FIBSEM_frame(fl, ftype=ftype, calculate_scaled_images=False).RawImageA_8bit_thresholds(thr_min = 1.0e-3, thr_max = 1.0e-3, data_min = dmin, data_max = dmax, nbins=256)
+        frame_tmp = FIBSEM_frame(fl, ftype=ftype, calculate_scaled_images=False)
+        img, d1, d2 = frame_tmp.RawImageA_8bit_thresholds(thr_min=1.0e-3, thr_max=1.0e-3, data_min=dmin, data_max=dmax, nbins=256)
+        del frame_tmp
         if left_crop > 0:
             img = img[:, left_crop:]
         if perform_deformation:
