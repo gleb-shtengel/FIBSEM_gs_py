@@ -15606,6 +15606,7 @@ def plot_3D_blob_examples(volume, results_file_xlsx, **kwargs):
     save_fname = kwargs.get('save_fname', results_file_xlsx.replace('.xlsx', '_3D_blob_examples.png'))
     title = kwargs.get('title', 'Examples of 3D blobs used for resolution  analysis')
     dpi = kwargs.get('dpi', 300)
+    verbose = kwargs.get('verbose', False)
 
     fst = 40
     fs = 12
@@ -15687,7 +15688,8 @@ def plot_3D_blob_examples(volume, results_file_xlsx, **kwargs):
                                     pref = 'X-',
                                     set_yscale = False,
                                     markersize = markersize,
-                                    fs_labels=fs_labels)
+                                    fs_labels=fs_labels,
+                                    verbose=verbose)
         tr_y = analyze_blob_transitions(amp_y,
                                     pixel_size = pixel_size,
                                     bounds = bounds,
@@ -15699,7 +15701,8 @@ def plot_3D_blob_examples(volume, results_file_xlsx, **kwargs):
                                     pref = 'Y-',
                                     set_yscale = False,
                                     markersize = markersize,
-                                    fs_labels=fs_labels)
+                                    fs_labels=fs_labels,
+                                    verbose=verbose)
         tr_z = analyze_blob_transitions(amp_z,
                                     pixel_size = pixel_size,
                                     bounds = bounds,
@@ -15711,7 +15714,8 @@ def plot_3D_blob_examples(volume, results_file_xlsx, **kwargs):
                                     pref = 'Z-',
                                     set_yscale = False,
                                     markersize = markersize,
-                                    fs_labels=fs_labels)
+                                    fs_labels=fs_labels,
+                                    verbose=verbose)
 
         mybbox = axr[4*j+3].get_position()
             #print(mybbox)
