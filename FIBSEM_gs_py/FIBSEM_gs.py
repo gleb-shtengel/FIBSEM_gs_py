@@ -15497,7 +15497,6 @@ def plot_3D_blob_results(results_xlsx, **kwargs):
     tr_median = np.median(All_selected_flattened)
     tr_mean = np.mean(All_selected_flattened)
     tr_std = np.std(All_selected_flattened)
-    print(len(All_selected))
     
     if verbose:
         print(time.strftime('%Y/%m/%d  %H:%M:%S')+'  Generating Plot')
