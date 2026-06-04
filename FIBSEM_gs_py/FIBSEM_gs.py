@@ -649,6 +649,8 @@ def Single_Image_SNR(img, **kwargs):
         Resolution (DPI) for the output PNG image.
     verbose : boolean
         Display intermediate results.
+    full_acr_plot : boolean
+        If True (Default), full ACR plot is added, otherwise only zoom in near the peak is plotted.
         
     Returns:
     ----------
@@ -671,12 +673,14 @@ def Single_Image_SNR(img, **kwargs):
     thresholds_disp = kwargs.get("thresholds_disp", [1e-3, 1e-3])
     save_res_png = kwargs.get("save_res_png", True)
     res_fname = kwargs.get("res_fname", 'SNR_results.png')
-    img_label = kwargs.get("img_label", 'Orig. Image')
+    img_label = kwargs.get("img_label", 'Original Image')
     dpi = kwargs.get("dpi", 300)
     verbose = kwargs.get("verbose", False)
+    full_acr_plot = kwargs.get('full_acr_plot', True)
     
     #first make image size even
     ysz, xsz = img.shape
+    ys = 5.0
     img = np.float64(img[0:((ysz+1)//2*2-1), 0:((xsz+1)//2*2-1)])
     ysz, xsz = img.shape
     nlags = kwargs.get("nlags", np.min((ysz, xsz))//4)
@@ -736,56 +740,74 @@ def Single_Image_SNR(img, **kwargs):
     rSNR = (mag_NFacr_r - mag_acr_mean_r)/(mag_acr_peak_r - mag_NFacr_r)
     if disp_res:
         fs=12
-        
-        if xy_ratio < 2.5:
-            fig, axs = plt.subplots(1,4, figsize = (20, 5))
+        if full_acr_plot:
+            if xy_ratio < 2.5:
+                fig, axs = plt.subplots(1,4, figsize = (ys*4.0*xy_ratio, ys))
+            else:
+                fig = plt.figure(figsize = (ys*4.0*xy_ratio, ys))
+                ax0 = fig.add_subplot(2, 2, 1)
+                ax1 = fig.add_subplot(2, 2, 3)
+                ax2 = fig.add_subplot(1, 4, 3)
+                ax3 = fig.add_subplot(1, 4, 4)
+                axs = [ax0, ax1, ax2, ax3]
         else:
-            fig = plt.figure(figsize = (20, 5))
-            ax0 = fig.add_subplot(2, 2, 1)
-            ax1 = fig.add_subplot(2, 2, 3)
-            ax2 = fig.add_subplot(1, 4, 3)
-            ax3 = fig.add_subplot(1, 4, 4)
-            axs = [ax0, ax1, ax2, ax3]
-        fig.subplots_adjust(left=0.03, bottom=0.06, right=0.99, top=0.92, wspace=0.25, hspace=0.10)
+            fig, axs = plt.subplots(1,3, figsize = (ys*3.0*xy_ratio, ys))
+                
+        fig.subplots_adjust(left=0.03, bottom=0.06, right=0.99, top=0.92, wspace=0.10, hspace=0.10)
         
         range_disp = get_min_max_thresholds(img, thr_min = thresholds_disp[0], thr_max = thresholds_disp[1], nbins = nbins_disp, disp_res=False)
         axs[0].imshow(img, cmap='Greys', vmin=range_disp[0], vmax=range_disp[1])
-        axs[0].grid(True)
+        #axs[0].grid(True)
+        axs[0].axis(False)
         axs[0].set_title(img_label)
         if save_res_png:
             axs[0].text(0, 1.1 + (xy_ratio-1.0)/20.0, res_fname, transform=axs[0].transAxes)
         axs[1].imshow(data_ACR_log, extent=[-xsz//2-1, xsz//2, -ysz//2-1, ysz//2])
-        axs[1].grid(True)
+        #axs[1].grid(True)
+        axs[1].axis(False)
         axs[1].set_title('Autocorrelation (log scale)')
-    
-        axs[2].plot(xcr, data_ACR[ysz//2, :], 'r', linewidth=0.5, label='X')
-        axs[2].plot(ycr, data_ACR[:, xsz//2], 'b', linewidth=0.5, label='Y')
-        axs[2].plot(rcr, r_ACR, 'g', linewidth=0.5, label='R')
-        axs[2].plot(ind_mag_acr_mean_x, ind_mag_acr_mean_x*0 + mag_acr_mean_x, 'r--', linewidth =2.0, label='<X>={:.5f}'.format(mag_acr_mean_x))
-        axs[2].plot(ind_mag_acr_mean_y, ind_mag_acr_mean_y*0 + mag_acr_mean_y, 'b--', linewidth =2.0, label='<Y>={:.5f}'.format(mag_acr_mean_y))
-        axs[2].plot(ind_mag_acr_mean_r, ind_mag_acr_mean_r*0 + mag_acr_mean_r, 'g--', linewidth =2.0, label='<R>={:.5f}'.format(mag_acr_mean_r))
-        axs[2].grid(True)
-        axs[2].legend()
-        axs[2].set_title('Normalized autocorr. cross-sections')
-        axs[3].plot(xcr, data_ACR[ysz//2, :], 'rx', label='X data')
-        axs[3].plot(ycr, data_ACR[:, xsz//2], 'bd', label='Y data')
-        axs[3].plot(rcr, r_ACR, 'g+', ms=10, label='R data')
-        axs[3].plot(xcr[xsz//2], data_ACR[ysz//2, xsz//2], 'md', label='Peak: {:.4f}, {:.4f}'.format(xcr[xsz//2], data_ACR[ysz//2, xsz//2]))
-        axs[3].plot(ind_acr_x, mag_acr_x, 'r', label='X extrap.: {:.4f}, {:.4f}'.format(ind_acr_x[len(ind_acr_x)//2], mag_acr_x[len(mag_acr_x)//2]))
-        axs[3].plot(ind_acr_y, mag_acr_y, 'b', label='Y extrap.: {:.4f}, {:.4f}'.format(ind_acr_y[len(ind_acr_y)//2], mag_acr_y[len(mag_acr_y)//2]))
-        axs[3].plot(ind_acr_r, mag_acr_r, 'g', label='R extrap.: {:.4f}, {:.4f}'.format(ind_acr_r[len(ind_acr_r)//2], mag_acr_r[len(mag_acr_r)//2]))
-        axs[3].text(0.03, 0.96, 'Noise-free peak extr.: '+extrapolate_signal, transform=axs[3].transAxes, fontsize=fs)
-        axs[3].text(0.03, 0.90, 'xSNR = {:.2f}'.format(xSNR), color='r', transform=axs[3].transAxes, fontsize=fs)
-        axs[3].text(0.03, 0.84, 'ySNR = {:.2f}'.format(ySNR), color='b', transform=axs[3].transAxes, fontsize=fs)
-        axs[3].text(0.03, 0.78, 'rSNR = {:.2f}'.format(rSNR), color='g', transform=axs[3].transAxes, fontsize=fs)
-        axs[3].grid(True)
-        axs[3].legend()
-        axs[3].set_xlim(-5,5)
+        if full_acr_plot:
+            axs[2].plot(xcr, data_ACR[ysz//2, :], 'r', linewidth=0.5, label='X')
+            axs[2].plot(ycr, data_ACR[:, xsz//2], 'b', linewidth=0.5, label='Y')
+            axs[2].plot(rcr, r_ACR, 'g', linewidth=0.5, label='R')
+            axs[2].plot(ind_mag_acr_mean_x, ind_mag_acr_mean_x*0 + mag_acr_mean_x, 'r--', linewidth =2.0, label='<X>={:.5f}'.format(mag_acr_mean_x))
+            axs[2].plot(ind_mag_acr_mean_y, ind_mag_acr_mean_y*0 + mag_acr_mean_y, 'b--', linewidth =2.0, label='<Y>={:.5f}'.format(mag_acr_mean_y))
+            axs[2].plot(ind_mag_acr_mean_r, ind_mag_acr_mean_r*0 + mag_acr_mean_r, 'g--', linewidth =2.0, label='<R>={:.5f}'.format(mag_acr_mean_r))
+            axs[2].grid(True)
+            axs[2].legend()
+            axs[2].set_title('Normalized autocorr. cross-sections')
+        if full_acr_plot:
+            ax_acr = axs[3]
+        else:
+            ax_acr = axs[2]
+        
+        ax_acr.set_box_aspect(1.0/xy_ratio)
+        ax_acr.plot(xcr, data_ACR[ysz//2, :], 'rx', label='X data')
+        ax_acr.plot(ycr, data_ACR[:, xsz//2], 'bd', label='Y data')
+        ax_acr.plot(rcr, r_ACR, 'g+', ms=10, label='R data')
+        if full_acr_plot:
+            ax_acr.plot(xcr[xsz//2], data_ACR[ysz//2, xsz//2], 'md', label='Peak: {:.4f}, {:.4f}'.format(xcr[xsz//2], data_ACR[ysz//2, xsz//2]))
+            ax_acr.plot(ind_acr_x, mag_acr_x, 'r', label='X interp.: {:.4f}, {:.4f}'.format(ind_acr_x[len(ind_acr_x)//2], mag_acr_x[len(mag_acr_x)//2]))
+            ax_acr.plot(ind_acr_y, mag_acr_y, 'b', label='Y interp.: {:.4f}, {:.4f}'.format(ind_acr_y[len(ind_acr_y)//2], mag_acr_y[len(mag_acr_y)//2]))
+            ax_acr.plot(ind_acr_r, mag_acr_r, 'g', label='R interp.: {:.4f}, {:.4f}'.format(ind_acr_r[len(ind_acr_r)//2], mag_acr_r[len(mag_acr_r)//2]))
+        else:
+            ax_acr.plot(xcr[xsz//2], data_ACR[ysz//2, xsz//2], 'md', label='Peak')
+            ax_acr.plot(ind_acr_x, mag_acr_x, 'r', label = 'X interp.')
+            ax_acr.plot(ind_acr_y, mag_acr_y, 'b', label = 'Y interp.')
+            ax_acr.plot(ind_acr_r, mag_acr_r, 'g', label = 'R interp.')            
+        ax_acr.text(0.03, 0.96, 'Noise-free peak extr.: '+extrapolate_signal, transform=ax_acr.transAxes, fontsize=fs)
+        ax_acr.text(0.03, 0.90, 'xSNR = {:.2f}'.format(xSNR), color='r', transform=ax_acr.transAxes, fontsize=fs)
+        ax_acr.text(0.03, 0.84, 'ySNR = {:.2f}'.format(ySNR), color='b', transform=ax_acr.transAxes, fontsize=fs)
+        ax_acr.text(0.03, 0.78, 'rSNR = {:.2f}'.format(rSNR), color='g', transform=ax_acr.transAxes, fontsize=fs)
+        ax_acr.grid(True)
+        ax_acr.legend(loc = 'upper right')
+        ax_acr.set_xlim(-5,5)
+        ax_acr.set_xlabel('Displacement')
         y_ar = np.concatenate((mag_acr_x, mag_acr_y, mag_acr_r, np.array((mag_acr_peak_x, mag_acr_peak_y, mag_acr_peak_r))))
         yi = np.min(y_ar) - 0.5*(np.max(y_ar) - np.min(y_ar))
         ya = np.max(y_ar) + 0.2*(np.max(y_ar) - np.min(y_ar))
-        axs[3].set_ylim((yi, ya))
-        axs[3].set_title('Normalized autocorr. cross-sections')
+        ax_acr.set_ylim((yi, ya))
+        ax_acr.set_title('Normalized autocorr. cross-sections')
 
         if save_res_png:
             #print('X:   ACR peak = {:.4f}, Noise-Free ACR Peak = {:.4f}, Squared Mean = {:.4f}'.format(mag_acr_peak_x, mag_NFacr_x, mag_acr_mean_x ))
@@ -1078,6 +1100,8 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         Number of histogram bins for building the PDF and CDF to determine the data range for building the data histogram in Step 5. Default is 256.
     thresholds_SNR_analysis: list [thr_min_SNR_analysis, thr_max_SNR_analysis]
         CDF thresholds for building the data histogram in Step 5. Default is [2e-2, 2e-2].
+    perform_contrast_analysis:
+        If True, contrast analysis will be performed. Default is False.
     thresholds_contrast_analysis: list [thr_min_contrast_analysis, thr_max_contrast_analysis]
         CDF thresholds for determining I low and Ihigh for Contrast Analysis (Step 9). Default is [np.nan, np.nan] - no contrast calculations.
     disp_res : boolean
@@ -1128,10 +1152,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     nbins_analysis = kwargs.get("nbins_analysis", 100)
     thresholds_SNR_analysis = kwargs.get("thresholds_SNR_analysis", [1e-2, 1e-2])
     thresholds_contrast_analysis = kwargs.get("thresholds_contrast_analysis", [np.nan, np.nan])
-    if thresholds_contrast_analysis == [np.nan, np.nan]:
-        perform_contrast_analysis = False
-    else:
-        perform_contrast_analysis = True
+    perform_contrast_analysis = kwargs.get('perform_contrast_analysis', False)
     contrast = Ilow = Ihigh = np.nan
     disp_res = kwargs.get("disp_res", True)
     disp_res_SNR0 = kwargs.get("disp_res_SNR0", True)
@@ -1248,35 +1269,20 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     Ipeak_lbl = '$I_{peak}$' +'={:.1f}'.format(I_peak)
    
     if disp_res:
-        axs[4].plot(bin_centers[hist_center_ind], hist_smooth[hist_center_ind], color='grey', linestyle='dashed', linewidth=2)
         axs[4].plot(I_peak, C_peak, 'rd', label = Ipeak_lbl)
-        axs[4].legend(loc='upper left', fontsize=fs+1)
         if filter_nonzero:
             axs[4].set_title('Histogram of the Filtered Smoothed Image', fontsize=fs+1)
         else:
             axs[4].set_title('Histogram of the Smoothed Image', fontsize=fs+1)
-        axs[4].grid(True)
+        
         axs[4].set_xlabel('Image Intensity', fontsize=fs+1)
         for patch in np.array(patches)[bin_centers<range_SNR_analysis[0]]:
             patch.set_facecolor('lime')
         for patch in np.array(patches)[bin_centers>range_SNR_analysis[1]]:
             patch.set_facecolor('red')
         ylim4=np.array(axs[4].get_ylim())
-        axs[4].plot([range_SNR_analysis[0], range_SNR_analysis[0]],[ylim4[0]-1000, ylim4[1]], color='lime', linestyle='dashed', label='Ilow')
-        axs[4].plot([range_SNR_analysis[1], range_SNR_analysis[1]],[ylim4[0]-1000, ylim4[1]], color='red', linestyle='dashed', label='Ihigh')
-        if perform_contrast_analysis:
-            axs[4].plot([Ilow, Ilow, ],[ylim4[0]-1000, ylim4[1]], color='blue', linestyle='dashed', label='Clow')
-            axs[4].plot([Ihigh, Ihigh],[ylim4[0]-1000, ylim4[1]], color='magenta', linestyle='dashed', label='Chigh')
         axs[4].set_ylim(ylim4)
-        txt1 = 'Smoothing Kernel'
-        axs[4].text(0.69, 0.955, txt1, transform=axs[4].transAxes, backgroundcolor='white', fontsize=fs-1)
-        txt2 = '{:.3f}  {:.3f}  {:.3f}'.format(kernel[0,0], kernel[0,1], kernel[0,2])
-        axs[4].text(0.69, 0.910, txt2, transform=axs[4].transAxes, backgroundcolor='white', fontsize=fs-2)
-        txt3 = '{:.3f}  {:.3f}  {:.3f}'.format(kernel[1,0], kernel[1,1], kernel[1,2])
-        axs[4].text(0.69, 0.865, txt3, transform=axs[4].transAxes, backgroundcolor='white', fontsize=fs-2)
-        txt3 = '{:.3f}  {:.3f}  {:.3f}'.format(kernel[2,0], kernel[2,1], kernel[2,2])
-        axs[4].text(0.69, 0.820, txt3, transform=axs[4].transAxes, backgroundcolor='white', fontsize=fs-2)
-    
+
     if disp_res:
         hist, bins, patches = axs[5].hist(imdiff_filtered.ravel(), bins = nbins_disp)
         axs[5].grid(True)
@@ -1287,7 +1293,6 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         axs[5].set_xlabel('Image Difference', fontsize=fs+1) 
     else:
         hist, bins = np.histogram(imdiff_filtered.ravel(), bins = nbins_disp)
-        
     try:
         popt = np.polyfit(mean_vals, var_vals, 1)
         I_array = np.array((range_SNR_analysis[0], range_SNR_analysis[1], I_peak))
@@ -1335,6 +1340,79 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     imdiff_filtered_resc1 = imdiff_filtered / Slope_header
     SNR1f = np.mean(img_smoothed_filtered_resc1*img_smoothed_filtered_resc1)/np.var(imdiff_filtered_resc1)
     SNR1a = np.mean(img_smoothed_all_resc1*img_smoothed_all_resc1)/np.mean(img_smoothed_all_resc1)
+
+    if perform_contrast_analysis:
+        #Contrast Calculation
+        pdf = np.asarray(hist_smooth[hist_center_ind]).ravel()
+        x = np.asarray(bin_centers[hist_center_ind]).ravel()
+    
+        # Step1. Approximate major peak with Gaussian
+        xc0 = np.argmax(pdf)
+        amp_guess0 = np.max(pdf)-np.min(pdf)
+        center_guess0 = x[xc0]
+        sigma_guess0 = find_FWHM(x, pdf)[0] / 2.4
+        dx0 = int(sigma_guess0 / (x[1]-x[0]))
+        #xi0 = xc0-dx0
+        #xa0 = xc0+dx0
+        xi0 = np.max((xc0-dx0, 0))
+        xa0 = np.min((xc0+dx0, len(pdf)-1))
+        popt0, pcov0 = curve_fit(gauss_without_offset, x[xi0:xa0], pdf[xi0:xa0], p0=[amp_guess0, center_guess0, sigma_guess0])
+        gauss_fit0 = gauss_without_offset(x,*popt0)
+        pdf_res0 = pdf - gauss_fit0
+        
+        # Step2. Approximate the residue with Gaussian
+        xc1 = np.argmax(pdf_res0)
+        amp_guess1 = np.max(pdf_res0)-np.min(pdf_res0)
+        center_guess1 = x[xc1]
+        sigma_guess1 = find_FWHM(x, pdf_res0)[0] / 2.4
+        dx1 = int(sigma_guess1 / (x[1]-x[0]))
+        #xi1 = xc1-dx1
+        #xa1 = xc1+dx1
+        xi1 = np.max((xc1-dx1, 0))
+        xa1 = np.min((xc1+dx1, len(pdf)-1))
+        popt1, pcov1 = curve_fit(gauss_without_offset, x[xi1:xa1], pdf_res0[xi1:xa1], p0=[amp_guess1, center_guess1, sigma_guess1])
+        gauss_fit1 = gauss_without_offset(x,*popt1)
+        
+        # Step3. Perform new fit of double gaussian with initial guesses from the previous steps
+        popt2, pcov2 = curve_fit(double_gauss_without_offset, x, pdf, p0=[*popt0, *popt1])
+        gauss_fit2 = double_gauss_without_offset(x,*popt2)
+    
+        if popt2[1] > popt2[4]:
+            popt_high = popt2[0:3]
+            popt_low = popt2[3:]
+        else:
+            popt_high = popt2[3:]
+            popt_low = popt2[0:3]
+        gauss_fit_high = gauss_without_offset(x,*popt_high)
+        gauss_fit_low = gauss_without_offset(x,*popt_low)
+        I_high = popt_high[1]
+        I_low = popt_low[1]
+        Pmax = np.max((popt2[0], popt2[3]))
+        I_mean = (I_high + I_low) / 2.0
+        contrast = (I_high-I_low)/(I_mean-I0)
+        axs[4].plot(x, gauss_fit2, color = 'grey', linewidth = 2, label='Double Gauss Fit')
+        axs[4].plot(x, gauss_fit_low, color = 'cyan', linewidth = 2, label='Low Gauss Fit, $I_{low}$' +' = {:.1f}'.format(I_low))
+        #axs[4].plot([I_low, I_low], [0, Pmax], color = 'cyan', linestyle='dashed', label='$I_{low}$' +' = {:.1f}'.format(I_low))
+        axs[4].plot(x, gauss_fit_high, color = 'magenta', linewidth = 2, label='High Gauss Fit, $I_{high}$' +' = {:.1f}'.format(I_high))
+        #axs[4].plot([I_high, I_high], [0, Pmax], color = 'magenta', linestyle='dashed', label='$I_{high}$' +' = {:.1f}'.format(I_high))
+        axs[4].plot(x[0], pdf[0], color = 'black', linestyle='none',  label='$I_{0}$' +' = {:.1f}'.format(I0))
+        axs[4].plot(x[0], pdf[0], color = 'black', linestyle='none',  label='Image Contrast =  {:.3f}'.format(contrast))
+        axs[4].legend(loc='upper right', fontsize=fs+1)
+    else:
+
+        axs[4].plot([range_SNR_analysis[0], range_SNR_analysis[0]],[ylim4[0]-1000, ylim4[1]], color='lime', linestyle='dashed', label='Ilow')
+        axs[4].plot([range_SNR_analysis[1], range_SNR_analysis[1]],[ylim4[0]-1000, ylim4[1]], color='red', linestyle='dashed', label='Ihigh')
+        axs[4].plot(bin_centers[hist_center_ind], hist_smooth[hist_center_ind], color='grey', linestyle='dashed', linewidth=2)
+        txt1 = 'Smoothing Kernel'
+        axs[4].text(0.69, 0.955, txt1, transform=axs[4].transAxes, backgroundcolor='white', fontsize=fs-1)
+        txt2 = '{:.3f}  {:.3f}  {:.3f}'.format(kernel[0,0], kernel[0,1], kernel[0,2])
+        axs[4].text(0.69, 0.910, txt2, transform=axs[4].transAxes, backgroundcolor='white', fontsize=fs-2)
+        txt3 = '{:.3f}  {:.3f}  {:.3f}'.format(kernel[1,0], kernel[1,1], kernel[1,2])
+        axs[4].text(0.69, 0.865, txt3, transform=axs[4].transAxes, backgroundcolor='white', fontsize=fs-2)
+        txt3 = '{:.3f}  {:.3f}  {:.3f}'.format(kernel[2,0], kernel[2,1], kernel[2,2])
+        axs[4].text(0.69, 0.820, txt3, transform=axs[4].transAxes, backgroundcolor='white', fontsize=fs-2)
+        axs[4].legend(loc='center right', fontsize=fs-1)
+    axs[4].grid(True)
     
     if disp_res:
         print('')
@@ -1352,16 +1430,16 @@ def Single_Image_Noise_Statistics(img, **kwargs):
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Data range: I_contrast_low = {:.2f}, I_contrast_high = {:.2f}'.format(Ilow, Ihigh))
             print('Dark Count = {:.2f}'.format(I0))
             print('Contrast = {:.3f}'.format(contrast))
-        
-            txt1 = '$I_{contrast.low}$' + ' = {:.2f}'.format(Ilow)
+            '''
+            txt1 = '$I_{contrast.low}$' + ' = {:.2f}'.format(I_low)
             axs[4].text(0.65, 0.72, txt1, transform=axs[4].transAxes, color='blue', fontsize=fs+1)
-            txt2 = '$I_{contrast.high}$' + ' = {:.2f}'.format(Ihigh)
+            txt2 = '$I_{contrast.high}$' + ' = {:.2f}'.format(I_high)
             axs[4].text(0.65, 0.65, txt2, transform=axs[4].transAxes, color='magenta', fontsize=fs+1)
             txt3 = '$I_{0}$' +' = {:.1f}'.format(I0)
             axs[4].text(0.65, 0.58, txt3, transform=axs[4].transAxes, color='black', fontsize=fs+1)
             txt4 = 'Contrast = {:.3f}'.format(contrast)
             axs[4].text(0.65, 0.51, txt4, transform=axs[4].transAxes, color='black', fontsize=fs+1)
-        
+            '''
         if disp_res_SNR0:
             txt1 = 'Zero Int, Free Fit:    ' +'$I_{0}$' +'={:.1f}'.format(I0)
             axs[3].text(0.35, 0.27, txt1, transform=axs[3].transAxes, color='blue', fontsize=fs+1)
