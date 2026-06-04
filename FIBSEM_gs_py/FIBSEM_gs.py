@@ -10713,15 +10713,20 @@ def SIFT_evaluation_dataset(fs, **kwargs):
     ax_int.set_ylabel('Count')
 
     if n_matches > 1:
-        int_ratios = (kpt_ints[1] - I0) / (kpt_ints[0] - I0)
-        hist_int, bins_int, patches_int = ax_int.hist(int_ratios, bins = 64)
-        FWHM_int, indi_int, inda_int, mx_int, mx_int_ind = find_FWHM(bins_int, hist_int[:-1], verbose=False, estimation=estimation, start=start, max_aver_aperture=5)
-        db_int = (bins_int[1]-bins_int[0])/2.0
-        ax_int.plot([bins_int[indi_int], bins_int[inda_int]], [mx_int/2.0, mx_int/2.0], 'r', linewidth = 4)
-        ax_int.plot([bins_int[mx_int_ind]+db_int], [mx_int], 'rd')
-        ax_int.text(0.05, 0.9, 'mean={:.4f}'.format(np.mean(int_ratios)), transform=ax_int.transAxes, fontsize=fsz)
-        ax_int.text(0.05, 0.8, 'median={:.4f}'.format(np.median(int_ratios)), transform=ax_int.transAxes, fontsize=fsz)
-        ax_int.text(0.05, 0.7, 'FWHM={:.4f}'.format(FWHM_int), transform=ax_int.transAxes, fontsize=fsz)
+        # Guard against source keypoint intensities equal to the dark count I0,
+        # which make the denominator zero and produce inf/nan ratios that crash hist().
+        with np.errstate(divide='ignore', invalid='ignore'):
+            int_ratios = (kpt_ints[1] - I0) / (kpt_ints[0] - I0)
+        int_ratios = int_ratios[np.isfinite(int_ratios)]
+        if int_ratios.size > 0:
+            hist_int, bins_int, patches_int = ax_int.hist(int_ratios, bins = 64)
+            FWHM_int, indi_int, inda_int, mx_int, mx_int_ind = find_FWHM(bins_int, hist_int[:-1], verbose=False, estimation=estimation, start=start, max_aver_aperture=5)
+            db_int = (bins_int[1]-bins_int[0])/2.0
+            ax_int.plot([bins_int[indi_int], bins_int[inda_int]], [mx_int/2.0, mx_int/2.0], 'r', linewidth = 4)
+            ax_int.plot([bins_int[mx_int_ind]+db_int], [mx_int], 'rd')
+            ax_int.text(0.05, 0.9, 'mean={:.4f}'.format(np.mean(int_ratios)), transform=ax_int.transAxes, fontsize=fsz)
+            ax_int.text(0.05, 0.8, 'median={:.4f}'.format(np.median(int_ratios)), transform=ax_int.transAxes, fontsize=fsz)
+            ax_int.text(0.05, 0.7, 'FWHM={:.4f}'.format(FWHM_int), transform=ax_int.transAxes, fontsize=fsz)
 
         xcounts, xbins, xhist_patches = axx.hist(xshifts, bins=64)
         error_FWHMx, indxi, indxa, mxx, mxx_ind = find_FWHM(xbins, xcounts[:-1], verbose=False, estimation=estimation, start=start, max_aver_aperture=5)
