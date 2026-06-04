@@ -767,6 +767,7 @@ def Single_Image_SNR(img, **kwargs):
         axs[1].axis(False)
         axs[1].set_title('Autocorrelation (log scale)')
         if full_acr_plot:
+            axs[2].set_box_aspect(0.9/xy_ratio)
             axs[2].plot(xcr, data_ACR[ysz//2, :], 'r', linewidth=0.5, label='X')
             axs[2].plot(ycr, data_ACR[:, xsz//2], 'b', linewidth=0.5, label='Y')
             axs[2].plot(rcr, r_ACR, 'g', linewidth=0.5, label='R')
@@ -776,12 +777,13 @@ def Single_Image_SNR(img, **kwargs):
             axs[2].grid(True)
             axs[2].legend()
             axs[2].set_title('Normalized autocorr. cross-sections')
+            axs[2].set_xlabel('Displacement')
         if full_acr_plot:
             ax_acr = axs[3]
         else:
             ax_acr = axs[2]
         
-        ax_acr.set_box_aspect(1.0/xy_ratio)
+        ax_acr.set_box_aspect(0.9/xy_ratio)
         ax_acr.plot(xcr, data_ACR[ysz//2, :], 'rx', label='X data')
         ax_acr.plot(ycr, data_ACR[:, xsz//2], 'bd', label='Y data')
         ax_acr.plot(rcr, r_ACR, 'g+', ms=10, label='R data')
