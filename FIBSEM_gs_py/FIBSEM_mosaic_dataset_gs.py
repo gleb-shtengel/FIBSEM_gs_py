@@ -3508,7 +3508,7 @@ class FIBSEM_mosaic_dataset:
 
         if U8_conversion == 'sliding':
             params_s3 = []
-            for j, fl in enumerate(self.fls.ravel()):
+            for j, fl in tqdm(enumerate(self.fls.ravel()), desc='Setting up SIFT parameter list', display=True):
                 params_s3.append([fl, data_min_sliding[j], data_max_sliding[j], kpt_kwargs])
         else:
             if U8_conversion == 'global': 
@@ -3524,7 +3524,7 @@ class FIBSEM_mosaic_dataset:
             results_s3 = []
             n_tasks   = len(params_s3)
             n_batches = (n_tasks + max_futures - 1) // max_futures
-            for DASK_batch in tqdm(range(n_batches), desc='extract_keypoints DASK batches'):
+            for DASK_batch in tqdm(range(n_batches), desc='Running extract_keypoints DASK batches'):
                 start = DASK_batch * max_futures
                 stop  = min(start + max_futures, n_tasks)
                 if verbose:
@@ -3777,7 +3777,7 @@ class FIBSEM_mosaic_dataset:
                 pair_overlap_bounds = kwargs.get('pair_overlap_bounds', self.pair_overlap_bounds)
             fnms_kpts = self.fnms_kpts.ravel()
 
-            for (jj, index_pair), overlap_bounds in zip(enumerate(tqdm(index_pairs, desc='Setting up SIFT parameter list', display=verbose)), pair_overlap_bounds):
+            for (jj, index_pair), overlap_bounds in zip(enumerate(tqdm(index_pairs, desc='Setting up SIFT parameter list', display=True)), pair_overlap_bounds):
                 dt_kwargs = {'ftype' : ftype,
                         'TransformType' : TransformType,
                         'l2_matrix' : l2_matrix,
@@ -3802,7 +3802,7 @@ class FIBSEM_mosaic_dataset:
                 if select_tiles:
                     fnm_matches = os.path.join(path_base, 'fls_{:d}_{:d}'.format(*index_pair) + f1.replace('_kpdes.bin', '_')+f2.replace('_kpdes.bin', '_select_tile_matches.bin'))
                 else:
-                    fnm_matches = os.path.join(path_base, 'fls_{:d}_{:d}'.format(*index_pair) + f1.replace('_kpdes.bin', '_')+f2.replace('_kpdes.bin', '_matches.bin'))
+                    fnm_matches = os.path.join(path_base, 'fls_{:d}_{:d}'.format(*index_pair) + '_matches.bin')
                 dt_kwargs['fnm_matches'] = fnm_matches
                 dt_kwargs['overlap_bounds'] = overlap_bounds   # (x_min_a, x_max_a, y_min_a, y_max_a,
                                                                 #  x_min_b, x_max_b, y_min_b, y_max_b)
@@ -3824,7 +3824,7 @@ class FIBSEM_mosaic_dataset:
                 transformations_results_3D = []
                 n_tasks   = len(params_SIFT)
                 n_batches = (n_tasks + max_futures - 1) // max_futures
-                for DASK_batch in tqdm(range(n_batches), desc='determine_transformations_SIFT DASK batches'):
+                for DASK_batch in tqdm(range(n_batches), desc='Running determine_transformations_SIFT DASK batches'):
                     start = DASK_batch * max_futures
                     stop  = min(start + max_futures, n_tasks)
                     if verbose:
