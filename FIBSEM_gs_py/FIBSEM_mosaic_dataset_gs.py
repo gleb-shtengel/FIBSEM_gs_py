@@ -2146,6 +2146,9 @@ class FIBSEM_mosaic_dataset:
     determine_transformations_ECC(**kwargs)
         Determine transformation matrices for frame pairs using ECC. Uses find_Transform_ECC(img1, img2, **kwargs).
 
+    plot_matches_per_tile(**kwargs)
+        Plot 2D maps of #matches per tile.
+
     solve_stack_stitching(**kwargs)
         Solve mosaic stack stitching (perform bundle optimization).
 
@@ -4341,6 +4344,71 @@ class FIBSEM_mosaic_dataset:
                     print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   An error occurred: {}'.format(e))
                     print('transformations_result:  ', transformations_result)
         return transformations_results_3D
+
+    def plot_matches_per_tile(self, **kwargs):
+        '''
+        Map per-tile SIFT match counts. ©G.Shtengel
+        X = z-frame (layer) index, Y = tile index within a layer, color = total matches.
+          Plot 1: total horizontal (intra-layer X-adjacent) matches per tile.
+          Plot 2: total vertical   (intra-layer Y-adjacent) matches per tile.
+        A pair's matches are added to BOTH tiles it connects (set both_endpoints=False
+        to instead attribute each pair only to its first/left-or-upper tile).
+
+        kwargs:
+          both_endpoints : bool - distribute each pair to both tiles (True, default) or only index_pairs[:,0].
+          cmap : str  - colormap. Default 'viridis'.
+          figsize : tuple. Default (14, 6).
+          save_res_png : bool - save PNG. Default False.
+          png_name : str - output path. Default <data_dir>/SIFT_matches_per_tile.png.
+          vmin_hr : float. Optional min (range) for horizontal matches display. Default is 0.
+          vmax_hr : float. Optional max (range) for horizontal matches display. Default is 0.
+          vmin_vrt: float. Optional min (range) for vertical matches display. Default is 0.
+          vmax_vrt: float. Optional min (range) for vertical matches display. Default is 0.
+        Returns:
+          H, V : np.int64 arrays, shape (nz_tiles, n_tiles_per_layer), match-count maps.
+        '''
+        both_endpoints = kwargs.get('both_endpoints', True)
+        cmap = kwargs.get('cmap', 'viridis')
+        figsize = kwargs.get('figsize', (14, 6))
+        save_res_png = kwargs.get('save_res_png', False)
+        vmin_hr = kwargs.get('vmin_hr', 0)
+        vmax_hr = kwargs.get('vmax_hr', 0)
+        vmin_vrt = kwargs.get('vmin_vrt', 0)
+        vmax_vrt = kwargs.get('vmax_vrt', 0)
+
+        L = self.nz_tiles
+        nt = self.n_tiles_per_layer
+        nh, nv = self.nh, self.nv
+
+        def _accumulate(abs_pairs, m):
+            flat = np.zeros(L * nt, dtype=np.int64)
+            np.add.at(flat, abs_pairs[:, 0], m)          # flat index == abs == layer*nt + tile
+            if both_endpoints:
+                np.add.at(flat, abs_pairs[:, 1], m)
+            return flat.reshape(L, nt)
+
+        H = _accumulate(self.index_pairs[:nh],        self.SIFT_nmatches[:nh])
+        V = _accumulate(self.index_pairs[nh:nh + nv], self.SIFT_nmatches[nh:nh + nv])
+
+        fig, (ax_h, ax_v) = plt.subplots(1, 2, figsize=figsize)
+        for ax, M, ttl, lbl, vrange in ((ax_h, H, 'Total horizontal SIFT matches per tile', '# horizontal matches', [vmin_hr, vmax_hr]),
+                                (ax_v, V, 'Total vertical SIFT matches per tile',   '# vertical matches', [vmin_vrt, vmax_vrt])):
+            if vrange[0] == vrange[1]:
+                im = ax.imshow(M.T, aspect='auto', origin='lower', cmap=cmap, interpolation='nearest')
+            else:
+                im = ax.imshow(M.T, aspect='auto', origin='lower', cmap=cmap, interpolation='nearest', vmin = vrange[0], vmax = vrange[1])
+            ax.set_title(ttl)
+            ax.set_xlabel('z-frame (layer) index')
+            ax.set_ylabel('tile index')
+            fig.colorbar(im, ax=ax, label=lbl)
+        fig.tight_layout()
+
+        if save_res_png:
+            png_name = kwargs.get('png_name',
+                os.path.join(getattr(self, 'data_dir', '.'), 'SIFT_matches_per_tile.png'))
+            fig.savefig(png_name, dpi=300)
+            print('Saved:', png_name)
+        return H, V
 
 
     def solve_stack_stitching(self, **kwargs):
