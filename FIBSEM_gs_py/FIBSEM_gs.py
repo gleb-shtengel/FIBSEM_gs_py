@@ -9818,17 +9818,17 @@ def determine_transformations_files(params_dsf):
             print(f'Error opening BIN files → {e}')
             print(fnm_1)
             print(fnm_2)
-            return None, fnm_matches, [], [], np.nan, np.nan, np.nan, 0
+            return None, fnm_matches, [[], []], [[], []], np.nan, np.nan, np.nan, 0
         except (pickle.UnpicklingError, EOFError) as e:
             print(f'Error loading BIN files (corrupt or truncated) → {e}')
             print(fnm_1)
             print(fnm_2)
-            return None, fnm_matches, [], [], np.nan, np.nan, np.nan, 0
+            return None, fnm_matches, [[], []], [[], []], np.nan, np.nan, np.nan, 0
         except OSError as e:
             print(f'OS error reading BIN files → {e}')
             print(fnm_1)
             print(fnm_2)
-            return None, fnm_matches, [], [], np.nan, np.nan, np.nan, 0
+            return None, fnm_matches, [[], []], [[], []], np.nan, np.nan, np.nan, 0
 
         if verbose:
             print('')
@@ -11957,7 +11957,7 @@ def check_for_nomatch_frames_dataset(fls, fnms, fnms_matches,
             fname2 = fnms[frj]
             new_step4_res = determine_transformations_files([fname1, fname2, kwargs])
             npts[frj-1] = np.array(len(new_step4_res[2][0]))
-            error_abs_mean[frj-1] = new_step4_res[3]
+            error_abs_mean[frj-1] = new_step4_res[4]
             transformation_matrix[frj-1] = np.array(new_step4_res[0])
         print('Mean Number of Keypoints :', np.mean(npts).astype(np.int64))
     return frames_to_remove, fls, fnms, fnms_matches, error_abs_mean, npts, transformation_matrix, FOVtrend_x, FOVtrend_y, FIBSEM_Data
