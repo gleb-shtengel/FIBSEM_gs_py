@@ -4345,6 +4345,7 @@ class FIBSEM_mosaic_dataset:
                     print('transformations_result:  ', transformations_result)
         return transformations_results_3D
 
+
     def plot_matches_per_tile(self, **kwargs):
         '''
         Map per-tile SIFT match counts. ©G.Shtengel
@@ -4360,10 +4361,6 @@ class FIBSEM_mosaic_dataset:
           figsize : tuple. Default (14, 6).
           save_res_png : bool - save PNG. Default False.
           png_name : str - output path. Default <data_dir>/SIFT_matches_per_tile.png.
-          vmin_hr : float. Optional min (range) for horizontal matches display. Default is 0.
-          vmax_hr : float. Optional max (range) for horizontal matches display. Default is 0.
-          vmin_vrt: float. Optional min (range) for vertical matches display. Default is 0.
-          vmax_vrt: float. Optional min (range) for vertical matches display. Default is 0.
         Returns:
           H, V : np.int64 arrays, shape (nz_tiles, n_tiles_per_layer), match-count maps.
         '''
@@ -4375,6 +4372,7 @@ class FIBSEM_mosaic_dataset:
         vmax_hr = kwargs.get('vmax_hr', 0)
         vmin_vrt = kwargs.get('vmin_vrt', 0)
         vmax_vrt = kwargs.get('vmax_vrt', 0)
+        logscale = kwargs.get('logscale', False)
 
         L = self.nz_tiles
         nt = self.n_tiles_per_layer
@@ -4394,9 +4392,15 @@ class FIBSEM_mosaic_dataset:
         for ax, M, ttl, lbl, vrange in ((ax_h, H, 'Total horizontal SIFT matches per tile', '# horizontal matches', [vmin_hr, vmax_hr]),
                                 (ax_v, V, 'Total vertical SIFT matches per tile',   '# vertical matches', [vmin_vrt, vmax_vrt])):
             if vrange[0] == vrange[1]:
-                im = ax.imshow(M.T, aspect='auto', origin='lower', cmap=cmap, interpolation='nearest')
+                if logscale:
+                    im = ax.imshow(np.log(M.T), aspect='auto', origin='lower', cmap=cmap, interpolation='nearest')
+                else:
+                    im = ax.imshow(M.T, aspect='auto', origin='lower', cmap=cmap, interpolation='nearest')
             else:
-                im = ax.imshow(M.T, aspect='auto', origin='lower', cmap=cmap, interpolation='nearest', vmin = vrange[0], vmax = vrange[1])
+                if logscale:
+                    im = ax.imshow(np.log(M.T), aspect='auto', origin='lower', cmap=cmap, interpolation='nearest', vmin = vrange[0], vmax = vrange[1])
+                else:
+                    im = ax.imshow(M.T, aspect='auto', origin='lower', cmap=cmap, interpolation='nearest', vmin = vrange[0], vmax = vrange[1])
             ax.set_title(ttl)
             ax.set_xlabel('z-frame (layer) index')
             ax.set_ylabel('tile index')
@@ -4935,6 +4939,36 @@ class FIBSEM_mosaic_dataset:
 
         self.tile_scales = tile_scales
         return tile_scales
+
+    def recalculate_FirstPixels_from_tr_matr(self, update=True, round_to_int=False):
+        '''
+        Reconstruct FirstPixels from the (refined) translation part of self.tr_matr.
+        Exact inverse of the default_tr_matr construction:
+            tr_matr[:,:,i,2] = -(FirstPixels[:,:,i] - min_over_tiles(FirstPixels[:,:,i]))
+        => FirstPixels[:,:,i] = min_over_tiles(FirstPixels[:,:,i]) - tr_matr[:,:,i,2]
+        The per-layer origin is taken from the CURRENT FirstPixels, so an un-solved
+        (default) tr_matr round-trips to the same FirstPixels.
+
+        Iterative re-analysis loop it enables
+                determine_transformations_SIFT(...) → per-pair transforms
+                solve_stack_stitching(...) → solved self.tr_matr
+                recalculate_FirstPixels_from_tr_matr(update=True) → better FirstPixels
+                compute_index_pairs_and_geometry → new (better matched) index pairs
+                determine_transformations_SIFT(...) → more accurate per-pair transforms
+                solve_stack_stitching(...) → refined self.tr_matr
+
+        update : if True, overwrite self.FirstPixels in place.
+        round_to_int : round to whole pixels (FirstPixels are pixel start positions).
+        Returns the new (L, n_tiles_per_layer, 2) array.
+        '''
+        origin = np.min(self.FirstPixels[:, :, :2], axis=1, keepdims=True)   # (L, 1, 2)
+        shifts = -self.tr_matr[:, :, :2, 2]                                  # (L, nt, 2)
+        new_FP = origin + shifts                                            # (L, nt, 2)
+        if round_to_int:
+            new_FP = np.round(new_FP)
+        if update:
+            self.FirstPixels = new_FP.astype(self.FirstPixels.dtype)
+        return new_FP
 
 
     def generate_transformation_report(self, **kwargs):
