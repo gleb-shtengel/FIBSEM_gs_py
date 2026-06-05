@@ -11835,7 +11835,7 @@ def save_data_stack(FIBSEMstack, **kwargs):
 
     if verbose:
         print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   The resulting stack shape will be  nx={:d}, ny={:d}, nz={:d},  data type:'.format(nx, ny, nz), dtp)
-        print('Voxel destreak_mrc_stackSize (nm): {:2f} x {:2f} x {:2f}'.format(voxel_size.x, voxel_size.y, voxel_size.z))
+        print('Voxel Size (nm): {:2f} x {:2f} x {:2f}'.format(voxel_size.x, voxel_size.y, voxel_size.z))
 
     fnms_saved = []
     if len(fnm_types)>0:
