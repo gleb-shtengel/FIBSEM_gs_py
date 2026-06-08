@@ -2149,6 +2149,10 @@ class FIBSEM_mosaic_dataset:
     plot_matches_per_tile(**kwargs)
         Plot 2D maps of #matches per tile.
 
+    histogram_valid_matches_per_tile(**kwargs):
+        Builds a histogram of the number of valid SIFT pair-connections (edges) per tile, and
+        report tiles with zero and with exactly one valid SIFT match.
+
     solve_stack_stitching(**kwargs)
         Solve mosaic stack stitching (perform bundle optimization).
 
@@ -2831,8 +2835,6 @@ class FIBSEM_mosaic_dataset:
             print('   Total number of pairwise transformations : {:d}'.format(self.C))
 
 
-
-
     def find_tile_pairs(self, layer_id, tile_id, **kwargs):
         '''
         Searches self.index_pairs for all pairs containing the tile.
@@ -2887,7 +2889,93 @@ class FIBSEM_mosaic_dataset:
             res = pd.concat([pd_layers, pd_SIFT_shifts, pd_SIFT_nmatches, pd_SIFT_valid], axis=1)
         if verbose:
             display(res)
-        return  res
+
+        return res
+
+
+    def histogram_valid_matches_per_tile(self, **kwargs):
+        '''
+        Histogram of the number of valid SIFT pair-connections (edges) per tile, and
+        report tiles with zero and with exactly one valid SIFT match. ©G.Shtengel
+
+        "valid SIFT match" for a tile = a pair in self.index_pairs incident to that tile
+        whose self.SIFT_transformation_valid is True. Each valid pair is credited to BOTH
+        tiles it connects, so the per-tile value is its valid-neighbour degree.
+
+        kwargs:
+        ----------
+        both_endpoints : bool - credit each valid pair to both tiles (True, default) or only index_pairs[:,0].
+        verbose : bool        - display histogram and the two report tables. Default True.
+        save_res_png : bool   - save the histogram PNG. Default False.
+        png_name : str        - output path. Default <data_dir>/valid_matches_per_tile_hist.png.
+        figsize : tuple       - Default (8, 5).
+
+        Returns:
+        ----------
+        dict:
+          'counts'    : np.int64 array (nz_tiles, n_tiles_per_layer) - valid-degree per tile.
+          'hist'      : (counts_per_bin, bin_values) integer histogram over tiles.
+          'no_valid'  : DataFrame ['Layer','Tile','Incident pairs'] for tiles with 0 valid matches.
+          'one_valid' : DataFrame ['Layer','Tile','Incident pairs'] for tiles with exactly 1 valid match.
+        '''
+        verbose        = kwargs.get('verbose', True)
+        both_endpoints = kwargs.get('both_endpoints', True)
+        save_res_png   = kwargs.get('save_res_png', False)
+        figsize        = kwargs.get('figsize', (8, 5))
+        png_name       = kwargs.get('png_name',
+            os.path.join(getattr(self, 'data_dir', '.'), 'valid_matches_per_tile_hist.png'))
+
+        nl   = self.n_tiles_per_layer
+        L    = self.nz_tiles
+        ntot = L * nl
+
+        ip    = np.asarray(self.index_pairs)
+        valid = np.asarray(self.SIFT_transformation_valid, dtype=bool)
+
+        # valid-neighbour degree per tile (flat index == abs == layer*nl + tile)
+        counts = np.zeros(ntot, dtype=np.int64)
+        np.add.at(counts, ip[valid, 0], 1)
+        if both_endpoints:
+            np.add.at(counts, ip[valid, 1], 1)
+        # --- to count total keypoint matches instead, use weight self.SIFT_nmatches[valid] above ---
+
+        # total incident pairs per tile (valid+invalid): distinguishes 'isolated' from 'all-invalid'
+        incident = np.zeros(ntot, dtype=np.int64)
+        np.add.at(incident, ip[:, 0], 1)
+        if both_endpoints:
+            np.add.at(incident, ip[:, 1], 1)
+
+        hist = np.bincount(counts)
+        bins = np.arange(len(hist))
+
+        def _report(mask):
+            ids = np.where(mask)[0]
+            rows = [[int(a) // nl, int(a) % nl, int(incident[a])] for a in ids]
+            return pd.DataFrame(rows, columns=['Layer', 'Tile', 'Incident pairs'])
+
+        no_valid  = _report(counts == 0)
+        one_valid = _report(counts == 1)
+
+        if verbose:
+            fig, ax = plt.subplots(1, 1, figsize=figsize)
+            ax.bar(bins, hist, width=0.9, align='center')
+            ax.set_xlabel('# of valid SIFT pairs per tile')
+            ax.set_ylabel('# of tiles')
+            ax.set_title('Valid SIFT matches per tile')
+            ax.set_xticks(bins)
+            ax.grid(True)
+            if save_res_png:
+                fig.savefig(png_name, dpi=kwargs.get('dpi', 300))
+                print('Saved:', png_name)
+            display(fig)
+            plt.close(fig)
+            print('Tiles with NO valid SIFT matches: {:d}'.format(len(no_valid)))
+            display(no_valid)
+            print('Tiles with exactly ONE valid SIFT match: {:d}'.format(len(one_valid)))
+            display(one_valid)
+
+        return {'counts': counts.reshape(L, nl), 'hist': (hist, bins),
+                'no_valid': no_valid, 'one_valid': one_valid}
 
 
     def save_parameters(self, **kwargs):
