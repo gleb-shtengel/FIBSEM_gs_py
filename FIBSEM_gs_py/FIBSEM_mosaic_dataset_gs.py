@@ -4348,49 +4348,72 @@ class FIBSEM_mosaic_dataset:
 
     def plot_matches_per_tile(self, **kwargs):
         '''
-        Map per-tile SIFT match counts. ©G.Shtengel
+        Map per-tile SIFT match counts and report suspect outliers. ©G.Shtengel
         X = z-frame (layer) index, Y = tile index within a layer, color = total matches.
           Plot 1: total horizontal (intra-layer X-adjacent) matches per tile.
           Plot 2: total vertical   (intra-layer Y-adjacent) matches per tile.
+          Plot 3: total inter-layer matches per tile
         A pair's matches are added to BOTH tiles it connects (set both_endpoints=False
         to instead attribute each pair only to its first/left-or-upper tile).
-
+        
         kwargs:
           both_endpoints : bool - distribute each pair to both tiles (True, default) or only index_pairs[:,0].
           cmap : str  - colormap. Default 'viridis'.
+          mark_outliers : boolean
+            If True (default), each outlier is marked with "x" and its frame and tile number are printed next to "x".
+          sigma_thr : float
+            Threshold (multiplied by sigma) for outlier determination. Default is 6.0 (6-sigma outliers).
           figsize : tuple. Default (14, 6).
           save_res_png : bool - save PNG. Default False.
           png_name : str - output path. Default <data_dir>/SIFT_matches_per_tile.png.
         Returns:
-          H, V : np.int64 arrays, shape (nz_tiles, n_tiles_per_layer), match-count maps.
+          H, V, outliers : np.int64 arrays, shape (nz_tiles, n_tiles_per_layer), match-count maps, outliers
         '''
+        verbose = kwargs.get('verbose', False)
         both_endpoints = kwargs.get('both_endpoints', True)
         cmap = kwargs.get('cmap', 'viridis')
-        figsize = kwargs.get('figsize', (14, 6))
+        figsize = kwargs.get('figsize', (21, 6))
         save_res_png = kwargs.get('save_res_png', False)
+        png_name = kwargs.get('png_name',
+                os.path.join(getattr(self, 'data_dir', '.'), 'SIFT_matches_per_tile.png'))
+        dpi = kwargs.get('dpi', 300)
+        fsmark = 6
+        fs = 12
+        Sample_ID = kwargs.get('Sample_ID', '')
+        mark_outliers = kwargs.get('mark_outliers', True)
         vmin_hr = kwargs.get('vmin_hr', 0)
         vmax_hr = kwargs.get('vmax_hr', 0)
         vmin_vrt = kwargs.get('vmin_vrt', 0)
         vmax_vrt = kwargs.get('vmax_vrt', 0)
+        vmin_z = kwargs.get('vmin_z', 0)
+        vmax_z = kwargs.get('vmax_z', 0)
         logscale = kwargs.get('logscale', False)
-
+        fit_params = kwargs.get("fit_params", ['SG', 11, 3])
+        sigma_thr = kwargs.get('sigma_thr', 6.0)
         L = self.nz_tiles
-        nt = self.n_tiles_per_layer
+        frames = np.arange(self.nz_tiles)
+        nxny = self.n_tiles_per_layer
         nh, nv = self.nh, self.nv
-
+        if fit_params[0] != 'None':
+            sv_apert = min([fit_params[1], len(frames)//8*2+1])
+            if verbose:
+                print('Using fit_params: ', 'SG', sv_apert, fit_params[2])
+        
         def _accumulate(abs_pairs, m):
-            flat = np.zeros(L * nt, dtype=np.int64)
-            np.add.at(flat, abs_pairs[:, 0], m)          # flat index == abs == layer*nt + tile
+            flat = np.zeros(L * nxny, dtype=np.int64)
+            np.add.at(flat, abs_pairs[:, 0], m)          # flat index == abs == layer*nxny + tile
             if both_endpoints:
                 np.add.at(flat, abs_pairs[:, 1], m)
-            return flat.reshape(L, nt)
-
+            return flat.reshape(L, nxny)
+        
         H = _accumulate(self.index_pairs[:nh],        self.SIFT_nmatches[:nh])
         V = _accumulate(self.index_pairs[nh:nh + nv], self.SIFT_nmatches[nh:nh + nv])
-
-        fig, (ax_h, ax_v) = plt.subplots(1, 2, figsize=figsize)
+        Z = _accumulate(self.index_pairs[nh + nv:], self.SIFT_nmatches[nh + nv:])
+        
+        fig, (ax_h, ax_v, ax_z) = plt.subplots(1, 3, figsize=figsize)
         for ax, M, ttl, lbl, vrange in ((ax_h, H, 'Total horizontal SIFT matches per tile', '# horizontal matches', [vmin_hr, vmax_hr]),
-                                (ax_v, V, 'Total vertical SIFT matches per tile',   '# vertical matches', [vmin_vrt, vmax_vrt])):
+                                (ax_v, V, 'Total vertical SIFT matches per tile',   '# vertical matches', [vmin_vrt, vmax_vrt]), 
+                                (ax_z, Z, 'Total inter-layer SIFT matches per tile',   '# inter-layer matches', [vmin_z, vmax_z])):
             if vrange[0] == vrange[1]:
                 if logscale:
                     im = ax.imshow(np.log(M.T), aspect='auto', origin='lower', cmap=cmap, interpolation='nearest')
@@ -4406,13 +4429,85 @@ class FIBSEM_mosaic_dataset:
             ax.set_ylabel('tile index')
             fig.colorbar(im, ax=ax, label=lbl)
         fig.tight_layout()
-
+        
         if save_res_png:
-            png_name = kwargs.get('png_name',
-                os.path.join(getattr(self, 'data_dir', '.'), 'SIFT_matches_per_tile.png'))
-            fig.savefig(png_name, dpi=300)
+            fig.savefig(png_name.replace('.png', '_maps.png'), dpi=dpi)
             print('Saved:', png_name)
-        return H, V
+        display(fig)
+        plt.close(fig)
+
+        outliers_nmatches = []
+        fig, (ax_h, ax_v, ax_z) = plt.subplots(1, 3, figsize=figsize)
+        for k in np.arange(nxny):
+            my_col = plt.get_cmap("gist_rainbow_r")(0.0 if nxny == 1 else (nxny-k)/(nxny-1))
+            tilek_nmatches_h = H[:, k]
+            tilek_nmatches_v = V[:, k]
+            tilek_nmatches_z = Z[:, k]
+            ax_h.plot(frames, tilek_nmatches_h, color=my_col, linewidth=0.25)
+            ax_v.plot(frames, tilek_nmatches_v, color=my_col, linewidth=0.25)
+            ax_z.plot(frames, tilek_nmatches_z, color=my_col, linewidth=0.25)
+            if fit_params[0] != 'None':
+                sliding_tilek_nmatches_h = savgol_filter(tilek_nmatches_h.astype(np.double), sv_apert, fit_params[2])
+                sliding_tilek_nmatches_v = savgol_filter(tilek_nmatches_v.astype(np.double), sv_apert, fit_params[2])
+                sliding_tilek_nmatches_z = savgol_filter(tilek_nmatches_z.astype(np.double), sv_apert, fit_params[2])
+            else:
+                sliding_tilek_nmatches_h = np.full_like(tilek_nmatches_h, np.mean(tilek_nmatches_h), dtype=np.double)
+                sliding_tilek_nmatches_v = np.full_like(tilek_nmatches_v, np.mean(tilek_nmatches_v), dtype=np.double)
+                sliding_tilek_nmatches_z = np.full_like(tilek_nmatches_z, np.mean(tilek_nmatches_z), dtype=np.double)
+                
+            tilek_nmatches_h_delta = tilek_nmatches_h - sliding_tilek_nmatches_h
+            tilek_nmatches_v_delta = tilek_nmatches_v - sliding_tilek_nmatches_v
+            tilek_nmatches_z_delta = tilek_nmatches_z - sliding_tilek_nmatches_z
+            tilek_nmatches_h_std = np.std(tilek_nmatches_h_delta)
+            tilek_nmatches_v_std = np.std(tilek_nmatches_v_delta)
+            tilek_nmatches_z_std = np.std(tilek_nmatches_z_delta)
+            outliers_tilek_nmatches_h = np.where(np.abs(tilek_nmatches_h_delta) > tilek_nmatches_h_std * sigma_thr)[0]
+            outliers_tilek_nmatches_v = np.where(np.abs(tilek_nmatches_v_delta) > tilek_nmatches_v_std * sigma_thr)[0]
+            outliers_tilek_nmatches_z = np.where(np.abs(tilek_nmatches_z_delta) > tilek_nmatches_z_std * sigma_thr)[0]
+            if len(outliers_tilek_nmatches_h) > 0:
+                outliers_nmatches.append([k, outliers_tilek_nmatches_h])
+            if mark_outliers:
+                ax_h.plot(frames[outliers_tilek_nmatches_h], tilek_nmatches_h[outliers_tilek_nmatches_h], color=my_col, marker='x', markersize=4, linestyle='')
+                for outlier_tilek_nmatches_h in outliers_tilek_nmatches_h:
+                    y = tilek_nmatches_h[outlier_tilek_nmatches_h]
+                    if (y>vmin_hr and y<vmax_hr) or vmin_hr==vmax_hr:
+                        ax_h.text(frames[outlier_tilek_nmatches_h], y, '{:d}, {:d}'.format(k, frames[outlier_tilek_nmatches_h]), fontsize=fsmark)
+            if len(outliers_tilek_nmatches_v) > 0:
+                outliers_nmatches.append([k, outliers_tilek_nmatches_v])
+            if mark_outliers:
+                ax_v.plot(frames[outliers_tilek_nmatches_v], tilek_nmatches_v[outliers_tilek_nmatches_v], color=my_col, marker='x', markersize=4, linestyle='')
+                for outlier_tilek_nmatches_v in outliers_tilek_nmatches_v:
+                    y =  tilek_nmatches_v[outlier_tilek_nmatches_v]
+                    if (y>vmin_vrt and y<vmax_vrt) or vmin_vrt==vmax_vrt:
+                        ax_v.text(frames[outlier_tilek_nmatches_v], y, '{:d}, {:d}'.format(k, frames[outlier_tilek_nmatches_v]), fontsize=fsmark)
+            if len(outliers_tilek_nmatches_z) > 0:
+                outliers_nmatches.append([k, outliers_tilek_nmatches_z])
+            if mark_outliers:
+                ax_z.plot(frames[outliers_tilek_nmatches_z], tilek_nmatches_z[outliers_tilek_nmatches_z], color=my_col, marker='x', markersize=4, linestyle='')
+                for outlier_tilek_nmatches_z in outliers_tilek_nmatches_z:
+                    y =  tilek_nmatches_z[outlier_tilek_nmatches_z]
+                    if (y>vmin_z and y<vmax_z) or vmin_z==vmax_z:
+                        ax_z.text(frames[outlier_tilek_nmatches_z], y, '{:d}, {:d}'.format(k, frames[outlier_tilek_nmatches_z]), fontsize=fsmark)
+
+        outliers = reformat_outliers_data(outliers_nmatches)
+        for ax in [ax_h, ax_v, ax_z]:
+            ax.set_ylabel('# of Key-Point Matches')
+            ax.set_xlabel('Frame')
+            ax.text(0.2, 1.04, Sample_ID, fontsize = fs, transform=ax.transAxes)
+            ax.grid(True)
+        if vmax_hr > vmin_hr:
+            ax_h.set_ylim(vmin_hr, vmax_hr)
+        if vmax_vrt > vmin_vrt:
+            ax_v.set_ylim(vmin_vrt, vmax_vrt)
+        if vmax_z > vmin_z:
+            ax_z.set_ylim(vmin_z, vmax_z)
+        if save_res_png:
+            fig.savefig(png_name.replace('.png', '_plots.png'), dpi=dpi)
+            print('Saved:', png_name)
+        display(fig)
+        plt.close(fig)
+
+        return H, V, outliers
 
 
     def solve_stack_stitching(self, **kwargs):
