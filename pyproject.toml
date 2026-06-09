@@ -24,7 +24,9 @@ dependencies = [
     "openpyxl>=3.1.0",
     "ipython>=8.10.0",
     "clusterwrap>=0.2.0",
-    "pillow>=9.4.0"
+    "pillow>=9.4.0",
+    "pyarrow>=24.0.0",
+    "zarr>=3.1.6"
 ]
 
 authors = [
