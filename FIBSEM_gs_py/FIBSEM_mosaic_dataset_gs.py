@@ -1758,28 +1758,17 @@ def generate_report_data_minmax_montage_parquet(minmax_parquet_file, **kwargs):
     return save_fname
 
 
-def reformat_outliers_data(outliers):
-    res = []
-    for outlier in outliers:
-        for frame in outlier[1]:
-            res.append([frame, outlier[0]])
-    if len(res) == 0:
-        return np.empty((0, 2), dtype=int)
-    res = np.array(res)
-    return res[res[:, 0].argsort()]
-
-
-def generate_outliers_report(outliers, fls, **kwargs):
+def generate_outliers_report(outliers, **kwargs):
     '''
     Generate quick summary view of potential outliers.
     Parameters:
     -----------
-    outliers : list of [frame_id, tile_id]
-        List of potential outliers
-    fls : 2D array of filenames
+    outliers : PD data frame that has fields 'Layer', 'Tile', 'File Path'
+        Potential outliers
 
     kwargs:
     -----------
+    fls : 2D array of filenames
     save_outlier_thumbnails : bool
         If True (default), outlier RawImageA thumbnails will be saved
     data_dir : path
@@ -1793,6 +1782,15 @@ def generate_outliers_report(outliers, fls, **kwargs):
     verbose : boolean
         Display intermediate results. Default is False.
     '''
+    file_paths = None
+    if 'fls' in kwargs:
+        fls = kwargs.get('fls')
+    elif 'File Path' in outliers:
+        file_paths = outliers['File Path'].to_numpy()
+    else:
+        print('File Path data not available - should be either in kwargs or in data frame')
+        return
+    outlier_ids = np.vstack((outliers['Layer'], outliers['Tile'])).T
     save_outlier_thumbnails = kwargs.get('save_outlier_thumbnails', True)
     data_dir = kwargs.get("data_dir", '')
     outliers_thumbnails_folder = kwargs.get('outliers_thumbnails_folder', 'outliers_thumbnails')
@@ -1803,8 +1801,8 @@ def generate_outliers_report(outliers, fls, **kwargs):
     verbose = kwargs.get('verbose', True)
     dpi = kwargs.get('dpi', 150)
 
-    for outlier in tqdm(outliers, desc='Building Outlier Report'):
-        outlier_fnm = fls[*outlier]
+    for i, outlier in enumerate(tqdm(outlier_ids, desc='Building Outlier Report')):
+        outlier_fnm = file_paths[i] if file_paths is not None else fls[tuple(outlier)]
         img = FIBSEM_frame(outlier_fnm).RawImageA
         sy, sx = img.shape
         img_reshaped = img[0:sy//bin_factor*bin_factor, 0:sx//bin_factor*bin_factor].reshape(sy//bin_factor, bin_factor, sx//bin_factor, bin_factor)
@@ -1820,7 +1818,7 @@ def generate_outliers_report(outliers, fls, **kwargs):
         ax.set_title('Frame: {:d} Tile: {:d}  '.format(*outlier) + outlier_fnm, fontsize=6)
         ax.axis(False)
         if save_outlier_thumbnails:
-            thumbnail_fnm_short = os.path.splitext(os.path.split(outlier_fnm)[-1])[0]+'_thumbnail.png'
+            thumbnail_fnm_short = 'Layer_{:d}_Tile_{:d}_'.format(*outlier)+os.path.splitext(os.path.split(outlier_fnm)[-1])[0]+'_thumbnail.png'
             thumbnail_fnm = os.path.join(save_folder, thumbnail_fnm_short)
             fig.savefig(thumbnail_fnm, dpi=dpi)
         display(fig)
@@ -1838,6 +1836,8 @@ def analyze_minmax_outliers_montage_parquet(minmax_parquet_file, **kwargs):
 
     kwargs:
     -----------
+    fls : 2D array of file paths indexed [layer, tile]. Optional.
+        If provided, 'File Path' is populated as fls[Layer, Tile]; otherwise left ''.
     sigma_thr : float
         Threshold (multiplied by sigma) for outlier determination. Default is 6.0 (6-sigma outliers).
     mosaic_shape : tuple or list of 2 ints
@@ -1863,8 +1863,14 @@ def analyze_minmax_outliers_montage_parquet(minmax_parquet_file, **kwargs):
 
     Returns:
     ----------
-    outliers_min, outliers_max
+    outliers_min, outliers_max : pd.DataFrame
+        outliers_min columns: ['Layer', 'Tile', 'Min', 'File Path']
+        outliers_max columns: ['Layer', 'Tile', 'Max', 'File Path']
+        'File Path' = fls[Layer, Tile] if the fls kwarg is given, else ''.
+        Empty DataFrame with these columns if no outliers are found.
+        Compatible with generate_outliers_report().
     '''
+    fls = kwargs.get('fls', None)
     sigma_thr = kwargs.get('sigma_thr', 6.0)
     mosaic_shape = kwargs.get('mosaic_shape', (1, 1))
     nxny = np.prod(mosaic_shape)
@@ -1920,7 +1926,9 @@ def analyze_minmax_outliers_montage_parquet(minmax_parquet_file, **kwargs):
         framek_min_std = np.std(framek_min_delta)
         outliersk_min = np.where(np.abs(framek_min_delta) > framek_min_std * sigma_thr)[0]
         if len(outliersk_min) > 0:
-            outliers_min.append([k, outliersk_min])
+            for o in outliersk_min:
+                fp = fls[int(frames[o]), int(k)] if fls is not None else ''
+                outliers_min.append([int(frames[o]), int(k), framek_min[o], fp])
         framek_max_delta = framek_max - sliding_max
         framek_max_std = np.std(framek_max_delta)
         outliersk_max = np.where(np.abs(framek_max_delta) > framek_max_std * sigma_thr)[0]
@@ -1932,9 +1940,11 @@ def analyze_minmax_outliers_montage_parquet(minmax_parquet_file, **kwargs):
             for outlier_k_max in outliersk_max:
                 axs[1].text(frames[outlier_k_max], framek_max[outlier_k_max], '{:d}, {:d}'.format(k, frames[outlier_k_max]), fontsize=fsmark)
         if len(outliersk_max) > 0:
-            outliers_max.append([k, outliersk_max])
-    outliers_min = reformat_outliers_data(outliers_min)        # bug fix: xlsx version passed (outliers, mosaic_shape) but reformat_outliers_data takes 1 arg, causing TypeError when outliers were found
-    outliers_max = reformat_outliers_data(outliers_max)        # bug fix: same as above
+            for o in outliersk_max:
+                fp = fls[int(frames[o]), int(k)] if fls is not None else ''
+                outliers_max.append([int(frames[o]), int(k), framek_max[o], fp])
+    outliers_min = pd.DataFrame(outliers_min, columns=['Layer', 'Tile', 'Min', 'File Path'])
+    outliers_max = pd.DataFrame(outliers_max, columns=['Layer', 'Tile', 'Max', 'File Path'])
 
     axs[0].set_ylabel('All Tiles Minima Values')
     axs[1].set_ylabel('All Tiles Maxima Values')
@@ -2950,8 +2960,8 @@ class FIBSEM_mosaic_dataset:
 
         def _report(mask):
             ids = np.where(mask)[0]
-            rows = [[int(a) // nl, int(a) % nl, int(incident[a])] for a in ids]
-            return pd.DataFrame(rows, columns=['Layer', 'Tile', 'Incident pairs'])
+            rows = [[int(a) // nl, int(a) % nl, int(incident[a]), self.fls[int(a) // nl, int(a) % nl]] for a in ids]
+            return pd.DataFrame(rows, columns=['Layer', 'Tile', 'Incident pairs', 'File Path'])
 
         no_valid  = _report(counts == 0)
         one_valid = _report(counts == 1)
@@ -3637,6 +3647,7 @@ class FIBSEM_mosaic_dataset:
         self.nkpts = np.array(nkpts).reshape(self.fls.shape)
         return fnms_kpts, nkpts
 
+
     def analyze_kpt_statistics(self, **kwargs):
         '''
         Analyze key-point statistic and report suspect outliers. ©G.Shtengel 04/2026 gleb.shtengel@gmail.com
@@ -3661,9 +3672,8 @@ class FIBSEM_mosaic_dataset:
 
         Returns:
         ----------
-        outliers : np.ndarray, shape (N, 2)
-            Sorted array of [frame_index, tile_index] for all outlier detections.
-            Returns empty array of shape (0, 2) if no outliers are found.
+        outliers : pd.DataFrame with columns ['Layer', 'Tile', '# of key-points', 'File Path']
+           Empty DataFrame with those columns if no outliers are found.
         
         '''
         sigma_thr = kwargs.get('sigma_thr', 6.0)
@@ -3692,7 +3702,7 @@ class FIBSEM_mosaic_dataset:
             sv_apert = min([fit_params[1], len(frames)//8*2+1])
             if verbose:
                 print('Using fit_params: ', 'SG', sv_apert, fit_params[2])
-            
+
         outliers_nkpts = []
         for k in np.arange(nxny):
             my_col = plt.get_cmap("gist_rainbow_r")(0.0 if nxny == 1 else (nxny-k)/(nxny-1))
@@ -3706,12 +3716,13 @@ class FIBSEM_mosaic_dataset:
             tilek_nkpts_std = np.std(tilek_nkpts_delta)
             outliers_tilek_nkpts = np.where(np.abs(tilek_nkpts_delta) > tilek_nkpts_std * sigma_thr)[0]
             if len(outliers_tilek_nkpts) > 0:
-                outliers_nkpts.append([k, outliers_tilek_nkpts])
+                for outlier_tilek_nkpts in outliers_tilek_nkpts:
+                    outliers_nkpts.append([frames[outlier_tilek_nkpts], k, tilek_nkpts[outlier_tilek_nkpts], self.fls[frames[outlier_tilek_nkpts], k]])
             if mark_outliers:
                 ax.plot(frames[outliers_tilek_nkpts], tilek_nkpts[outliers_tilek_nkpts], color=my_col, marker='x', markersize=4, linestyle='')
                 for outlier_tilek_nkpts in outliers_tilek_nkpts:
                     ax.text(frames[outlier_tilek_nkpts], tilek_nkpts[outlier_tilek_nkpts], '{:d}, {:d}'.format(k, frames[outlier_tilek_nkpts]), fontsize=fsmark)
-        outliers = reformat_outliers_data(outliers_nkpts)
+        outliers = pd.DataFrame(outliers_nkpts, columns = ['Layer', 'Tile', '# of key-points', 'File Path'])
         ax.set_ylabel('# of Key-Points')
         ax.set_xlabel('Frame')
         ax.text(0.2, 1.04, Sample_ID, fontsize = fs, transform=ax.transAxes)
@@ -4454,8 +4465,18 @@ class FIBSEM_mosaic_dataset:
           figsize : tuple. Default (14, 6).
           save_res_png : bool - save PNG. Default False.
           png_name : str - output path. Default <data_dir>/SIFT_matches_per_tile.png.
+
         Returns:
-          H, V, outliers : np.int64 arrays, shape (nz_tiles, n_tiles_per_layer), match-count maps, outliers
+          H, V : np.int64 arrays, shape (nz_tiles, n_tiles_per_layer)
+            Per-tile total SIFT match-count maps ([layer, tile] indexing) for the
+            horizontal (H) and vertical (V) intra-layer correspondences.
+            (The inter-layer map Z is computed and plotted but is not returned.)
+          outliers : pd.DataFrame
+            Tiles flagged as outliers by the sigma_thr (per-tile, per-direction) test.
+            Columns: ['Layer', 'Tile', '# of key-point matches', 'Correspondence', 'File Path'],
+            where 'Correspondence' is one of 'horizontal', 'vertical', 'inter-layer',
+            and 'File Path' = self.fls[Layer, Tile]. Empty DataFrame with these columns
+            if no outliers are found. Compatible with generate_outliers_report().
         '''
         verbose = kwargs.get('verbose', False)
         both_endpoints = kwargs.get('both_endpoints', True)
@@ -4553,7 +4574,8 @@ class FIBSEM_mosaic_dataset:
             outliers_tilek_nmatches_v = np.where(np.abs(tilek_nmatches_v_delta) > tilek_nmatches_v_std * sigma_thr)[0]
             outliers_tilek_nmatches_z = np.where(np.abs(tilek_nmatches_z_delta) > tilek_nmatches_z_std * sigma_thr)[0]
             if len(outliers_tilek_nmatches_h) > 0:
-                outliers_nmatches.append([k, outliers_tilek_nmatches_h])
+                for outlier_tilek_nmatches_h in outliers_tilek_nmatches_h:
+                    outliers_nmatches.append([frames[outlier_tilek_nmatches_h], k, tilek_nmatches_h[outlier_tilek_nmatches_h], 'horizontal', self.fls[frames[outlier_tilek_nmatches_h], k]])
             if mark_outliers:
                 ax_h.plot(frames[outliers_tilek_nmatches_h], tilek_nmatches_h[outliers_tilek_nmatches_h], color=my_col, marker='x', markersize=4, linestyle='')
                 for outlier_tilek_nmatches_h in outliers_tilek_nmatches_h:
@@ -4561,7 +4583,8 @@ class FIBSEM_mosaic_dataset:
                     if (y>vmin_hr and y<vmax_hr) or vmin_hr==vmax_hr:
                         ax_h.text(frames[outlier_tilek_nmatches_h], y, '{:d}, {:d}'.format(k, frames[outlier_tilek_nmatches_h]), fontsize=fsmark)
             if len(outliers_tilek_nmatches_v) > 0:
-                outliers_nmatches.append([k, outliers_tilek_nmatches_v])
+                for outlier_tilek_nmatches_v in outliers_tilek_nmatches_v:
+                    outliers_nmatches.append([frames[outlier_tilek_nmatches_v], k, tilek_nmatches_v[outlier_tilek_nmatches_v], 'vertical', self.fls[frames[outlier_tilek_nmatches_v], k]])
             if mark_outliers:
                 ax_v.plot(frames[outliers_tilek_nmatches_v], tilek_nmatches_v[outliers_tilek_nmatches_v], color=my_col, marker='x', markersize=4, linestyle='')
                 for outlier_tilek_nmatches_v in outliers_tilek_nmatches_v:
@@ -4569,7 +4592,8 @@ class FIBSEM_mosaic_dataset:
                     if (y>vmin_vrt and y<vmax_vrt) or vmin_vrt==vmax_vrt:
                         ax_v.text(frames[outlier_tilek_nmatches_v], y, '{:d}, {:d}'.format(k, frames[outlier_tilek_nmatches_v]), fontsize=fsmark)
             if len(outliers_tilek_nmatches_z) > 0:
-                outliers_nmatches.append([k, outliers_tilek_nmatches_z])
+                for outlier_tilek_nmatches_z in outliers_tilek_nmatches_z:
+                    outliers_nmatches.append([frames[outlier_tilek_nmatches_z], k, tilek_nmatches_z[outlier_tilek_nmatches_z], 'inter-layer', self.fls[frames[outlier_tilek_nmatches_z], k]])
             if mark_outliers:
                 ax_z.plot(frames[outliers_tilek_nmatches_z], tilek_nmatches_z[outliers_tilek_nmatches_z], color=my_col, marker='x', markersize=4, linestyle='')
                 for outlier_tilek_nmatches_z in outliers_tilek_nmatches_z:
@@ -4577,18 +4601,15 @@ class FIBSEM_mosaic_dataset:
                     if (y>vmin_z and y<vmax_z) or vmin_z==vmax_z:
                         ax_z.text(frames[outlier_tilek_nmatches_z], y, '{:d}, {:d}'.format(k, frames[outlier_tilek_nmatches_z]), fontsize=fsmark)
 
-        outliers = reformat_outliers_data(outliers_nmatches)
+        outliers = pd.DataFrame(outliers_nmatches, columns = ['Layer', 'Tile', '# of key-point matches', 'Correspondence', 'File Path'])
         for ax in [ax_h, ax_v, ax_z]:
             ax.set_ylabel('# of Key-Point Matches')
             ax.set_xlabel('Frame')
             ax.text(0.2, 1.04, Sample_ID, fontsize = fs, transform=ax.transAxes)
             ax.grid(True)
-        if vmax_hr > vmin_hr:
-            ax_h.set_ylim(vmin_hr, vmax_hr)
-        if vmax_vrt > vmin_vrt:
-            ax_v.set_ylim(vmin_vrt, vmax_vrt)
-        if vmax_z > vmin_z:
-            ax_z.set_ylim(vmin_z, vmax_z)
+        if vmax_hr  > vmin_hr:  ax_h.set_ylim(vmin_hr,  vmax_hr)
+        if vmax_vrt > vmin_vrt: ax_v.set_ylim(vmin_vrt, vmax_vrt)
+        if vmax_z   > vmin_z:   ax_z.set_ylim(vmin_z,   vmax_z)
         if save_res_png:
             fig.savefig(png_name.replace('.png', '_plots.png'), dpi=dpi)
             print('Saved:', png_name)
