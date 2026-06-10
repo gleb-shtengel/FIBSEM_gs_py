@@ -2826,9 +2826,9 @@ class FIBSEM_mosaic_dataset:
         # tr_matr stores translations as NEGATIVE pixel offsets (tr_matr[:,:,i,2] = -position_i),
         # consistent with the convention that the transformation maps tile-local
         # coordinates to canvas coordinates: x_canvas = x_tile + tr_matr[0,2].
-        # shifts are per-layer: each layer normalised to its own origin.
-        shifts_x = self.FirstPixels[:, :, 0] - np.min(self.FirstPixels[:, :, 0], axis=1, keepdims=True)
-        shifts_y = self.FirstPixels[:, :, 1] - np.min(self.FirstPixels[:, :, 1], axis=1, keepdims=True)
+        # shifts are global: the whole stack normalised to a single common origin.
+        shifts_x = self.FirstPixels[:, :, 0] - np.min(self.FirstPixels[:, :, 0])
+        shifts_y = self.FirstPixels[:, :, 1] - np.min(self.FirstPixels[:, :, 1])
         default_tr_matr = np.broadcast_to(eye3x3, (L, self.n_tiles_per_layer, 3, 3)).copy()
         default_tr_matr[:, :, 0, 2] = - shifts_x
         default_tr_matr[:, :, 1, 2] = - shifts_y
@@ -2901,6 +2901,168 @@ class FIBSEM_mosaic_dataset:
             display(res)
 
         return res
+
+
+    def check_mfov_hexagonal_pattern(self, **kwargs):
+        '''
+        Validate the hexagonal mFOV tile layout from FirstPixels. Optionallly replace tile coordinates for the tiles that are BOTH hex-pattern outliers
+            AND not present in any valid SIFT pair with their canonical positions. ©G.Shtengel
+
+        Applicable when n_tiles_per_layer is divisible by 91 (each mFOV = 91 tiles in a
+        hexagon with rows 6,7,8,9,10,11,10,9,8,7,6). Tiles are assumed ordered within each
+        layer as [mfov0: tiles 0..90, mfov1: tiles 0..90, ...], i.e. mFOV-major, with
+        tile_mfov_id = 0..90 within each mFOV (same order used to fill FirstPixels/fls).
+
+        Procedure:
+          1. center[layer, mfov] = mean FirstPixel over the 91 tiles of that mFOV.
+          2. disp = FirstPixel - center  (per-tile displacement from its mFOV center).
+          3. avg_disp[tile_mfov_id] = mean disp over all mFOVs and layers (canonical hex pattern).
+          4. dev = disp - avg_disp ; flag tiles whose |dev| exceeds sigma_thr * RMS(|dev|) per tile_mfov_id.
+
+        kwargs:
+        ----------
+        sigma_thr : float - outlier threshold in sigmas. Default 6.0.
+        min_deviation : float - absolute floor (FirstPixel units) below which nothing is flagged. Default 0.0.
+        verbose : bool - display plots and report. Default True.
+        save_res_png : bool - save PNG. Default False.
+        png_name : str - output path. Default <data_dir>/mfov_hex_pattern.png.
+        figsize : tuple - Default (12, 5).
+        calc_avg_disp : boolean
+            If True (default), compute the canonical pattern (avg_disp) from this dataset.
+            If False, reuse the previously stored self.avg_disp (requires save_avg_disp=True on a prior call).
+        source : string
+            source for sfov coordinates. Options are ('FirstPixels' (default) 'tr_matr')
+        save_avg_disp : boolean
+            If True, self.avg_disp = avg_disp. Default is False.
+        replace_invalid_outliers : boolean
+            If True (and source='tr_matr'), replace tile coordinates for the tiles that are BOTH hex-pattern outliers
+            AND not present in any valid SIFT pair with their canonical positions
+            (mFOV-center-from-valid-tiles + avg_disp). Mutates self.tr_matr in place. Default False.
+
+        Returns:
+        ----------
+        dict (or None if n_tiles_per_layer is not divisible by 91):
+          'avg_displacement' : (91, 2) mean (x, y) displacement per tile_mfov_id.
+          'dev_mag'          : (L, n_mfov, 91) per-instance deviation magnitude.
+          'outliers'         : pd.DataFrame ['Layer','Tile','mfov','tile_mfov_id','deviation','File Path'].
+          'replaced' : pd.DataFrame of tiles whose tr_matr was overwritten (same columns as 'outliers').
+        '''
+        verbose        = kwargs.get('verbose', True)
+        sigma_thr      = kwargs.get('sigma_thr', 6.0)
+        min_deviation  = kwargs.get('min_deviation', 0.0)
+        save_res_png   = kwargs.get('save_res_png', False)
+        figsize        = kwargs.get('figsize', (12, 5))
+        png_name       = kwargs.get('png_name',
+            os.path.join(getattr(self, 'data_dir', '.'), 'mfov_hex_pattern.png'))
+        source         = kwargs.get('source', 'FirstPixels')
+        calc_avg_disp = kwargs.get('calc_avg_disp', True)
+        save_avg_disp = kwargs.get('save_avg_disp', False)
+        replace_invalid_outliers = kwargs.get('replace_invalid_outliers', False)
+
+
+        TPM = 91
+        L   = self.nz_tiles
+        nt  = self.n_tiles_per_layer
+        if nt % TPM != 0:
+            print('n_tiles_per_layer ({:d}) is not divisible by {:d}; not an mFOV hexagonal layout.'.format(nt, TPM))
+            return None
+        n_mfov = nt // TPM
+
+        # (L, n_mfov, 91, 2) — mFOV-major split of the per-layer tile axis
+        if source == 'FirstPixels':
+            fp = np.asarray(self.FirstPixels[:, :, 0:2], dtype=np.float64).reshape(L, n_mfov, TPM, 2)
+        elif source == 'tr_matr':
+            fp = np.asarray(-self.tr_matr[:, :, 0:2, 2], dtype=np.float64).reshape(L, n_mfov, TPM, 2)
+        else:
+            print('Illegal source kwarg. Allowed options are FirstPixels and tr_matr')
+            return
+
+        if (not calc_avg_disp) and (not hasattr(self, 'avg_disp')):
+            print('Must have self.avg_disp, or set kwarg calc_avg_disp=True')
+            return
+        flat_fls = np.asarray(self.fls).reshape(L, -1)   # robust [layer, raveled tile] file lookup
+
+        center   = fp.mean(axis=2, keepdims=True)        # (L, n_mfov, 1, 2)
+        disp     = fp - center                           # (L, n_mfov, 91, 2)
+        if calc_avg_disp:
+            avg_disp = disp.mean(axis=(0, 1))                # (91, 2)  canonical hex pattern
+        else:
+            avg_disp = self.avg_disp.copy()
+        dev      = disp - avg_disp[None, None, :, :]     # (L, n_mfov, 91, 2)
+        dev_mag  = np.linalg.norm(dev, axis=3)           # (L, n_mfov, 91)
+
+        scale_per_id = np.sqrt((dev_mag.reshape(-1, TPM) ** 2).mean(axis=0))   # RMS deviation per id (pixels)
+        thr_per_id   = sigma_thr * scale_per_id
+        outlier_mask = (dev_mag > thr_per_id[None, None, :]) & (dev_mag > min_deviation)
+
+        rows = []
+        for l, m, t in zip(*np.where(outlier_mask)):
+            abs_tile = int(m) * TPM + int(t)             # within-layer tile index
+            rows.append([int(l), abs_tile, int(m), int(t),
+                         float(dev_mag[l, m, t]), flat_fls[int(l), abs_tile]])
+        outliers = pd.DataFrame(rows, columns=['Layer', 'Tile', 'mfov', 'tile_mfov_id', 'deviation', 'File Path'])
+
+        n_replaced, replaced_rows = 0, []
+        if replace_invalid_outliers:
+            if source != 'tr_matr':
+                print("replace_invalid_outliers=True requires source='tr_matr'; skipping replacement.")
+            else:
+                # Per-tile SIFT validity: tile is 'valid' if it appears in >=1 valid SIFT pair.
+                valid_tile_flat = np.unique(self.index_pairs[self.SIFT_transformation_valid])
+                tile_valid = np.zeros(L * nt, dtype=bool)
+                tile_valid[valid_tile_flat] = True
+                tile_valid = tile_valid.reshape(L, n_mfov, TPM)             # (L, n_mfov, 91)
+
+                # Robust per-mFOV center: align SIFT-valid tiles to the canonical template,
+                # so the bad tile does not bias its own correction.
+                #   center_est = mean_over_valid_t( fp - avg_disp )
+                aligned    = fp - avg_disp[None, None, :, :]               # (L, n_mfov, 91, 2)
+                vcount     = tile_valid.sum(axis=2)                        # (L, n_mfov)
+                num        = (aligned * tile_valid[..., None]).sum(axis=2) # (L, n_mfov, 2)
+                center_est = center[:, :, 0, :].copy()                     # default: plain 91-tile mean
+                has_valid  = vcount > 0
+                center_est[has_valid] = num[has_valid] / vcount[has_valid, None]
+
+                # Replace tiles that are BOTH hex-outliers AND SIFT-invalid.
+                for l, m, t in zip(*np.where(outlier_mask & ~tile_valid)):
+                    abs_tile = int(m) * TPM + int(t)
+                    new_pos  = center_est[int(l), int(m)] + avg_disp[int(t)]   # (2,)
+                    self.tr_matr[int(l), abs_tile, 0, 2] = -new_pos[0]
+                    self.tr_matr[int(l), abs_tile, 1, 2] = -new_pos[1]
+                    replaced_rows.append([int(l), abs_tile, int(m), int(t),
+                                          float(dev_mag[l, m, t]), flat_fls[int(l), abs_tile]])
+                    n_replaced += 1
+                if verbose:
+                    print('Replaced {:d} SIFT-invalid outlier tiles in self.tr_matr with canonical positions.'.format(n_replaced))
+        replaced = pd.DataFrame(replaced_rows,
+                                columns=['Layer', 'Tile', 'mfov', 'tile_mfov_id', 'deviation', 'File Path'])
+
+        if verbose:
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+            sc = ax1.scatter(avg_disp[:, 0], avg_disp[:, 1], c=np.arange(TPM), cmap='viridis', s=40)
+            for t in range(TPM):
+                ax1.text(avg_disp[t, 0], avg_disp[t, 1], str(t), fontsize=5)
+            ax1.set_aspect('equal'); ax1.grid(True)
+            ax1.set_title('Mean tile displacement per tile_mfov_id (hex pattern)')
+            ax1.set_xlabel('X displacement (Pixels)'); ax1.set_ylabel('Y displacement (Pixels)')
+            fig.colorbar(sc, ax=ax1, label='tile_mfov_id')
+            ax2.plot(np.arange(TPM), dev_mag.reshape(-1, TPM).mean(axis=0), 'b.-', label='mean |dev|')
+            ax2.plot(np.arange(TPM), thr_per_id, 'r--', label='{:.1f}× RMS threshold'.format(sigma_thr))
+            ax2.set_title('Deviation from canonical pattern per tile_mfov_id')
+            ax2.set_xlabel('tile_mfov_id'); ax2.set_ylabel('deviation magnitude (Pixels)')
+            ax2.grid(True); ax2.legend()
+            fig.tight_layout()
+            if save_res_png:
+                fig.savefig(png_name, dpi=kwargs.get('dpi', 300))
+                print('Saved:', png_name)
+            display(fig); plt.close(fig)
+            print('mFOV hex check: {:d} mFOV/layer x {:d} layers, {:d} outlier tiles (>{:.1f}× RMS)'.format(
+                n_mfov, L, len(outliers), sigma_thr))
+            display(outliers)
+        if save_avg_disp:
+            self.avg_disp = avg_disp
+        return {'avg_displacement': avg_disp, 'dev_mag': dev_mag,
+                'outliers': outliers, 'replaced': replaced}
 
 
     def histogram_valid_matches_per_tile(self, **kwargs):
@@ -5148,10 +5310,10 @@ class FIBSEM_mosaic_dataset:
         '''
         Reconstruct FirstPixels from the (refined) translation part of self.tr_matr.
         Exact inverse of the default_tr_matr construction:
-            tr_matr[:,:,i,2] = -(FirstPixels[:,:,i] - min_over_tiles(FirstPixels[:,:,i]))
-        => FirstPixels[:,:,i] = min_over_tiles(FirstPixels[:,:,i]) - tr_matr[:,:,i,2]
-        The per-layer origin is taken from the CURRENT FirstPixels, so an un-solved
-        (default) tr_matr round-trips to the same FirstPixels.
+            tr_matr[:,:,i,2] = -(FirstPixels[:,:,i] - global_min(FirstPixels[:,:,i]))
+        => FirstPixels[:,:,i] = global_min(FirstPixels[:,:,i]) - tr_matr[:,:,i,2]
+        The global origin (single min over all layers and tiles) is taken from the
+        CURRENT FirstPixels, so an un-solved (default) tr_matr round-trips to the same FirstPixels.
 
         Iterative re-analysis loop it enables
                 determine_transformations_SIFT(...) → per-pair transforms
@@ -5165,7 +5327,7 @@ class FIBSEM_mosaic_dataset:
         round_to_int : round to whole pixels (FirstPixels are pixel start positions).
         Returns the new (L, n_tiles_per_layer, 2) array.
         '''
-        origin = np.min(self.FirstPixels[:, :, :2], axis=1, keepdims=True)   # (L, 1, 2)
+        origin = np.min(self.FirstPixels[:, :, :2], axis=(0, 1), keepdims=True)   # (1, 1, 2)
         shifts = -self.tr_matr[:, :, :2, 2]                                  # (L, nt, 2)
         new_FP = origin + shifts                                            # (L, nt, 2)
         if round_to_int:
