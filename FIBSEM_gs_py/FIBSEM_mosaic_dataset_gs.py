@@ -1993,6 +1993,63 @@ def compute_tile_overlap_intensities(params):
             out[roi_id] = float(np.percentile(sub, p))
     return out
 
+def compose_interlayer_keypoints_file(params):
+    '''
+    Build one composite (global-coordinate) Key-Point/Descriptor file for a single
+    Z-layer by merging the key-points of the selected test tiles. Module-level so it
+    can be dispatched to DASK workers. ©G.Shtengel 06/2026 gleb.shtengel@gmail.com
+
+    Each tile's local key-point coordinates are shifted by that tile's FirstPixels
+    (X, Y) - trusted INTRA-layer - so the resulting cloud is in the layer's own
+    global frame. Descriptors and key-point intensities are concatenated unchanged.
+
+    params = [fnms_tiles, first_pixels, fnm_out, kwargs]
+        fnms_tiles : list of str
+            Per-tile *_kpdes.bin files for this layer's test tiles.
+        first_pixels : list of (fpx, fpy)
+            FirstPixels (X, Y) for each of those tiles.
+        fnm_out : str
+            Output composite *_kpdes.bin path.
+        kwargs : dict
+            verbose : boolean
+
+    Returns:
+    --------
+    (fnm_out, nkpts)
+    '''
+    fnms_tiles, first_pixels, fnm_out, kwargs = params
+    verbose = kwargs.get('verbose', False)
+
+    comp_kpps = []
+    comp_dess = []
+    comp_ints = []
+    for fnm_t, (fpx, fpy) in zip(fnms_tiles, first_pixels):
+        try:
+            with open(fnm_t, 'rb') as f:
+                kpps, dess, kpt_ints = pickle.load(f)
+        except Exception as ex:
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Could not load {}: {}'.format(fnm_t, ex))
+            continue
+        if len(kpps) == 0:
+            continue
+        # shift only the (x, y) entry of each kp_to_list tuple; keep angle/size/response/class_id/octave
+        for (pt, angle, size, response, class_id, octave) in kpps:
+            comp_kpps.append(((pt[0] + fpx, pt[1] + fpy), angle, size, response, class_id, octave))
+        comp_dess.append(np.asarray(dess, dtype=np.float32).reshape(-1, 128))
+        comp_ints.append(np.asarray(kpt_ints).reshape(-1))
+
+    if len(comp_dess) > 0:
+        comp_dess = np.vstack(comp_dess).astype(np.float32)
+        comp_ints = np.concatenate(comp_ints)
+    else:
+        comp_dess = np.empty((0, 128), dtype=np.float32)
+        comp_ints = np.empty((0,), dtype=np.float32)
+
+    with open(fnm_out, 'wb') as f:
+        pickle.dump([comp_kpps, comp_dess, comp_ints], f)
+    return fnm_out, len(comp_kpps)
+
 
 class FIBSEM_mosaic_dataset: 
     '''
@@ -3212,6 +3269,246 @@ class FIBSEM_mosaic_dataset:
                 'no_valid': no_valid, 'one_valid': one_valid}
 
 
+    def determine_interlayer_FirstPixel_drifts(self, test_tile_ids, **kwargs):
+        '''
+        Estimate inter-layer FirstPixels drifts from composite SIFT key-point clouds.
+        ©G.Shtengel 06/2026 gleb.shtengel@gmail.com
+
+        FirstPixels read from the image-coordinates files are reliable WITHIN a layer
+        but can carry random, potentially large offsets BETWEEN layers. Because every
+        Z-layer images the same XY region, matched features of two consecutive layers
+        expressed in correct global coordinates would coincide; any consistent residual
+        translation is the inter-layer FirstPixels drift to be removed.
+
+        Algorithm (steps 2, 3 and 4 optionally parallelized by DASK):
+        1. Fixed subset of intra-layer tile IDs (`test_tile_ids`), identical for every layer.
+        2. Extract SIFT key-points (or read the existing file, controlled by use_existing_data kwarg).
+        3. Per layer, merge the test tiles' key-points into one cloud in global coords
+           (local kpt + FirstPixels[layer, tile]).  [DASK: compose_interlayer_keypoints_file]
+        4. Per consecutive (or vs-first) layer pair, match the clouds and fit a RIGID
+           shift (ShiftTransform) with RANSAC and OPENED-UP `drmax`.
+           [DASK: determine_transformations_files]
+        5. Cumulative-sum the relative shifts -> per-layer absolute drift (anchored at
+           layer 0), to be subtracted later from FirstPixels.
+
+        Parameters:
+        -----------
+        test_tile_ids : array-like of int
+            Intra-layer tile indices used in every layer.
+
+        kwargs:
+        -------
+        DASK_client : DASK client. If '' (default), all steps run locally.
+        DASK_client_retries : int. Default self.DASK_client_retries.
+        max_futures : int. Default self.max_futures.
+        use_existing_data : boolean
+            Passed to self.extract_keypoints(). If True (default), existing key-point
+            files are reused; if False, key-points are (re)extracted for test tiles.
+            extract_keypoints() is ALWAYS called to guarantee the test tiles have files.
+        reference : str
+            'previous' (default) -> chain shifts between consecutive layers.
+            'first' -> match every layer directly to layer 0.
+        TransformType : object reference. Default ShiftTransform (rigid shift).
+        solver : str. 'RANSAC' (default) or 'LinReg'.
+        drmax : float
+            Inlier threshold (pixels), OPENED UP vs intra-layer. Default 25.0.
+        RANSAC_initial_fraction : float. Default self.RANSAC_initial_fraction.
+        max_iter : int. Default self.max_iter.
+        Lowe_Ratio_Threshold : float. Default 0.8.
+        BFMatcher : boolean. Default self.BFMatcher.
+        SIFT_nmatches_min : int. Min RANSAC inliers for a pair to be valid. Default 10.
+        save_matches : boolean. Default False.
+        out_dir : str. Default self.data_dir.
+        plot_results : boolean. Default True.
+        save_res_png : boolean. Default self.save_res_png.
+        verbose : boolean.
+
+        Returns:
+        --------
+        result : dict with keys 'test_tile_ids', 'relative_shifts' (L,2),
+            'cumulative_drifts' (L,2), 'nmatches' (L,), 'valid' (L,), 'composite_files'.
+
+        To apply later (step 5):
+            d = res['cumulative_drifts']
+            self.FirstPixels[:, :, :2] -= d[:, None, :]
+            self.compute_index_pairs_and_geometry()
+        '''
+        verbose = kwargs.get('verbose', False)
+        test_tile_ids = np.asarray(test_tile_ids, dtype=int).ravel()
+        use_existing_data = kwargs.get('use_existing_data', True)
+        reference = kwargs.get('reference', 'previous')
+        TransformType = kwargs.get('TransformType', ShiftTransform)
+        solver = kwargs.get('solver', 'RANSAC')
+        drmax = kwargs.get('drmax', 25.0)
+        RANSAC_initial_fraction = kwargs.get('RANSAC_initial_fraction', self.RANSAC_initial_fraction)
+        max_iter = kwargs.get('max_iter', self.max_iter)
+        Lowe_Ratio_Threshold = kwargs.get('Lowe_Ratio_Threshold', 0.8)
+        BFMatcher = kwargs.get('BFMatcher', self.BFMatcher)
+        SIFT_nmatches_min = kwargs.get('SIFT_nmatches_min', 10)
+        save_matches = kwargs.get('save_matches', False)
+        out_dir = kwargs.get('out_dir', self.data_dir)
+        plot_results = kwargs.get('plot_results', True)
+        save_res_png = kwargs.get('save_res_png', self.save_res_png)
+        Sample_ID = kwargs.get('Sample_ID', getattr(self, 'Sample_ID', ''))
+
+        # ---- DASK setup (shared by steps 2, 3 and 4) ----------------------------
+        DASK_client = kwargs.get('DASK_client', '')
+        use_DASK, status_update_address = check_DASK(DASK_client, verbose=True)
+        DASK_client_retries = kwargs.get('DASK_client_retries', self.DASK_client_retries)
+        max_futures = kwargs.get('max_futures', self.max_futures)
+
+        L = self.nz_tiles
+
+        # ---- Step 2: Extract / read key-points for the test tiles -------
+        test_filenames = self.fls[:, test_tile_ids].ravel()
+        if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                  + '   Extracting key-points (use_existing_data={})'.format(use_existing_data))
+        fnms_kpts_loc, _ = self.extract_keypoints(use_existing_data=use_existing_data, DASK_client=DASK_client, verbose=verbose, max_futures=max_futures, fls=test_filenames)
+        fnms_kpts_loc = np.array(fnms_kpts_loc)
+        if fnms_kpts_loc.size == 0:
+            raise RuntimeError('extract_keypoints() produced no key-point files.')
+        fnms_kpts_loc = fnms_kpts_loc.reshape((L, len(test_tile_ids)))
+
+        # ---- Step 3: composite cloud per layer (global coords), optional DASK -
+        params_compose = []
+        composite_files = []
+        for j in range(L):
+            first_pixels = [(float(self.FirstPixels[j, t, 0]), float(self.FirstPixels[j, t, 1])) for t in test_tile_ids]
+            fnm_out = os.path.join(out_dir, 'composite_interlayer_kpts_layer_{:05d}_kpdes.bin'.format(j))
+            params_compose.append([fnms_kpts_loc[j], first_pixels, fnm_out, {'verbose': verbose}])
+            composite_files.append(fnm_out)
+
+        if use_DASK:
+            results_compose = []
+            n_tasks = len(params_compose)
+            n_batches = (n_tasks + max_futures - 1) // max_futures
+            for DASK_batch in tqdm(range(n_batches), desc='Composing per-layer clouds (DASK batches)'):
+                start = DASK_batch * max_futures
+                stop = min(start + max_futures, n_tasks)
+                if verbose:
+                    print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                          + '   Compose DASK batch {:d}/{:d} ({:d} layers)'.format(DASK_batch + 1, n_batches, stop - start))
+                futures = DASK_client.map(compose_interlayer_keypoints_file,
+                                          params_compose[start:stop], retries=DASK_client_retries)
+                results_compose += DASK_client.gather(futures)
+        else:
+            results_compose = []
+            for p in tqdm(params_compose, desc='Composing per-layer key-point clouds', display=verbose):
+                results_compose.append(compose_interlayer_keypoints_file(p))
+        composite_files = [r[0] for r in results_compose]
+
+        # ---- Step 4: rigid shift between clouds, optional DASK ----------------
+        params_pairs = []
+        pair_refs = []
+        for j in range(1, L):
+            ref = 0 if reference == 'first' else (j - 1)
+            fnm_matches = os.path.join(out_dir, 'composite_interlayer_{:05d}_{:05d}_matches.bin'.format(ref, j))
+            dt_kwargs = {
+                'ftype': self.ftype,
+                'TransformType': TransformType,
+                'l2_matrix': self.l2_matrix,
+                'targ_vector': self.targ_vector,
+                'solver': solver,
+                'RANSAC_initial_fraction': RANSAC_initial_fraction,
+                'drmax': drmax,                       # OPENED-UP threshold
+                'max_iter': max_iter,
+                'BFMatcher': BFMatcher,
+                'Lowe_Ratio_Threshold': Lowe_Ratio_Threshold,
+                'save_matches': save_matches,
+                'fnm_matches': fnm_matches,
+                'use_existing_data': False,
+                'image_shape': (self.YResolution, self.XResolution),
+                'verbose': verbose}
+            # NOTE: no 'overlap_bounds' / 'image_margins' -> full clouds matched.
+            params_pairs.append([composite_files[ref], composite_files[j], dt_kwargs])
+            pair_refs.append((ref, j))
+
+        if use_DASK:
+            results_pairs = []
+            n_tasks = len(params_pairs)
+            n_batches = (n_tasks + max_futures - 1) // max_futures
+            for DASK_batch in tqdm(range(n_batches), desc='Inter-layer rigid shifts (DASK batches)'):
+                start = DASK_batch * max_futures
+                stop = min(start + max_futures, n_tasks)
+                if verbose:
+                    print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                          + '   Shift DASK batch {:d}/{:d} ({:d} pairs)'.format(DASK_batch + 1, n_batches, stop - start))
+                futures = DASK_client.map(determine_transformations_files,
+                                          params_pairs[start:stop], retries=DASK_client_retries)
+                results_pairs += DASK_client.gather(futures)
+        else:
+            results_pairs = []
+            for p in tqdm(params_pairs, desc='Estimating inter-layer rigid shifts', display=verbose):
+                results_pairs.append(determine_transformations_files(p))
+
+        relative_shifts = np.zeros((L, 2), dtype=np.float64)
+        nmatches = np.zeros(L, dtype=np.int64)
+        valid = np.zeros(L, dtype=bool)
+        for (ref, j), res in zip(pair_refs, results_pairs):
+            transform_matrix, _, kpts, _, _, _, _, _ = res
+            n = len(kpts[0]) if (kpts is not None and len(kpts) > 0) else 0
+            nmatches[j] = n
+            if (transform_matrix is not None) and (n >= SIFT_nmatches_min) and np.all(np.isfinite(transform_matrix)):
+                # dst_global ~= src_global + t  ->  t is the drift of layer j vs its reference
+                relative_shifts[j] = transform_matrix[0:2, 2]
+                valid[j] = True
+            else:
+                relative_shifts[j] = 0.0           # carry-forward; reported as invalid
+                valid[j] = False
+                if verbose:
+                    print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                          + '   Pair ({:d}->{:d}) INVALID (n_inliers={:d} < {:d}); shift set to 0'.format(
+                              ref, j, n, SIFT_nmatches_min))
+
+        # ---- Step 5 (prep): cumulative absolute drift, anchored at layer 0 ----
+        if reference == 'first':
+            cumulative_drifts = relative_shifts.copy()    # already vs layer 0
+        else:
+            cumulative_drifts = np.cumsum(relative_shifts, axis=0)
+
+        n_valid = int(np.sum(valid))
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')
+              + '   Inter-layer FirstPixel drift: {:d}/{:d} pairs valid (>= {:d} inliers)'.format(
+                  n_valid, max(L - 1, 0), SIFT_nmatches_min))
+        if L > 1:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                  + '   Cumulative drift range  dX: [{:.1f}, {:.1f}]  dY: [{:.1f}, {:.1f}] (pixels)'.format(
+                      np.nanmin(cumulative_drifts[:, 0]), np.nanmax(cumulative_drifts[:, 0]),
+                      np.nanmin(cumulative_drifts[:, 1]), np.nanmax(cumulative_drifts[:, 1])))
+
+        if plot_results and L > 1:
+            layers = np.arange(L)
+            fig, axs = plt.subplots(2, 1, figsize=(7, 5), sharex=True)
+            fig.subplots_adjust(left=0.12, bottom=0.10, right=0.98, top=0.93, hspace=0.08)
+            axs[0].plot(layers, cumulative_drifts[:, 0], '-', color='tab:blue')
+            axs[0].plot(layers[valid], cumulative_drifts[valid, 0], 'o', ms=3, color='tab:blue')
+            axs[1].plot(layers, cumulative_drifts[:, 1], '-', color='tab:red')
+            axs[1].plot(layers[valid], cumulative_drifts[valid, 1], 'o', ms=3, color='tab:red')
+            axs[0].set_ylabel('Cumulative dX (pix)')
+            axs[1].set_ylabel('Cumulative dY (pix)')
+            axs[1].set_xlabel('Z-layer')
+            for ax in axs:
+                ax.grid(True)
+            axs[0].set_title('{}  Inter-layer FirstPixel drift (test tiles: {})'.format(
+                Sample_ID, list(test_tile_ids)), fontsize=10)
+            if save_res_png:
+                save_fname = os.path.join(out_dir, 'Interlayer_FirstPixel_drifts.png')
+                axs[1].text(0.0, -0.30, save_fname, fontsize=5, transform=axs[1].transAxes)
+                fig.savefig(save_fname, dpi=300)
+            display(fig)
+            plt.close(fig)
+
+        return {
+            'test_tile_ids': test_tile_ids,
+            'relative_shifts': relative_shifts,
+            'cumulative_drifts': cumulative_drifts,
+            'nmatches': nmatches,
+            'valid': valid,
+            'composite_files': composite_files,
+        }
+
+
     def save_parameters(self, **kwargs):
         '''
         Save transformation attributes and parameters (including transformation matrices).
@@ -3801,6 +4098,7 @@ class FIBSEM_mosaic_dataset:
         ftype = kwargs.get("ftype", self.ftype)
         thr_min = kwargs.get("thr_min", self.thr_min)
         thr_max = kwargs.get("thr_max", self.thr_max)
+        fls = kwargs.get('fls', self.fls.ravel())
         nbins = kwargs.get("nbins", self.nbins)
         U8_conversion = kwargs.get('U8_conversion', self.U8_conversion)
         if U8_conversion != 'local':
@@ -3833,13 +4131,15 @@ class FIBSEM_mosaic_dataset:
 
         if U8_conversion == 'sliding':
             params_s3 = []
-            for j, fl in tqdm(enumerate(self.fls.ravel()), desc='Setting up SIFT parameter list', display=True):
-                params_s3.append([fl, data_min_sliding[j], data_max_sliding[j], kpt_kwargs])
+            for j, fl in tqdm(enumerate(fls), desc='Setting up SIFT parameter list', display=True):
+                dmins = data_min_sliding[fl == self.fls.ravel()]
+                dmaxs = data_max_sliding[fl == self.fls.ravel()]
+                params_s3.append([fl, dmins, dmaxs, kpt_kwargs])
         else:
             if U8_conversion == 'global': 
-                params_s3 = [[fl, data_min_glob, data_max_glob, kpt_kwargs] for fl in self.fls.ravel()]
+                params_s3 = [[fl, data_min_glob, data_max_glob, kpt_kwargs] for fl in fls]
             else:
-                params_s3 = [[fl, -1, -1, kpt_kwargs] for fl in self.fls.ravel()]
+                params_s3 = [[fl, -1, -1, kpt_kwargs] for fl in fls]
   
         max_futures = kwargs.get('max_futures', self.max_futures)
         if use_DASK:
@@ -3867,8 +4167,9 @@ class FIBSEM_mosaic_dataset:
                 results_s3.append(extract_keypoints_descr_files(param_s3, deformation_field))
         fnms_kpts = [r[0] for r in results_s3]
         nkpts = [r[1] for r in results_s3]
-        self.fnms_kpts = np.array(fnms_kpts).reshape(self.fls.shape)
-        self.nkpts = np.array(nkpts).reshape(self.fls.shape)
+        if np.array_equal(np.asarray(fls).ravel(), self.fls.ravel()):
+            self.fnms_kpts = np.array(fnms_kpts).reshape(self.fls.shape)
+            self.nkpts = np.array(nkpts).reshape(self.fls.shape)
         return fnms_kpts, nkpts
 
 
