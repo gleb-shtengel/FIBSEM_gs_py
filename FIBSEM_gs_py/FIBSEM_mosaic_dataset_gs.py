@@ -3195,7 +3195,7 @@ class FIBSEM_mosaic_dataset:
             ax.bar(bins, hist, width=0.9, align='center')
             ax.set_xlabel('# of valid SIFT pairs per tile')
             ax.set_ylabel('# of tiles')
-            ax.set_title('Valid SIFT matches per tile')
+            ax.set_title('Valid SIFT tile-pair correspondences per tile')
             ax.set_xticks(bins)
             ax.grid(True)
             if save_res_png:
