@@ -3479,7 +3479,7 @@ class FIBSEM_mosaic_dataset:
 
         if plot_results and L > 1:
             layers = np.arange(L)
-            fig, axs = plt.subplots(3, 1, figsize=(10, 5), sharex=True)
+            fig, axs = plt.subplots(3, 1, figsize=(5, 10), sharex=True)
             fig.subplots_adjust(left=0.12, bottom=0.10, right=0.98, top=0.93, hspace=0.08)
             axs[0].plot(layers, nmatches, '-', color='tab:green')
             axs[1].plot(layers, cumulative_drifts[:, 0], '-', color='tab:blue')
