@@ -2204,7 +2204,6 @@ def Two_Image_FSC(img1, img2, **kwargs):
                 label_T = 'FSC BW (Eq.14) = {:.3f}'.format(FSC_bw_T)
             ax.plot([FSC_bw_T, FSC_bw_T], [0, 1], '--', color='c', label=label_T)
         
-        ax.legend()
         ax.set_ylim(0, 1.05)
         ax.set_xlim(xrange)
         ax.legend()
@@ -9989,17 +9988,17 @@ def determine_transformations_files(params_dsf):
                 error_FWHMx = np.nan
                 error_FWHMy = np.nan
 
-        # find corresponding intensities
+        # find corresponding intensities (src_pts_c is NOT pre-sorted -> sort before searchsorted)
         src_pts_c = np.array(src_pts).view(dtype=np.complex64).reshape(-1)
-        #src_pts_sorted_inds = np.argsort(src_pts_c)
-        #src_pts_c = src_pts_c[src_pts_sorted_inds]
-        #src_ints = src_ints[src_pts_sorted_inds]
         src_pts_selected_c = np.array(kpts[0]).view(dtype=np.complex64).reshape(-1)
-        src_selected_inds = np.searchsorted(src_pts_c, src_pts_selected_c)
+        if len(src_pts_selected_c) > 0 and len(src_pts_c) > 0:
+            order = np.argsort(src_pts_c)
+            pos = np.searchsorted(src_pts_c[order], src_pts_selected_c)
+            pos = np.clip(pos, 0, len(order) - 1)
+            src_selected_inds = order[pos]
+        else:
+            src_selected_inds = np.empty(0, dtype=int)
         src_selected_ints = src_ints[src_selected_inds]
-
-        #dst_pts_c = np.array(dst_pts).view(dtype=np.complex64).reshape(-1)
-        #dst_pts_selected_c = np.array(kpts[1]).view(dtype=np.complex64).reshape(-1)
         dst_selected_ints = dst_ints[src_selected_inds]
 
         kpt_ints = [src_selected_ints, dst_selected_ints]
