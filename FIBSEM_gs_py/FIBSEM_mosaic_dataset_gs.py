@@ -2933,6 +2933,13 @@ class FIBSEM_mosaic_dataset:
         '''
         verbose = kwargs.get('verbose', True)
         nl = self.n_tiles_per_layer
+        if not (0 <= layer_id < self.nz_tiles):
+            raise ValueError(
+                'layer_id {:d} out of range (valid 0..{:d})'.format(layer_id, self.nz_tiles - 1))
+        if not (0 <= tile_id < nl):
+            raise ValueError(
+                'tile_id {:d} out of range for n_tiles_per_layer={:d} (valid 0..{:d})'.format(
+                    tile_id, nl, nl - 1))
         abs_tile_id = layer_id * nl + tile_id
         pair_inds = np.argwhere(np.array(self.index_pairs)==abs_tile_id)[:, 0]
         if len(pair_inds) == 0:
@@ -4367,128 +4374,127 @@ class FIBSEM_mosaic_dataset:
         verbose = kwargs.get('verbose', False)
 
         if len(self.fnms_kpts) == 0:
-            if verbose:
-                print('No data on individual key-point data files, perform key-point search')
-            transformations_results = []
+            raise RuntimeError('self.fnms_kpts is empty - no keypoint data files. '
+                        'Run keypoint extraction (extract_keypoints) before determine_transformations_SIFT.')
+        
+        DASK_client = kwargs.get('DASK_client', '')
+        use_DASK, status_update_address = check_DASK(DASK_client, verbose = True)
+        select_tiles = kwargs.get('select_tiles', False)
+        DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
+        ftype = kwargs.get("ftype", self.ftype)
+        left_crop = kwargs.get('left_crop', self.left_crop)
+        deformation_field = kwargs.get('deformation_field', self.deformation_field)
+        TransformType = kwargs.get("TransformType", self.TransformType)
+        l2_matrix = kwargs.get("l2_matrix", self.l2_matrix)
+        targ_vector = kwargs.get("targ_vector", self.targ_vector)
+        solver = kwargs.get("solver", self.solver)
+        RANSAC_initial_fraction = kwargs.get("RANSAC_initial_fraction", self.RANSAC_initial_fraction)
+        drmax = kwargs.get("drmax", self.drmax)
+        max_iter = kwargs.get("max_iter", self.max_iter)
+        SIFT_nmatches_min = kwargs.get('SIFT_nmatches_min', self.SIFT_nmatches_min)
+        Lowe_Ratio_Threshold = kwargs.get("Lowe_Ratio_Threshold", 0.7)   # threshold for Lowe's Ratio Test
+        BFMatcher = kwargs.get("BFMatcher", self.BFMatcher)
+        save_matches = kwargs.get("save_matches", self.save_matches)
+        save_res_png  = kwargs.get("save_res_png", self.save_res_png )
+        start = kwargs.get('start', 'edges')
+        estimation = kwargs.get('estimation', 'interval')
+        use_existing_data = kwargs.get('use_existing_data', False)
+
+        params_SIFT = []
+
+        if select_tiles:
+            mask = self.get_interlayer_pairs_mask(select_tiles)
+            index_pairs = self.index_pairs[mask]
+            pair_overlap_bounds = [self.pair_overlap_bounds[i] for i in np.where(mask)[0]]
         else:
-            DASK_client = kwargs.get('DASK_client', '')
-            use_DASK, status_update_address = check_DASK(DASK_client, verbose = True)
-            select_tiles = kwargs.get('select_tiles', False)
-            DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
-            ftype = kwargs.get("ftype", self.ftype)
-            left_crop = kwargs.get('left_crop', self.left_crop)
-            deformation_field = kwargs.get('deformation_field', self.deformation_field)
-            TransformType = kwargs.get("TransformType", self.TransformType)
-            l2_matrix = kwargs.get("l2_matrix", self.l2_matrix)
-            targ_vector = kwargs.get("targ_vector", self.targ_vector)
-            solver = kwargs.get("solver", self.solver)
-            RANSAC_initial_fraction = kwargs.get("RANSAC_initial_fraction", self.RANSAC_initial_fraction)
-            drmax = kwargs.get("drmax", self.drmax)
-            max_iter = kwargs.get("max_iter", self.max_iter)
-            SIFT_nmatches_min = kwargs.get('SIFT_nmatches_min', self.SIFT_nmatches_min)
-            Lowe_Ratio_Threshold = kwargs.get("Lowe_Ratio_Threshold", 0.7)   # threshold for Lowe's Ratio Test
-            BFMatcher = kwargs.get("BFMatcher", self.BFMatcher)
-            save_matches = kwargs.get("save_matches", self.save_matches)
-            save_res_png  = kwargs.get("save_res_png", self.save_res_png )
-            start = kwargs.get('start', 'edges')
-            estimation = kwargs.get('estimation', 'interval')
-            use_existing_data = kwargs.get('use_existing_data', False)
+            index_pairs = self.index_pairs
+            pair_overlap_bounds = kwargs.get('pair_overlap_bounds', self.pair_overlap_bounds)
+        fnms_kpts = self.fnms_kpts.ravel()
 
-            params_SIFT = []
+        for (jj, index_pair), overlap_bounds in zip(enumerate(tqdm(index_pairs, desc='Setting up SIFT parameter list', display=True)), pair_overlap_bounds):
+            dt_kwargs = {'ftype' : ftype,
+                    'TransformType' : TransformType,
+                    'l2_matrix' : l2_matrix,
+                    'targ_vector': targ_vector, 
+                    'solver' : solver,
+                    'RANSAC_initial_fraction' : RANSAC_initial_fraction,
+                    'drmax' : drmax,
+                    'max_iter' : max_iter,
+                    'BFMatcher' : BFMatcher,
+                    'save_matches' : save_matches,
+                    'Lowe_Ratio_Threshold' : Lowe_Ratio_Threshold,
+                    'start' : start,
+                    'estimation' : estimation,
+                    'use_existing_data' : use_existing_data,
+                    'verbose' : verbose,
+                    'left_crop' : left_crop}
 
+            fname1 = fnms_kpts[index_pair[0]]
+            fname2 = fnms_kpts[index_pair[1]]
+            path_base, f1 = os.path.split(fname1)
+            _, f2 = os.path.split(fname2)
             if select_tiles:
-                mask = self.get_interlayer_pairs_mask(select_tiles)
-                index_pairs = self.index_pairs[mask]
-                pair_overlap_bounds = [self.pair_overlap_bounds[i] for i in np.where(mask)[0]]
+                fnm_matches = os.path.join(path_base, 'fls_{:d}_{:d}'.format(*index_pair) + f1.replace('_kpdes.bin', '_')+f2.replace('_kpdes.bin', '_select_tile_matches.bin'))
             else:
-                index_pairs = self.index_pairs
-                pair_overlap_bounds = kwargs.get('pair_overlap_bounds', self.pair_overlap_bounds)
-            fnms_kpts = self.fnms_kpts.ravel()
+                fnm_matches = os.path.join(path_base, 'fls_{:d}_{:d}'.format(*index_pair) + '_matches.bin')
+            dt_kwargs['fnm_matches'] = fnm_matches
+            dt_kwargs['overlap_bounds'] = overlap_bounds   # (x_min_a, x_max_a, y_min_a, y_max_a,
+                                                            #  x_min_b, x_max_b, y_min_b, y_max_b)
+            dt_kwargs['image_shape'] = (self.YResolution, self.XResolution)
+            la, ta = int(index_pair[0]) // self.n_tiles_per_layer, int(index_pair[0]) % self.n_tiles_per_layer
+            lb, tb = int(index_pair[1]) // self.n_tiles_per_layer, int(index_pair[1]) % self.n_tiles_per_layer
+            dx = self.FirstPixels[lb, tb, 0] - self.FirstPixels[la, ta, 0]
+            dy = self.FirstPixels[lb, tb, 1] - self.FirstPixels[la, ta, 1]
+            dt_kwargs['warp_matrix'] = np.array([[1, 0, -dx], [0, 1, -dy]], dtype=np.float32)
+            param_SIFT = [fname1, fname2, dt_kwargs]
+            params_SIFT.append(param_SIFT)
+            if verbose:
+                print('Added a set: ')
+                print([fname1, fname2, dt_kwargs])
 
-            for (jj, index_pair), overlap_bounds in zip(enumerate(tqdm(index_pairs, desc='Setting up SIFT parameter list', display=True)), pair_overlap_bounds):
-                dt_kwargs = {'ftype' : ftype,
-                        'TransformType' : TransformType,
-                        'l2_matrix' : l2_matrix,
-                        'targ_vector': targ_vector, 
-                        'solver' : solver,
-                        'RANSAC_initial_fraction' : RANSAC_initial_fraction,
-                        'drmax' : drmax,
-                        'max_iter' : max_iter,
-                        'BFMatcher' : BFMatcher,
-                        'save_matches' : save_matches,
-                        'Lowe_Ratio_Threshold' : Lowe_Ratio_Threshold,
-                        'start' : start,
-                        'estimation' : estimation,
-                        'use_existing_data' : use_existing_data,
-                        'verbose' : verbose,
-                        'left_crop' : left_crop}
-
-                fname1 = fnms_kpts[index_pair[0]]
-                fname2 = fnms_kpts[index_pair[1]]
-                path_base, f1 = os.path.split(fname1)
-                _, f2 = os.path.split(fname2)
-                if select_tiles:
-                    fnm_matches = os.path.join(path_base, 'fls_{:d}_{:d}'.format(*index_pair) + f1.replace('_kpdes.bin', '_')+f2.replace('_kpdes.bin', '_select_tile_matches.bin'))
-                else:
-                    fnm_matches = os.path.join(path_base, 'fls_{:d}_{:d}'.format(*index_pair) + '_matches.bin')
-                dt_kwargs['fnm_matches'] = fnm_matches
-                dt_kwargs['overlap_bounds'] = overlap_bounds   # (x_min_a, x_max_a, y_min_a, y_max_a,
-                                                                #  x_min_b, x_max_b, y_min_b, y_max_b)
-                dt_kwargs['image_shape'] = (self.YResolution, self.XResolution)
-                la, ta = int(index_pair[0]) // self.n_tiles_per_layer, int(index_pair[0]) % self.n_tiles_per_layer
-                lb, tb = int(index_pair[1]) // self.n_tiles_per_layer, int(index_pair[1]) % self.n_tiles_per_layer
-                dx = self.FirstPixels[lb, tb, 0] - self.FirstPixels[la, ta, 0]
-                dy = self.FirstPixels[lb, tb, 1] - self.FirstPixels[la, ta, 1]
-                dt_kwargs['warp_matrix'] = np.array([[1, 0, -dx], [0, 1, -dy]], dtype=np.float32)
-                param_SIFT = [fname1, fname2, dt_kwargs]
-                params_SIFT.append(param_SIFT)
+        max_futures = kwargs.get('max_futures', self.max_futures)
+        if use_DASK:
+            # Stage submissions to avoid choking the scheduler on million-pair jobs.
+            transformations_results_3D = []
+            n_tasks   = len(params_SIFT)
+            n_batches = (n_tasks + max_futures - 1) // max_futures
+            for DASK_batch in tqdm(range(n_batches), desc='Running determine_transformations_SIFT DASK batches'):
+                start = DASK_batch * max_futures
+                stop  = min(start + max_futures, n_tasks)
                 if verbose:
-                    print('Added a set: ')
-                    print([fname1, fname2, dt_kwargs])
-
-            max_futures = kwargs.get('max_futures', self.max_futures)
-            if use_DASK:
-                # Stage submissions to avoid choking the scheduler on million-pair jobs.
-                transformations_results_3D = []
-                n_tasks   = len(params_SIFT)
-                n_batches = (n_tasks + max_futures - 1) // max_futures
-                for DASK_batch in tqdm(range(n_batches), desc='Running determine_transformations_SIFT DASK batches'):
-                    start = DASK_batch * max_futures
-                    stop  = min(start + max_futures, n_tasks)
+                    print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                          + '   Starting DASK batch {:d}/{:d} with {:d} jobs ({:d} remaining after this batch)'.format(
+                                DASK_batch + 1, n_batches, stop - start, n_tasks - stop))
+                futures_SIFT = DASK_client.map(determine_transformations_files,
+                                               params_SIFT[start:stop],
+                                               retries=DASK_client_retries)
+                transformations_results_3D += DASK_client.gather(futures_SIFT)
+        else:
+            transformations_results_3D = []
+            for param_SIFT in tqdm(params_SIFT, desc = 'Extracting Transformation Parameters: ', display=verbose):
+                transformations_results_3D.append(determine_transformations_files(param_SIFT))
+        
+        if select_tiles:
+            self.select_SIFT_transformation_matrices = np.array([np.nan_to_num(transformations_result[0]) for transformations_result in transformations_results_3D]).reshape((self.nz_tiles - 1, len(select_tiles), 3, 3))
+        else:
+            for j, transformations_result  in enumerate(tqdm(transformations_results_3D, desc = 'Parsing the SIFT results', display = verbose)):
+                try:
+                    self.SIFT_transformation_matrices[j] = np.nan_to_num(transformations_result[0])
+                    self.SIFT_fnms_matches[j] = transformations_result[1]
+                    self.SIFT_nmatches[j] = len(transformations_result[2][0])
+                    self.SIFT_transformation_valid[j] = self.SIFT_nmatches[j] > SIFT_nmatches_min
+                    src_selected_ints, dst_selected_ints = transformations_result[3]
+                    self.SIFT_intensity_ratios[j] = np.mean(dst_selected_ints / src_selected_ints)
+                except Exception as e:
                     if verbose:
-                        print(time.strftime('%Y/%m/%d  %H:%M:%S')
-                              + '   Starting DASK batch {:d}/{:d} with {:d} jobs ({:d} remaining after this batch)'.format(
-                                    DASK_batch + 1, n_batches, stop - start, n_tasks - stop))
-                    futures_SIFT = DASK_client.map(determine_transformations_files,
-                                                   params_SIFT[start:stop],
-                                                   retries=DASK_client_retries)
-                    transformations_results_3D += DASK_client.gather(futures_SIFT)
-            else:
-                transformations_results_3D = []
-                for param_SIFT in tqdm(params_SIFT, desc = 'Extracting Transformation Parameters: ', display=verbose):
-                    transformations_results_3D.append(determine_transformations_files(param_SIFT))
-            
-            if select_tiles:
-                self.select_SIFT_transformation_matrices = np.array([np.nan_to_num(transformations_result[0]) for transformations_result in transformations_results_3D]).reshape((self.nz_tiles - 1, len(select_tiles), 3, 3))
-            else:
-                for j, transformations_result  in enumerate(tqdm(transformations_results_3D, desc = 'Parsing the SIFT results', display = verbose)):
-                    try:
-                        self.SIFT_transformation_matrices[j] = np.nan_to_num(transformations_result[0])
-                        self.SIFT_fnms_matches[j] = transformations_result[1]
-                        self.SIFT_nmatches[j] = len(transformations_result[2][0])
-                        self.SIFT_transformation_valid[j] = self.SIFT_nmatches[j] > SIFT_nmatches_min
-                        src_selected_ints, dst_selected_ints = transformations_result[3]
-                        self.SIFT_intensity_ratios[j] = np.mean(dst_selected_ints / src_selected_ints)
-                    except Exception as e:
-                        if verbose:
-                            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   An error occurred: {}'.format(e))
-                            print('transformations_result:  ', transformations_result)
-            
-                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intra-layer horisontal matches :', np.mean(self.SIFT_nmatches[0:self.nh]).astype(np.int64))
-                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intra-layer vertical matches :', np.mean(self.SIFT_nmatches[self.nh:self.nh+self.nv]).astype(np.int64))
-                if self.nl > 0:
-                    print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for inter-layer matches :', np.mean(self.SIFT_nmatches[self.nh+self.nv:]).astype(np.int64))
-                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   {:d} out of {:d} SIFT transformations are valid  (SIFT_nmatches > {:d})'.format(np.sum(self.SIFT_transformation_valid), self.C, SIFT_nmatches_min))
+                        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   An error occurred: {}'.format(e))
+                        print('transformations_result:  ', transformations_result)
+        
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intra-layer horisontal matches :', np.mean(self.SIFT_nmatches[0:self.nh]).astype(np.int64))
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for intra-layer vertical matches :', np.mean(self.SIFT_nmatches[self.nh:self.nh+self.nv]).astype(np.int64))
+            if self.nl > 0:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Mean Number of Matched Keypoints for inter-layer matches :', np.mean(self.SIFT_nmatches[self.nh+self.nv:]).astype(np.int64))
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   {:d} out of {:d} SIFT transformations are valid  (SIFT_nmatches > {:d})'.format(np.sum(self.SIFT_transformation_valid), self.C, SIFT_nmatches_min))
         return transformations_results_3D
 
 
