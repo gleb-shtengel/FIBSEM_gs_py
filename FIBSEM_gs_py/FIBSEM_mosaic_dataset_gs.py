@@ -2682,6 +2682,12 @@ class FIBSEM_mosaic_dataset:
             Override self.intralayer_weight for the A_csr build. Default self.intralayer_weight.
         interlayer_weight : float
             Override self.interlayer_weight for the A_csr build. Default self.interlayer_weight.
+        FirstPixel_drifts : dict or (L, 2) array, optional
+            Inter-layer FirstPixels drift from determine_interlayer_FirstPixel_drifts().
+            If given, FirstPixels is rebuilt as
+            FirstPixels[:, :, 0:2] = FirstPixels[0, :, 0:2][None] - cumulative_drifts[:, None, :]
+            BEFORE recomputing pairs and geometry. Default None (no correction).
+            NOTE: this overwrites every layer's intra-layer pattern with layer 0's.
 
         Side effects (sets all on self):
         --------------------------------
@@ -2703,6 +2709,22 @@ class FIBSEM_mosaic_dataset:
         interlayer_weight = kwargs.get('interlayer_weight', self.interlayer_weight)
         w_sqrt_intra = np.sqrt(intralayer_weight)
         w_sqrt_inter = np.sqrt(interlayer_weight)
+
+        FirstPixel_drifts = kwargs.get('FirstPixel_drifts', None)
+        if FirstPixel_drifts is not None:
+            if isinstance(FirstPixel_drifts, dict):
+                d = np.asarray(FirstPixel_drifts['cumulative_drifts'], dtype=float)
+            else:
+                d = np.asarray(FirstPixel_drifts, dtype=float)
+            if d.shape != (L, 2):
+                raise ValueError(
+                    'FirstPixel_drifts cumulative_drifts must have shape ({:d}, 2), got {}'.format(L, d.shape))
+            # Idempotent: layer 0 (d[0] ~ 0) is the fixed source, so re-running reproduces the same result.
+            self.FirstPixels[:, :, 0:2] = self.FirstPixels[0, :, 0:2][None] - d[:, None, :]
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                      + '   Rebuilt FirstPixels from layer-0 pattern minus inter-layer drift (FirstPixel_drifts)'
+                      + '   (max |drift| = {:.2f} pix)'.format(np.abs(d).max()))
 
         # Build intra-layer index pairs — vectorized
         intra_index_pairs_x = []
