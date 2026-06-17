@@ -5191,6 +5191,10 @@ class FIBSEM_mosaic_dataset:
             inlier SIFT keypoint matches.  Requires that determine_transformations_SIFT has
             already been run with save_matches=True so that self.SIFT_fnms_matches is
             populated.  The residual 2-norm is stored in self.SIFT_Affine_r2norm.
+        intralayer_weight : float
+            Weight for intra-layer pair constraints. Default is self.intralayer_weight.
+        interlayer_weight : float
+            Weight for inter-layer pair constraints. Default is self.interlayer_weight.
         subtract_linear_fit : [boolean, boolean]
             List of two Boolean values for two directions: X- and Y-. Default is [True, True].
             If True, the linear slopes along X- and Y- directions (respectively)
@@ -5209,6 +5213,8 @@ class FIBSEM_mosaic_dataset:
         verbose = kwargs.get('verbose', False)
         method = kwargs.get('method', 'ECC')
         valid_methods = ['SIFT-ECC', 'SIFT', 'ECC', 'SIFT-Affine']
+        intralayer_weight = kwargs.get('intralayer_weight', self.intralayer_weight)
+        interlayer_weight = kwargs.get('interlayer_weight', self.interlayer_weight)
         subtract_linear_fit =  kwargs.get("subtract_linear_fit", [True, True])   # If True, the linear slope will be subtracted from the cumulative shifts.
         subtract_FOVtrend_from_fit = kwargs.get("subtract_FOVtrend_from_fit", [True, True])
 
@@ -6626,6 +6632,11 @@ class FIBSEM_mosaic_dataset:
         dtp                    : numpy dtype.  Default int16.
         U8_range               : [umin, umax] for uint8 output.  Default None.
         verbose                : bool.  Default False.
+        frame_inds             : 1D int array/list, optional. Contiguous, increasing
+                                 subset of layer indices to save (e.g. np.arange(100, 200)).
+                                 Default None = all layers. The output store's z-size
+                                 becomes len(frame_inds); source layers are read with an
+                                 offset of frame_inds[0]. Mirrors transform_and_save.
         interpolation, border_value, border_mode : cv2 args.
 
         # v3-specific (defaults follow convert_ome_zarr_v2_to_v3 / tif_stack_to_zarr3)
@@ -6720,7 +6731,26 @@ class FIBSEM_mosaic_dataset:
         t_start = time.time()
 
         # ---- 1. Geometry --------------------------------------------------
-        nz = int(self.nz_tiles)
+        nz_full = int(self.nz_tiles)
+        frame_inds = kwargs.get('frame_inds', None)
+        if frame_inds is None:
+            z_start, nz = 0, nz_full
+        else:
+            frame_inds = np.asarray(frame_inds, dtype=int).ravel()
+            if frame_inds.size == 0:
+                raise ValueError("save_stack_zarr3: frame_inds is empty.")
+            z_start = int(frame_inds[0])
+            nz = int(frame_inds.size)
+            # Contiguous-subset assumption — fail loudly if violated.
+            if not np.array_equal(frame_inds, np.arange(z_start, z_start + nz)):
+                raise ValueError("save_stack_zarr3: frame_inds must be a contiguous, "
+                                 "increasing range of layer indices.")
+            if z_start < 0 or z_start + nz > nz_full:
+                raise ValueError("save_stack_zarr3: frame_inds out of range [0, {}).".format(nz_full))
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                      + '   Saving subset: layers [{}, {}) -> {} output z-slices'.format(
+                          z_start, z_start + nz, nz))
         ny = int(self.Ysize)
         nx = int(self.Xsize - left_crop)
         src_shape_zyx = (nz, ny, nx)
@@ -6852,7 +6882,7 @@ class FIBSEM_mosaic_dataset:
             except (ValueError, AttributeError):
                 flatten_kwargs_global = None
 
-        fls_flat_by_layer = np.asarray([self.fls[lid].ravel() for lid in range(nz)], dtype=object)
+        fls_flat_by_layer = np.asarray([self.fls[lid].ravel() for lid in range(nz_full)], dtype=object)
 
         # ---- 5. Build & dispatch s0 shards (streamed + staged + vectorized) ---
         # At 100 TB / 820k shards scale, materializing params_s0 as a list would
@@ -6871,13 +6901,14 @@ class FIBSEM_mosaic_dataset:
                 if sz <= 0 or sy <= 0 or sx <= 0:
                     continue
 
-                layer_ids = list(range(z0, z0 + sz))
+                src_z0 = z0 + z_start                 # absolute source layer for this shard
+                layer_ids = list(range(src_z0, src_z0 + sz))
 
-                # Vectorised overlap test across the z-slab.
-                tx_slab  = tile_tx [z0:z0 + sz]
-                ty_slab  = tile_ty [z0:z0 + sz]
-                tx1_slab = tile_tx1[z0:z0 + sz]
-                ty1_slab = tile_ty1[z0:z0 + sz]
+                # Vectorised overlap test across the z-slab (source-indexed).
+                tx_slab  = tile_tx [src_z0:src_z0 + sz]
+                ty_slab  = tile_ty [src_z0:src_z0 + sz]
+                tx1_slab = tile_tx1[src_z0:src_z0 + sz]
+                ty1_slab = tile_ty1[src_z0:src_z0 + sz]
                 overlap = ~((tx1_slab <= x0) | (tx_slab >= x0 + sx) |
                             (ty1_slab <= y0) | (ty_slab >= y0 + sy))
 
