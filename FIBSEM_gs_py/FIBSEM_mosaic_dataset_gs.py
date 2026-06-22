@@ -669,8 +669,8 @@ def find_Transform_ECC(img1, img2, **kwargs):
         Default is cv2.MOTION_TRANSLATION
     criteria : criteria.
         Default is (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 1000, 1e-7)
-    repeats : int
-        repeat internally this many times. Default is 2.
+    ECC_refine_passes : int
+        Repeat internally this many times. Default is 2.
     verbose : boolean
             Display intermediate results. Default is False.
             
@@ -684,7 +684,7 @@ def find_Transform_ECC(img1, img2, **kwargs):
     warp_matrix = kwargs.get('warp_matrix', np.array([[1, 0, 0], [0, 1, 0]], dtype=np.float32))
     motion = kwargs.get('motion', cv2.MOTION_TRANSLATION)
     criteria = kwargs.get('criteria', (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 1000, 1e-7))
-    repeats = kwargs.get('repeats', 2)
+    ECC_refine_passes = kwargs.get('ECC_refine_passes', 2)
     verbose = kwargs.get('verbose', False)
 
     overlap_bounds = kwargs.get('overlap_bounds', None)
@@ -718,7 +718,7 @@ def find_Transform_ECC(img1, img2, **kwargs):
     warp_matrix = warp_matrix + matr_shift
     error_code = 0
     try:
-        for ii in np.arange(repeats):
+        for ii in np.arange(ECC_refine_passes):
             (cc, warp_matrix) = cv2.findTransformECC(sub1, sub2, warp_matrix, motion, criteria)
         tx = warp_matrix[0, 2]
         ty = warp_matrix[1, 2]
@@ -773,7 +773,7 @@ def find_Transform_ECC_DASK(params, deformation_field):
         Default is (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 1000, 1e-7)
     ftype : int
         File type (0 - Shan Xu's .dat, 1 - tif, 2- png). Default 0.
-    repeats : int
+    ECC_refine_passes : int
         repeat internally this many times. Default is 2.
     verbose : boolean
         Display intermediate results. Default is False.
@@ -4987,7 +4987,7 @@ class FIBSEM_mosaic_dataset:
             determine_transformations_SIFT.
         motion : target transformation.
             Default is cv2.MOTION_TRANSLATION
-        repeats : int
+        ECC_refine_passes : int
             repeat internally this many times. Default is 2.
         use_existing_data : boolean
             Default is False. If True and this had already been performed, use existing results.
@@ -5004,7 +5004,7 @@ class FIBSEM_mosaic_dataset:
                 CV2 error code.
         '''
         ftype = kwargs.get('ftype', self.ftype)
-        repeats = kwargs.get('repeats', 2)
+        ECC_refine_passes = kwargs.get('ECC_refine_passes', 2)
         verbose = kwargs.get('verbose', False)
         use_existing_data = kwargs.get('use_existing_data', False)
         left_crop = kwargs.get('left_crop', self.left_crop)
@@ -5052,7 +5052,8 @@ class FIBSEM_mosaic_dataset:
                      'criteria' : criteria,
                      'use_existing_data' : use_existing_data,
                      'verbose' : verbose,
-                     'left_crop' : left_crop}
+                     'left_crop' : left_crop,
+                     'ECC_refine_passes' : ECC_refine_passes}
             if use_overlap_bounds:
                 # exact per-pair overlap rectangle (same geometry as SIFT)
                 dt_kwargs['overlap_bounds'] = overlap_bounds
@@ -5126,7 +5127,7 @@ class FIBSEM_mosaic_dataset:
         find_Transform_ECC_DASK for the canonical (production) result, then re-runs an
         INSTRUMENTED ECC on the same reconstructed overlap crops to expose the
         correlation coefficient (cc) and its per-iteration convergence -- the primary
-        knobs for tuning motion / criteria / repeats / overlap_bound_margin.
+        knobs for tuning motion / criteria / ECC_refine_passes / overlap_bound_margin.
 
         Parameters:
         index_pair : tuple of 2 ints
@@ -5146,7 +5147,7 @@ class FIBSEM_mosaic_dataset:
         criteria : tuple
             cv2 termination criteria (type, max_count, eps). Default self.criteria or
             (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 1000, 1e-7).
-        repeats : int
+        ECC_refine_passes : int
             Number of sequential ECC refinements. Default 2.
         use_overlap_bounds : boolean
             If True (default), crop to the exact per-pair overlap rectangle; else legacy corner crop.
@@ -5182,7 +5183,7 @@ class FIBSEM_mosaic_dataset:
         perform_deformation = not np.all(np.isnan(deformation_field))
         interpolation = kwargs.get('interpolation', getattr(self, 'interpolation', cv2.INTER_LINEAR))
         fill_value = kwargs.get('fill_value', 0)
-        repeats = kwargs.get('repeats', 5)
+        ECC_refine_passes = kwargs.get('ECC_refine_passes', 5)
         use_overlap_bounds = kwargs.get('use_overlap_bounds', True)
         overlap_bound_margin = kwargs.get('overlap_bound_margin', getattr(self, 'overlap_bound_margin', 50))
         Sample_ID = kwargs.get('Sample_ID', getattr(self, 'Sample_ID', ''))
@@ -5227,7 +5228,7 @@ class FIBSEM_mosaic_dataset:
         dt_kwargs = {'ftype': ftype,
                      'motion': motion,
                      'criteria': criteria,
-                     'repeats': repeats,           # NOTE: production loop currently omits this; passed here for tuning
+                     'ECC_refine_passes': ECC_refine_passes,
                      'use_existing_data': False,
                      'verbose': verbose,
                      'left_crop': left_crop,
@@ -5298,7 +5299,7 @@ class FIBSEM_mosaic_dataset:
         except cv2.error:
             pass
         try:
-            for _ in range(repeats):
+            for _ in range(ECC_refine_passes):
                 ecc_i, warp_crop = cv2.findTransformECC(sub1, sub2, warp_crop, motion, criteria)
                 ecc_trace.append(float(ecc_i))
                 tx_trace.append(float(warp_crop[0, 2] - ox))   # crop-frame -> full-frame translation
@@ -5349,7 +5350,7 @@ class FIBSEM_mosaic_dataset:
         if verbose:
             print('-' * 70)
             print('ECC_evaluation for index_pair', index_pair, ' (layer,tile a=({:d},{:d}) b=({:d},{:d}))'.format(la, ta, lb, tb))
-            print('motion={}, repeats={:d}, criteria={}'.format(motion_name, repeats, criteria))
+            print('motion={}, ECC_refine_passes={:d}, criteria={}'.format(motion_name, ECC_refine_passes, criteria))
             print('use_overlap_bounds={}, overlap_bound_margin={}, left_crop={:d}, deformation={}'.format(
                   use_overlap_bounds and (overlap_bounds is not None), overlap_bound_margin, left_crop, perform_deformation))
             print('Overlap (x,y) = ({:d}, {:d}),  crop shape (h,w) = {}'.format(x_ov, y_ov, tuple(sub1.shape)))
@@ -5369,8 +5370,8 @@ class FIBSEM_mosaic_dataset:
             fsz = 9
             fig, axs = plt.subplots(2, 3, figsize=(13, 8))
             fig.subplots_adjust(left=0.04, bottom=0.04, right=0.98, top=0.90, wspace=0.25, hspace=0.20)
-            fig.suptitle('{}  ECC eval pair {}   motion={}, repeats={:d}, margin={}, ECC_final={:.4f}'.format(
-                         Sample_ID, tuple(index_pair), motion_name, repeats, overlap_bound_margin, ecc_final), fontsize=fsz + 1)
+            fig.suptitle('{}  ECC eval pair {}   motion={}, ECC_refine_passes={:d}, margin={}, ECC_final={:.4f}'.format(
+                         Sample_ID, tuple(index_pair), motion_name, ECC_refine_passes, overlap_bound_margin, ecc_final), fontsize=fsz + 1)
             vmax_d = max(1.0, np.percentile(diff_before, 99))
             axs[0, 0].imshow(sub1, cmap='Greys'); axs[0, 0].set_title('tile a overlap crop', fontsize=fsz)
             axs[0, 1].imshow(sub2, cmap='Greys'); axs[0, 1].set_title('tile b overlap crop', fontsize=fsz)
