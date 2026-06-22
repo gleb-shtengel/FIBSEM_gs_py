@@ -2264,6 +2264,9 @@ class FIBSEM_mosaic_dataset:
     determine_transformations_ECC(**kwargs)
         Determine transformation matrices for frame pairs using ECC. Uses find_Transform_ECC(img1, img2, **kwargs).
 
+    ECC_evaluation(self, index_pair, **kwargs)
+        Evaluate ECC performance on a given index_pair.
+
     plot_matches_per_tile(**kwargs)
         Plot 2D maps of #matches per tile.
 
