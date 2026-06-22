@@ -5172,9 +5172,9 @@ class FIBSEM_mosaic_dataset:
         warp_matrix, error_code, ecc_results
             warp_matrix : 2x3 float32 -- canonical warp from find_Transform_ECC_DASK (full-frame coords).
             error_code  : 0 if ECC converged, else the cv2.error.
-            ecc_results : dict of diagnostics (cc_final, cc_trace, cc_before, cc_after,
-                          tx, ty, tx_nominal, ty_nominal, dtx, dty, rms_before, rms_after,
-                          overlap_xy, crop_shape, converged).
+            ecc_results : dict of diagnostics (ecc_final, ecc_trace, tx_trace, ty_trace,
+              ecc_before, ecc_after, tx, ty, tx_nominal, ty_nominal, dtx, dty,
+              rms_before, rms_after, overlap_xy, crop_shape, converged).
         '''
         ftype = kwargs.get('ftype', self.ftype)
         left_crop = kwargs.get('left_crop', self.left_crop)
@@ -5182,7 +5182,7 @@ class FIBSEM_mosaic_dataset:
         perform_deformation = not np.all(np.isnan(deformation_field))
         interpolation = kwargs.get('interpolation', getattr(self, 'interpolation', cv2.INTER_LINEAR))
         fill_value = kwargs.get('fill_value', 0)
-        repeats = kwargs.get('repeats', 2)
+        repeats = kwargs.get('repeats', 5)
         use_overlap_bounds = kwargs.get('use_overlap_bounds', True)
         overlap_bound_margin = kwargs.get('overlap_bound_margin', getattr(self, 'overlap_bound_margin', 50))
         Sample_ID = kwargs.get('Sample_ID', getattr(self, 'Sample_ID', ''))
@@ -5287,39 +5287,52 @@ class FIBSEM_mosaic_dataset:
         sub1f = sub1.astype(np.float32)
         sub2f = sub2.astype(np.float32)
 
-        # ---- 3) instrumented ECC: cc trace per repeat ------------------------------
-        cc_trace = []
+        # ---- 3) instrumented ECC: cc + (tx, ty) trace per repeat -------------------
+        ecc_trace = []
+        tx_trace = []
+        ty_trace = []
         warp_crop = (dt_kwargs['warp_matrix'] + np.array(((0, 0, ox), (0, 0, oy)), dtype=np.float32)).copy()
-        cc_before = np.nan
+        ecc_before = np.nan
         try:
-            cc_before = float(cv2.computeECC(sub1f, sub2f))   # alignment quality at the nominal offset
+            ecc_before = float(cv2.computeECC(sub1f, sub2f))   # alignment quality at the nominal offset
         except cv2.error:
             pass
         try:
             for _ in range(repeats):
-                cc_i, warp_crop = cv2.findTransformECC(sub1, sub2, warp_crop, motion, criteria)
-                cc_trace.append(float(cc_i))
+                ecc_i, warp_crop = cv2.findTransformECC(sub1, sub2, warp_crop, motion, criteria)
+                ecc_trace.append(float(ecc_i))
+                tx_trace.append(float(warp_crop[0, 2] - ox))   # crop-frame -> full-frame translation
+                ty_trace.append(float(warp_crop[1, 2] - oy))
         except cv2.error as e:
             if verbose:
                 print('Instrumented ECC failed to converge: ', e)
-        cc_final = cc_trace[-1] if len(cc_trace) else np.nan
+        ecc_final = ecc_trace[-1] if len(ecc_trace) else np.nan
 
         # ---- 4) before/after overlap imagery + residual metrics --------------------
-        aligned_sub2 = cv2.warpAffine(sub2, warp_crop, (sub1.shape[1], sub1.shape[0]),
-                                      flags=interpolation + cv2.WARP_INVERSE_MAP,
-                                      borderValue=fill_value)
+        # OpenCV's warp-direction convention for findTransformECC is sign/version
+        # sensitive, so build the overlay both ways and keep whichever actually
+        # aligns sub2 to sub1 (i.e. reproduces the converged cc).
+        def _warp(flags):
+            return cv2.warpAffine(sub2, warp_crop, (sub1.shape[1], sub1.shape[0]),
+                                  flags=flags, borderValue=fill_value)
+        ecc_after = np.nan
+        aligned_sub2 = sub2
+        try:
+            cand = [(_warp(interpolation + cv2.WARP_INVERSE_MAP)),
+                    (_warp(interpolation))]
+            ccs = [float(cv2.computeECC(sub1f, c.astype(np.float32))) for c in cand]
+            best = int(np.argmax(ccs))
+            aligned_sub2, ecc_after = cand[best], ccs[best]
+        except cv2.error:
+            pass
         diff_before = np.abs(sub1f - sub2f)
         diff_after = np.abs(sub1f - aligned_sub2.astype(np.float32))
         rms_before = float(np.sqrt(np.mean(diff_before ** 2)))
         rms_after = float(np.sqrt(np.mean(diff_after ** 2)))
-        cc_after = np.nan
-        try:
-            cc_after = float(cv2.computeECC(sub1f, aligned_sub2.astype(np.float32)))
-        except cv2.error:
-            pass
 
-        ecc_results = {'cc_final': cc_final, 'cc_trace': cc_trace,
-                       'cc_before': cc_before, 'cc_after': cc_after,
+        ecc_results = {'ecc_final': ecc_final, 'ecc_trace': ecc_trace,
+                       'tx_trace': tx_trace, 'ty_trace': ty_trace,
+                       'ecc_before': ecc_before, 'ecc_after': ecc_after,
                        'tx': tx, 'ty': ty, 'tx_nominal': tx_nominal, 'ty_nominal': ty_nominal,
                        'dtx': dtx, 'dty': dty, 'rms_before': rms_before, 'rms_after': rms_after,
                        'overlap_xy': (x_ov, y_ov), 'crop_shape': tuple(sub1.shape),
@@ -5336,8 +5349,8 @@ class FIBSEM_mosaic_dataset:
             print('Nominal offset (tx,ty) = ({:.3f}, {:.3f}) from FirstPixels'.format(tx_nominal, ty_nominal))
             print('ECC    offset (tx,ty) = ({:.3f}, {:.3f})'.format(tx, ty))
             print('Deviation from nominal (dtx,dty) = ({:.3f}, {:.3f}),  |d|={:.3f}'.format(dtx, dty, np.hypot(dtx, dty)))
-            print('ECC correlation coefficient: before={:.5f}, final={:.5f}, after(warp)={:.5f}'.format(cc_before, cc_final, cc_after))
-            print('cc trace per repeat:', ['{:.5f}'.format(c) for c in cc_trace])
+            print('ECC correlation coefficient: before={:.5f}, final={:.5f}, after(warp)={:.5f}'.format(ecc_before, ecc_final, ecc_after))
+            print('ECC trace per repeat:', ['{:.5f}'.format(c) for c in ecc_trace])
             print('Overlap RMS abs-diff: before={:.3f}, after={:.3f}'.format(rms_before, rms_after))
             print('full warp_matrix =\n', warp_matrix)
 
@@ -5346,22 +5359,42 @@ class FIBSEM_mosaic_dataset:
             fig, axs = plt.subplots(2, 3, figsize=(13, 8))
             fig.subplots_adjust(left=0.04, bottom=0.04, right=0.98, top=0.90, wspace=0.20, hspace=0.20)
             fig.suptitle('{}  ECC eval pair {}   motion={}, repeats={:d}, margin={}, cc_final={:.4f}'.format(
-                         Sample_ID, tuple(index_pair), motion_name, repeats, overlap_bound_margin, cc_final), fontsize=fsz + 1)
+                         Sample_ID, tuple(index_pair), motion_name, repeats, overlap_bound_margin, ecc_final), fontsize=fsz + 1)
             vmax_d = max(1.0, np.percentile(diff_before, 99))
             axs[0, 0].imshow(sub1, cmap='Greys'); axs[0, 0].set_title('tile a overlap crop', fontsize=fsz)
             axs[0, 1].imshow(sub2, cmap='Greys'); axs[0, 1].set_title('tile b overlap crop', fontsize=fsz)
-            axs[0, 2].imshow(aligned_sub2, cmap='Greys'); axs[0, 2].set_title('tile b aligned by ECC', fontsize=fsz)
+            # upper-right: tx, ty vs repeat on twin y-axes -- each axis auto-scales to its
+            # own trace so both use the full vertical extent. repeat 0 = nominal init guess.
+            ax_tx = axs[0, 2]
+            ax_ty = ax_tx.twinx()
+            if len(tx_trace):
+                reps = np.arange(0, len(tx_trace) + 1)
+                tx_path = [tx_nominal] + tx_trace
+                ty_path = [ty_nominal] + ty_trace
+                l_tx, = ax_tx.plot(reps, tx_path, 'o-',  color='tab:blue', label='tx')
+                l_ty, = ax_ty.plot(reps, ty_path, 's--', color='tab:red',  label='ty')
+                ax_tx.set_xlabel('repeat (0 = nominal)', fontsize=fsz)
+                ax_tx.set_ylabel('tx (pix)', color='tab:blue', fontsize=fsz)
+                ax_ty.set_ylabel('ty (pix)', color='tab:red',  fontsize=fsz)
+                ax_tx.tick_params(axis='y', labelcolor='tab:blue')
+                ax_ty.tick_params(axis='y', labelcolor='tab:red')
+                ax_tx.set_xticks(reps)
+                ax_tx.legend(handles=[l_tx, l_ty], loc='best', fontsize=fsz - 1)
+                ax_tx.grid(True)
+            else:
+                ax_tx.text(0.1, 0.5, 'ECC failed to converge', transform=ax_tx.transAxes)
+            ax_tx.set_title('tx, ty vs repeat', fontsize=fsz)
             axs[1, 0].imshow(diff_before, cmap='inferno', vmin=0, vmax=vmax_d)
-            axs[1, 0].set_title('|a - b| before  (RMS={:.2f}, cc={:.4f})'.format(rms_before, cc_before), fontsize=fsz)
+            axs[1, 0].set_title('|a - b| before  (RMS={:.2f}, cc={:.4f})'.format(rms_before, ecc_before), fontsize=fsz)
             axs[1, 1].imshow(diff_after, cmap='inferno', vmin=0, vmax=vmax_d)
-            axs[1, 1].set_title('|a - b| after   (RMS={:.2f}, cc={:.4f})'.format(rms_after, cc_after), fontsize=fsz)
-            if len(cc_trace):
-                axs[1, 2].plot(np.arange(1, len(cc_trace) + 1), cc_trace, 'o-')
-                axs[1, 2].set_xlabel('repeat'); axs[1, 2].set_ylabel('ECC cc'); axs[1, 2].grid(True)
-                axs[1, 2].set_title('cc convergence', fontsize=fsz)
+            axs[1, 1].set_title('|a - b| after   (RMS={:.2f}, cc={:.4f})'.format(rms_after, ecc_after), fontsize=fsz)
+            if len(ecc_trace):
+                axs[1, 2].plot(np.arange(1, len(ecc_trace) + 1), ecc_trace, 'o-')
+                axs[1, 2].set_xlabel('repeat'); axs[1, 2].set_ylabel('Enhanced Correlation Coefficient'); axs[1, 2].grid(True)
+                axs[1, 2].set_title('ECC convergence', fontsize=fsz)
             else:
                 axs[1, 2].text(0.1, 0.5, 'ECC failed to converge', transform=axs[1, 2].transAxes)
-            for ax in [axs[0, 0], axs[0, 1], axs[0, 2], axs[1, 0], axs[1, 1]]:
+            for ax in [axs[0, 0], axs[0, 1], axs[1, 0], axs[1, 1]]:
                 ax.axis(False)
 
             save_filename_default = os.path.join(self.data_dir,
