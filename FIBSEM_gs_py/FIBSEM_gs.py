@@ -9756,6 +9756,9 @@ def determine_transformations_files(params_dsf):
         should also provide 
     image_shape : list of 2 ints:
         ysz, xsz
+    overlap_bound_margin : int
+        Expand the overlap rectangle by this many pixels on every side before
+        filtering keypoints (only used in the 'overlap_bounds' path). Default 0.
     Returns:
     transform_matrix, fnm_matches, kpts, kpt_ints, error_abs_mean, error_FWHMx, error_FWHMy, iteration
     '''
@@ -9782,6 +9785,7 @@ def determine_transformations_files(params_dsf):
     RANSAC_initial_fraction = kwargs.get("RANSAC_initial_fraction", 0.005)  # fraction of data points for initial RANSAC iteration step.
     start = kwargs.get('start', 'edges')
     estimation = kwargs.get('estimation', 'interval')
+    overlap_bound_margin = kwargs.get('overlap_bound_margin', 0)   # px expansion of the 
     verbose = kwargs.get('verbose', False)
 
     if save_matches:
@@ -9844,7 +9848,8 @@ def determine_transformations_files(params_dsf):
             kpt_ints1 = []
             for kpp1i, des1i, kpt_ints1i in zip(kpp1s, des1s, kpt_ints1s):
                 kp1i = list_to_kp(kpp1i)
-                if x_min_a <= kp1i.pt[0] < x_max_a and y_min_a <= kp1i.pt[1] < y_max_a:
+                if (x_min_a - overlap_bound_margin <= kp1i.pt[0] < x_max_a + overlap_bound_margin
+                        and y_min_a - overlap_bound_margin <= kp1i.pt[1] < y_max_a + overlap_bound_margin):
                     kp1.append(kp1i)
                     des1.append(des1i)
                     kpt_ints1.append(kpt_ints1i)
@@ -9853,7 +9858,8 @@ def determine_transformations_files(params_dsf):
             kpt_ints2 = []
             for kpp2i, des2i, kpt_ints2i in zip(kpp2s, des2s, kpt_ints2s):
                 kp2i = list_to_kp(kpp2i)
-                if x_min_b <= kp2i.pt[0] < x_max_b and y_min_b <= kp2i.pt[1] < y_max_b:
+                if (x_min_b - overlap_bound_margin <= kp2i.pt[0] < x_max_b + overlap_bound_margin
+                        and y_min_b - overlap_bound_margin <= kp2i.pt[1] < y_max_b + overlap_bound_margin):
                     kp2.append(kp2i)
                     des2.append(des2i)
                     kpt_ints2.append(kpt_ints2i)
