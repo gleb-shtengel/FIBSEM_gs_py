@@ -654,6 +654,15 @@ def find_Transform_ECC(img1, img2, **kwargs):
         Parts of images to be used. It is assumed that img1 is to the left and above of the img2.
         Subsets img1[-ymargin:, -xmargin:] and  img2[0:ymargin, 0:xmargin] will be used for correlation.
         Default is full images, so image_margins = (ymargin, xmargin) = img1.shape
+    overlap_bounds : tuple of 8 ints, optional
+        (x_min_a, x_max_a, y_min_a, y_max_a, x_min_b, x_max_b, y_min_b, y_max_b) -
+        exact overlap rectangle in tile-local coords for img1 (tile a) and img2
+        (tile b), as in self.pair_overlap_bounds. When present, ECC runs on these
+        precise sub-rectangles (expanded by overlap_bound_margin) and TAKES
+        PRECEDENCE over image_margins.
+    overlap_bound_margin : int
+        Symmetric pixel margin added around the overlap rectangle before cropping
+        (overlap_bounds path only). Default 0.
     warp_matrix : 3x2 initial guess of the transformation matrix.
         Default is np.array([[1, 0, 0], [0, 1, 0]], dtype=np.float32)
     motion : target transformation.
@@ -672,25 +681,49 @@ def find_Transform_ECC(img1, img2, **kwargs):
         error_code : CV2.error code. 0 if no error.
     '''
     ysz, xsz = img1.shape
-    ymargin, xmargin =  kwargs.get('image_margins', (ysz, xsz))
     warp_matrix = kwargs.get('warp_matrix', np.array([[1, 0, 0], [0, 1, 0]], dtype=np.float32))
     motion = kwargs.get('motion', cv2.MOTION_TRANSLATION)
     criteria = kwargs.get('criteria', (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 1000, 1e-7))
     repeats = kwargs.get('repeats', 2)
     verbose = kwargs.get('verbose', False)
-    
-    dx = xsz - xmargin
-    dy = ysz - ymargin
-    matr_shift = np.array(((0, 0, dx), (0, 0, dy)), dtype=np.float32)
+
+    overlap_bounds = kwargs.get('overlap_bounds', None)
+    if overlap_bounds is not None:
+        # Precise per-pair overlap rectangles (tile-local coords), mirroring the SIFT path.
+        x_min_a, x_max_a, y_min_a, y_max_a, x_min_b, x_max_b, y_min_b, y_max_b = overlap_bounds
+        m = int(kwargs.get('overlap_bound_margin', 0))
+        # expand by margin, clamp to each image's bounds
+        x0a = int(max(0, x_min_a - m)); x1a = int(min(xsz, x_max_a + m))
+        y0a = int(max(0, y_min_a - m)); y1a = int(min(ysz, y_max_a + m))
+        x0b = int(max(0, x_min_b - m)); x1b = int(min(xsz, x_max_b + m))
+        y0b = int(max(0, y_min_b - m)); y1b = int(min(ysz, y_max_b + m))
+        # findTransformECC needs template and input to share the same shape; the two
+        # rectangles are equal-sized by construction and only diverge by edge clamping,
+        # so take the common (min) extent.
+        w = max(0, min(x1a - x0a, x1b - x0b))
+        h = max(0, min(y1a - y0a, y1b - y0b))
+        sub1 = img1[y0a:y0a + h, x0a:x0a + w]
+        sub2 = img2[y0b:y0b + h, x0b:x0b + w]
+        ox = x0a - x0b          # relative crop-origin offset (origin_a - origin_b)
+        oy = y0a - y0b
+    else:
+        # Legacy corner crop: img1 lower-right vs img2 upper-left.
+        ymargin, xmargin = kwargs.get('image_margins', (ysz, xsz))
+        sub1 = img1[-ymargin:, -xmargin:]
+        sub2 = img2[0:ymargin, 0:xmargin]
+        ox = xsz - xmargin
+        oy = ysz - ymargin
+
+    matr_shift = np.array(((0, 0, ox), (0, 0, oy)), dtype=np.float32)
     warp_matrix = warp_matrix + matr_shift
     error_code = 0
     try:
         for ii in np.arange(repeats):
-            (cc, warp_matrix) = cv2.findTransformECC(img1[-ymargin:, -xmargin:], img2[0:ymargin, 0:xmargin], warp_matrix, motion, criteria)
+            (cc, warp_matrix) = cv2.findTransformECC(sub1, sub2, warp_matrix, motion, criteria)
         tx = warp_matrix[0, 2]
         ty = warp_matrix[1, 2]
         if verbose:
-            print('Estimated translation: tx={:.3f}, ty={:.3f}'.format((tx - dx), (ty - dy)))
+            print('Estimated translation: tx={:.3f}, ty={:.3f}'.format((tx - ox), (ty - oy)))
     except cv2.error as e:
         error_code = e
         if verbose:
@@ -720,7 +753,16 @@ def find_Transform_ECC_DASK(params, deformation_field):
     image_margins : tuple of 2 ints
         Parts of images to be used. It is assumed that img1 is to the left and above of the img2.
         Subsets img1[-ymargin:, -xmargin:] and  img2[0:ymargin, 0:xmargin] will be used for correlation.
-        Default is full images, so image_margins = (ymargin, xmargin) = img1.shape
+        Default is full images, so image_margins = (ymargin, xmargin) = img1.shape. Used only when overlap_bounds is absent (legacy corner crop).
+    overlap_bounds : tuple of 8 ints, optional
+        (x_min_a, x_max_a, y_min_a, y_max_a, x_min_b, x_max_b, y_min_b, y_max_b) -
+        exact overlap rectangle in ORIGINAL tile-local coords (before left_crop) for
+        img1 (tile a) and img2 (tile b), as in self.pair_overlap_bounds. The x-bounds
+        are shifted internally by left_crop before being forwarded to
+        find_Transform_ECC. When present, TAKES PRECEDENCE over image_margins.
+    overlap_bound_margin : int
+        Symmetric pixel margin added around the overlap rectangle before cropping
+        (overlap_bounds path only). Default 0. Passed through to find_Transform_ECC.
     left_crop : int 
         Cropping value for cropping the image from the left side (used along with deformation_field or on its own). Default is 0 - no cropping.
     warp_matrix : 3x2 initial guess of the transformation matrix.
@@ -729,6 +771,8 @@ def find_Transform_ECC_DASK(params, deformation_field):
         Default is cv2.MOTION_TRANSLATION
     criteria : criteria.
         Default is (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 1000, 1e-7)
+    ftype : int
+        File type (0 - Shan Xu's .dat, 1 - tif, 2- png). Default 0.
     repeats : int
         repeat internally this many times. Default is 2.
     verbose : boolean
@@ -757,8 +801,15 @@ def find_Transform_ECC_DASK(params, deformation_field):
             print('find_Transform_ECC_DASK: no deformation, left_crop={:d}'.format(left_crop))
         img1 = FIBSEM_frame(fname1, ftype=ftype).RawImageA_8bit_thresholds()[0][:, left_crop:]
         img2 = FIBSEM_frame(fname2, ftype=ftype).RawImageA_8bit_thresholds()[0][:, left_crop:]
-    ymargin, xmargin =  kwargs.get('image_margins', img1.shape)
-    kwargs['image_margins'] = (ymargin, xmargin-left_crop)
+    if kwargs.get('overlap_bounds', None) is not None:
+        # img1/img2 were sliced [:, left_crop:]; shift overlap x-bounds into the
+        # cropped frame (find_Transform_ECC clamps negatives at 0). y is unaffected.
+        xa0, xa1, ya0, ya1, xb0, xb1, yb0, yb1 = kwargs['overlap_bounds']
+        kwargs['overlap_bounds'] = (xa0 - left_crop, xa1 - left_crop, ya0, ya1,
+                                    xb0 - left_crop, xb1 - left_crop, yb0, yb1)
+    else:
+        ymargin, xmargin =  kwargs.get('image_margins', img1.shape)
+        kwargs['image_margins'] = (ymargin, xmargin-left_crop)
     warp_matrix, error_code = find_Transform_ECC(img1, img2, **kwargs)
 
     return warp_matrix, error_code
@@ -2291,6 +2342,9 @@ class FIBSEM_mosaic_dataset:
             If True, adds both (i->j) and (j->i) with same weight (increases robustness).
         diagonal_exclusion_threshold : np.float32
             A criteria for exclusion of "diagonal" neighbours if the sum of margins in X- and Y- directions is larger than a sum of X- and Y- tiles times this number, the pair is NOT considered.
+        overlap_bound_margin : int
+            Pixels by which the per-pair overlap rectangle is expanded on each side
+            when filtering SIFT keypoints during pairwise matching. Default 50.
         shape : tuple of two int (self.ny_tiles, self.nx_tiles)
             The program will try to auto-determine the shape, but it can be set explicitly.
                 # self.ny_tiles  - # of rows per layer (# of tiles along Y-axis)
@@ -2424,6 +2478,7 @@ class FIBSEM_mosaic_dataset:
                     setattr(self, key, dump_data[key])
                 # max_futures is a runtime / per-session knob — let the kwarg override the dump.
                 self.max_futures = kwargs.get('max_futures', getattr(self, 'max_futures', 50000))
+                self.overlap_bound_margin = kwargs.get('overlap_bound_margin', getattr(self, 'overlap_bound_margin', 50))
                 if verbose:
                     print(time.strftime('%Y/%m/%d  %H:%M:%S')
                           + '   Recalled FIBSEM_mosaic_dataset instance from dump (skipped full init).')
@@ -2481,6 +2536,7 @@ class FIBSEM_mosaic_dataset:
         self.interlayer_weight = kwargs.get('interlayer_weight', 100.0)
         self.add_reverse_edges = kwargs.get('add_reverse_edges', False)
         self.diagonal_exclusion_threshold = kwargs.get('diagonal_exclusion_threshold', 0.75)
+        self.overlap_bound_margin = kwargs.get('overlap_bound_margin', 50)
         self.U8_conversion = kwargs.get('U8_conversion', 'local')
         self.left_crop = kwargs.get('left_crop', 0)
         self.deformation_field = kwargs.get('deformation_field', np.nan)
@@ -4333,6 +4389,9 @@ class FIBSEM_mosaic_dataset:
             File type (0 - Shan Xu's .dat, 1 - tif). Default is object attribute.
         left_crop : int 
             Cropping value for cropping the image from the left side (used along with deformation_field or on its own). Default is 0 - no cropping.
+        overlap_bound_margin : int
+            Pixels by which the per-pair overlap rectangle is expanded on each side
+            when filtering SIFT keypoints during pairwise matching. Default 50.
         deformation_field : 3D array
             Deformation field for distortion corrections to be executed before SIFT. Default is np.nan - no distortion correction.
         select_tiles : list 
@@ -4365,7 +4424,9 @@ class FIBSEM_mosaic_dataset:
         max_iter : int
             Max number of iterations in the iterative procedure above (RANSAC or LinReg). Default is object attribute.
         SIFT_nmatches_min : int
-            Min number of matches for the transformation to be considered valid. Default is 5.
+            Validity threshold: a pair is valid if SIFT_nmatches > SIFT_nmatches_min.
+            (Not to be confused with determine_transformations_ECC's
+            ECC_SIFT_nmatches_range, which selects pairs for ECC.)
         save_matches : boolean
             If True, matches will be saved into individual files. Default is object attribute.
         save_res_png  : boolean
@@ -4414,6 +4475,7 @@ class FIBSEM_mosaic_dataset:
         drmax = kwargs.get("drmax", self.drmax)
         max_iter = kwargs.get("max_iter", self.max_iter)
         SIFT_nmatches_min = kwargs.get('SIFT_nmatches_min', self.SIFT_nmatches_min)
+        overlap_bound_margin = kwargs.get('overlap_bound_margin', getattr(self, 'overlap_bound_margin', 50))
         Lowe_Ratio_Threshold = kwargs.get("Lowe_Ratio_Threshold", 0.7)   # threshold for Lowe's Ratio Test
         BFMatcher = kwargs.get("BFMatcher", self.BFMatcher)
         save_matches = kwargs.get("save_matches", self.save_matches)
@@ -4449,7 +4511,8 @@ class FIBSEM_mosaic_dataset:
                     'estimation' : estimation,
                     'use_existing_data' : use_existing_data,
                     'verbose' : verbose,
-                    'left_crop' : left_crop}
+                    'left_crop' : left_crop,
+                    'overlap_bound_margin' : overlap_bound_margin}
 
             fname1 = fnms_kpts[index_pair[0]]
             fname2 = fnms_kpts[index_pair[1]]
@@ -4462,7 +4525,6 @@ class FIBSEM_mosaic_dataset:
             dt_kwargs['fnm_matches'] = fnm_matches
             dt_kwargs['overlap_bounds'] = overlap_bounds   # (x_min_a, x_max_a, y_min_a, y_max_a,
                                                             #  x_min_b, x_max_b, y_min_b, y_max_b)
-            dt_kwargs['image_shape'] = (self.YResolution, self.XResolution)
             la, ta = int(index_pair[0]) // self.n_tiles_per_layer, int(index_pair[0]) % self.n_tiles_per_layer
             lb, tb = int(index_pair[1]) // self.n_tiles_per_layer, int(index_pair[1]) % self.n_tiles_per_layer
             dx = self.FirstPixels[lb, tb, 0] - self.FirstPixels[la, ta, 0]
@@ -4581,8 +4643,12 @@ class FIBSEM_mosaic_dataset:
                 ShiftTransform - only x-shift and y-shift
                 XScaleShiftTransform  -  x-scale, x-shift, y-shift
                 ScaleShiftTransform - x-scale, y-scale, x-shift, y-shift
+                RotationShiftTransform - rotation, x-shift, y-shift
                 AffineTransform -  full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift)
-                RegularizedAffineTransform - full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift) with regularization on deviation from ShiftTransform
+                RegularizedAffineTransform - full Affine (x-scale, y-scale, rotation, shear, x-shift, y-shift) with regularization on deviation from ShiftTransform.
+        overlap_bound_margin : int
+            Pixels by which the per-pair overlap rectangle is expanded on each side
+            when filtering SIFT keypoints during pairwise matching. Default 50.
         interpolation : int
             Interpolation type as defined in CV2. Default is object attribute (default for that is cv2.INTER_LINEAR).
         fill_value : float
@@ -4632,6 +4698,7 @@ class FIBSEM_mosaic_dataset:
             matcher = 'FLANN'
         interpolation = kwargs.get('interpolation', self.interpolation)
         fill_value = kwargs.get('fill_value', 0)
+        overlap_bound_margin = kwargs.get('overlap_bound_margin', getattr(self, 'overlap_bound_margin', 50))
         save_matches = kwargs.get("save_matches", self.save_matches)
         save_res_png  = kwargs.get("save_res_png", True )
         start = kwargs.get('start', 'edges')
@@ -4730,11 +4797,12 @@ class FIBSEM_mosaic_dataset:
         if len(pair_index) > 0:
             overlap_bounds = self.pair_overlap_bounds[pair_index[0]]
             dt_kwargs['overlap_bounds'] = overlap_bounds
+            dt_kwargs['overlap_bound_margin'] = overlap_bound_margin
         else:
             overlap_bounds = None
             dt_kwargs['image_margins'] = (self.YResolution, self.XResolution)   # full image fallback
-
-        dt_kwargs['image_shape'] = (self.YResolution, self.XResolution)
+            dt_kwargs['image_shape'] = (self.YResolution, self.XResolution)
+        
         param_SIFT = [fname1, fname2, dt_kwargs]
 
         transformations_result = determine_transformations_files(param_SIFT)
@@ -4900,6 +4968,20 @@ class FIBSEM_mosaic_dataset:
         deformation_field : 3D array
             Deformation field for distortion corrections to be executed before SIFT. Default is image attribute (or np.nan if absent - no distortion correction).
             Deformation field should be passed as shared_data = shared_data_future since it is the same for all tiles.
+        use_overlap_bounds : boolean
+            If True (default), crop each pair to its exact per-pair overlap
+            rectangle (self.pair_overlap_bounds), matching determine_transformations_SIFT.
+            If False, use the legacy corner crop from self.pair_margins.
+        overlap_bound_margin : int
+            Symmetric pixel margin added around the overlap rectangle before ECC
+            cropping (use_overlap_bounds=True only). Default self.overlap_bound_margin (50).
+        ECC_SIFT_nmatches_range : (int, int or float)
+            (min, max) window on the SIFT match count self.SIFT_nmatches. ECC is
+            computed only for pairs whose SIFT match count is inside this inclusive
+            window; pairs outside it are reset to identity/invalid. Default (0, inf)
+            -> every pair. NOTE: this is a SELECTION WINDOW for ECC and is distinct
+            from the scalar SIFT validity threshold self.SIFT_nmatches_min used by
+            determine_transformations_SIFT.
         motion : target transformation.
             Default is cv2.MOTION_TRANSLATION
         repeats : int
@@ -4924,6 +5006,24 @@ class FIBSEM_mosaic_dataset:
         use_existing_data = kwargs.get('use_existing_data', False)
         left_crop = kwargs.get('left_crop', self.left_crop)
         deformation_field = kwargs.get('deformation_field', self.deformation_field)
+        use_overlap_bounds = kwargs.get('use_overlap_bounds', True)
+        overlap_bound_margin = kwargs.get('overlap_bound_margin', getattr(self, 'overlap_bound_margin', 50))
+
+        ECC_SIFT_nmatches_range = kwargs.get('ECC_SIFT_nmatches_range', (0, np.inf))
+        nm_lo, nm_hi = ECC_SIFT_nmatches_range
+        # Run ECC only on pairs whose SIFT match count (self.SIFT_nmatches) falls in
+        # this inclusive window. Default (0, inf) selects every pair. For the SIFT-ECC
+        # workflow, set the window to the band BELOW the SIFT validity threshold, e.g.
+        # ECC_SIFT_nmatches_range=(5, self.SIFT_nmatches_min), so ECC only covers the
+        # weak SIFT pairs that solve_stack_stitching(method='SIFT-ECC') will consult.
+        ecc_pair_indices = np.where((self.SIFT_nmatches >= nm_lo) &
+                                    (self.SIFT_nmatches <= nm_hi))[0]
+        if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                  + '   determine_transformations_ECC: computing ECC for {:d} of {:d} pairs '
+                    '(SIFT_nmatches in [{}, {}])'.format(
+                        len(ecc_pair_indices), self.C, nm_lo, nm_hi))
+
         if hasattr(self, 'motion'):
             motion = kwargs.get('motion', self.motion)
         else:
@@ -4940,14 +5040,23 @@ class FIBSEM_mosaic_dataset:
         params_ECC = []
         fls = self.fls.ravel()
 
-        for index_pair, pair_margins  in zip(tqdm(self.index_pairs, desc='Setting up ECC parameter list', display=verbose), self.pair_margins):
+        for j_pair in tqdm(ecc_pair_indices, desc='Setting up ECC parameter list', display=verbose):
+            index_pair     = self.index_pairs[j_pair]
+            pair_margins   = self.pair_margins[j_pair]
+            overlap_bounds = self.pair_overlap_bounds[j_pair]
             dt_kwargs = {'ftype' : ftype,
                      'motion' : motion,
                      'criteria' : criteria,
                      'use_existing_data' : use_existing_data,
                      'verbose' : verbose,
-                     'left_crop' : left_crop,
-                     'image_margins' : pair_margins}
+                     'left_crop' : left_crop}
+            if use_overlap_bounds:
+                # exact per-pair overlap rectangle (same geometry as SIFT)
+                dt_kwargs['overlap_bounds'] = overlap_bounds
+                dt_kwargs['overlap_bound_margin'] = overlap_bound_margin
+            else:
+                # legacy corner crop
+                dt_kwargs['image_margins'] = pair_margins
             fname1 = fls[index_pair[0]]
             fname2 = fls[index_pair[1]]
             la = int(index_pair[0]) // self.n_tiles_per_layer
@@ -4988,7 +5097,16 @@ class FIBSEM_mosaic_dataset:
                     print(param_ECC)
                 transformations_results_3D.append(find_Transform_ECC_DASK(param_ECC, deformation_field))
         
-        for j, transformations_result  in enumerate(tqdm(transformations_results_3D, desc = 'Parsing the ECC results', display = verbose)):
+        # Make the window authoritative: any pair NOT computed this call is reset to
+        # identity/invalid, so method='SIFT-ECC' only consumes ECC for the selected
+        # pairs (and a narrower re-run never leaves stale ECC results behind).
+        ecc_mask = np.full(self.C, False)
+        ecc_mask[ecc_pair_indices] = True
+        self.ECC_transformation_valid[~ecc_mask] = False
+        self.ECC_transformation_matrices[~ecc_mask] = np.eye(3)
+
+        for k, transformations_result in enumerate(tqdm(transformations_results_3D, desc = 'Parsing the ECC results', display = verbose)):
+            j = ecc_pair_indices[k]
             try:
                 self.ECC_transformation_matrices[j, 0:2, :] = np.nan_to_num(transformations_result[0])
                 self.ECC_transformation_valid[j] = transformations_result[1] == 0
@@ -5261,7 +5379,7 @@ class FIBSEM_mosaic_dataset:
                 # Valid-constraint mask for this method — used below to identify
                 # which tiles should have their tr_matr updated.
                 valid_constraint_mask = self.SIFT_transformation_valid
-            else:
+            elif method == 'ECC':
                 self.ECC_residual_error_x = np.full(self.C, np.nan)
                 self.ECC_residual_error_y = np.full(self.C, np.nan)
                 bx = self.ECC_transformation_matrices[:, 0, 2] * weights
@@ -5279,6 +5397,46 @@ class FIBSEM_mosaic_dataset:
                 # Valid-constraint mask for this method — used below to identify
                 # which tiles should have their tr_matr updated.
                 valid_constraint_mask = self.ECC_transformation_valid
+
+            else:   # method == 'SIFT-ECC'
+                # Prefer SIFT where it is valid; fall back to ECC for the remaining
+                # pairs (e.g. the weak-SIFT pairs that determine_transformations_ECC
+                # was restricted to via ECC_SIFT_nmatches_range). A pair contributes a
+                # constraint if EITHER method produced a valid transform for it.
+                use_sift = self.SIFT_transformation_valid
+                use_ecc  = self.ECC_transformation_valid & ~use_sift
+                combined_valid = use_sift | use_ecc
+
+                # Per-pair source matrix: SIFT row where use_sift, else ECC row.
+                combined_matrices = np.where(use_sift[:, None, None],
+                                             self.SIFT_transformation_matrices,
+                                             self.ECC_transformation_matrices)
+
+                # Bookkeeping so you can inspect which method fed each pair.
+                self.SIFT_ECC_source = np.where(use_sift, 'SIFT',
+                                        np.where(use_ecc, 'ECC', 'none'))
+                self.SIFT_ECC_transformation_matrices = combined_matrices
+                self.SIFT_ECC_transformation_valid    = combined_valid
+
+                self.SIFT_ECC_residual_error_x = np.full(self.C, np.nan)
+                self.SIFT_ECC_residual_error_y = np.full(self.C, np.nan)
+                bx = combined_matrices[:, 0, 2] * weights
+                by = combined_matrices[:, 1, 2] * weights
+                if verbose:
+                    print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                          + '   SIFT-ECC: {:d} pairs from SIFT, {:d} from ECC, {:d} total valid of {:d}'.format(
+                                int(use_sift.sum()), int(use_ecc.sum()),
+                                int(combined_valid.sum()), self.C))
+                    print(time.strftime('%Y/%m/%d  %H:%M:%S') + f',  Solving for X displacement using method {method}')
+                res_x_all = lsqr(self.A_csr[combined_valid], bx[combined_valid])
+                if verbose:
+                    print(time.strftime('%Y/%m/%d  %H:%M:%S') + f',  Solving for Y displacement using method {method}')
+                res_y_all = lsqr(self.A_csr[combined_valid], by[combined_valid])
+                self.SIFT_ECC_residual_error_x[combined_valid] = bx[combined_valid] - self.A_csr[combined_valid] @ res_x_all[0]
+                self.SIFT_ECC_residual_error_y[combined_valid] = by[combined_valid] - self.A_csr[combined_valid] @ res_y_all[0]
+                self.SIFT_ECC_r2norm_x = res_x_all[4]
+                self.SIFT_ECC_r2norm_y = res_y_all[4]
+                valid_constraint_mask = combined_valid
 
             res_x = res_x_all[0]
             res_y = res_y_all[0]
