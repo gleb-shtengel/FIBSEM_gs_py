@@ -5385,7 +5385,7 @@ class FIBSEM_mosaic_dataset:
                 ty_path = [ty_nominal] + ty_trace
                 l_tx, = ax_tx.plot(reps, tx_path, 'o-',  color='tab:blue', label='Tx')
                 l_ty, = ax_ty.plot(reps, ty_path, 's--', color='tab:red',  label='Ty')
-                ax_tx.set_xlabel('Repeats (0 = nominal)', fontsize=fsz)
+                ax_tx.set_xlabel('ECC refine passes (0 = nominal)', fontsize=fsz)
                 ax_tx.set_ylabel('Tx (pix)', color='tab:blue', fontsize=fsz)
                 ax_ty.set_ylabel('Ty (pix)', color='tab:red',  fontsize=fsz)
                 ax_tx.tick_params(axis='y', labelcolor='tab:blue')
@@ -5395,14 +5395,14 @@ class FIBSEM_mosaic_dataset:
                 ax_tx.grid(True)
             else:
                 ax_tx.text(0.1, 0.5, 'ECC failed to converge', transform=ax_tx.transAxes)
-            ax_tx.set_title('Tx, Ty vs repeat', fontsize=fsz)
+            ax_tx.set_title('Tx, Ty vs ECC_refine_passes', fontsize=fsz)
             axs[1, 0].imshow(diff_before, cmap='inferno', vmin=0, vmax=vmax_d)
             axs[1, 0].set_title('|a - b| before  (RMS={:.2f}, ECC={:.4f})'.format(rms_before, ecc_before), fontsize=fsz)
             axs[1, 1].imshow(diff_after, cmap='inferno', vmin=0, vmax=vmax_d)
             axs[1, 1].set_title('|a - b| after   (RMS={:.2f}, ECC={:.4f})'.format(rms_after, ecc_recheck), fontsize=fsz)
             if len(ecc_trace):
                 axs[1, 2].plot(np.arange(1, len(ecc_trace) + 1), ecc_trace, 'o-')
-                axs[1, 2].set_xlabel('repeat'); axs[1, 2].set_ylabel('Enhanced Correlation Coefficient'); axs[1, 2].grid(True)
+                axs[1, 2].set_xlabel('ECC refine passes'); axs[1, 2].set_ylabel('Enhanced Correlation Coefficient'); axs[1, 2].grid(True)
                 axs[1, 2].set_title('ECC convergence', fontsize=fsz)
             else:
                 axs[1, 2].text(0.1, 0.5, 'ECC failed to converge', transform=axs[1, 2].transAxes)
