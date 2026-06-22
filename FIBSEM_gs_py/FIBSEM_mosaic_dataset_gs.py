@@ -5116,6 +5116,261 @@ class FIBSEM_mosaic_dataset:
                     print('transformations_result:  ', transformations_result)
         return transformations_results_3D
 
+    def ECC_evaluation(self, index_pair, **kwargs):
+        '''
+        Evaluate ECC performance on a given index_pair. ©G.Shtengel 06/2026 gleb.shtengel@gmail.com
+        Analog of SIFT_evaluation for the intensity-based ECC path. Calls
+        find_Transform_ECC_DASK for the canonical (production) result, then re-runs an
+        INSTRUMENTED ECC on the same reconstructed overlap crops to expose the
+        correlation coefficient (cc) and its per-iteration convergence -- the primary
+        knobs for tuning motion / criteria / repeats / overlap_bound_margin.
+
+        Parameters:
+        index_pair : tuple of 2 ints
+            Pair of absolute (in 1D sense of fls.ravel()) tile indices.
+
+        kwargs:
+        ----------
+        ftype : int
+            File type (0 - Shan Xu's .dat, 1 - tif). Default is object attribute.
+        left_crop : int
+            Left image margin cropped off before distortion correction. Default object attribute.
+        deformation_field : 3D array
+            Deformation field for distortion correction. Default object attribute (np.nan -> none).
+        motion : int
+            cv2 motion type (MOTION_TRANSLATION / EUCLIDEAN / AFFINE). Default self.motion
+            or cv2.MOTION_TRANSLATION. (HOMOGRAPHY uses a 3x3 warp and is not supported here.)
+        criteria : tuple
+            cv2 termination criteria (type, max_count, eps). Default self.criteria or
+            (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 1000, 1e-7).
+        repeats : int
+            Number of sequential ECC refinements. Default 2.
+        use_overlap_bounds : boolean
+            If True (default), crop to the exact per-pair overlap rectangle; else legacy corner crop.
+        overlap_bound_margin : int
+            Pixel margin around the overlap rectangle before cropping. Default self.overlap_bound_margin (50).
+        interpolation : int
+            cv2 interpolation for remap/warp. Default self.interpolation.
+        fill_value : float
+            Fill value for cv2.remap outside pixels. Default 0.
+        Sample_ID : str
+            Label for the plots. Default self.Sample_ID.
+        save_res_png : boolean
+            If True (default), save the diagnostics PNG.
+        save_filename : str
+            Output PNG path. Default auto-generated under self.data_dir.
+        verbose : boolean
+            Print diagnostics. Default True.
+        dpi : int
+            PNG resolution. Default 600.
+
+        Returns:
+        ----------
+        warp_matrix, error_code, ecc_results
+            warp_matrix : 2x3 float32 -- canonical warp from find_Transform_ECC_DASK (full-frame coords).
+            error_code  : 0 if ECC converged, else the cv2.error.
+            ecc_results : dict of diagnostics (cc_final, cc_trace, cc_before, cc_after,
+                          tx, ty, tx_nominal, ty_nominal, dtx, dty, rms_before, rms_after,
+                          overlap_xy, crop_shape, converged).
+        '''
+        ftype = kwargs.get('ftype', self.ftype)
+        left_crop = kwargs.get('left_crop', self.left_crop)
+        deformation_field = kwargs.get('deformation_field', self.deformation_field)
+        perform_deformation = not np.all(np.isnan(deformation_field))
+        interpolation = kwargs.get('interpolation', getattr(self, 'interpolation', cv2.INTER_LINEAR))
+        fill_value = kwargs.get('fill_value', 0)
+        repeats = kwargs.get('repeats', 2)
+        use_overlap_bounds = kwargs.get('use_overlap_bounds', True)
+        overlap_bound_margin = kwargs.get('overlap_bound_margin', getattr(self, 'overlap_bound_margin', 50))
+        Sample_ID = kwargs.get('Sample_ID', getattr(self, 'Sample_ID', ''))
+        save_res_png = kwargs.get('save_res_png', True)
+        verbose = kwargs.get('verbose', True)
+        dpi = kwargs.get('dpi', 600)
+        if hasattr(self, 'motion'):
+            motion = kwargs.get('motion', self.motion)
+        else:
+            motion = kwargs.get('motion', cv2.MOTION_TRANSLATION)
+        if hasattr(self, 'criteria'):
+            criteria = kwargs.get('criteria', self.criteria)
+        else:
+            criteria = kwargs.get('criteria', (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 1000, 1e-7))
+        motion_names = {cv2.MOTION_TRANSLATION: 'TRANSLATION',
+                        cv2.MOTION_EUCLIDEAN: 'EUCLIDEAN',
+                        cv2.MOTION_AFFINE: 'AFFINE',
+                        cv2.MOTION_HOMOGRAPHY: 'HOMOGRAPHY'}
+        motion_name = motion_names.get(motion, str(motion))
+
+        # ---- filenames + nominal geometry from FirstPixels -------------------------
+        fls = self.fls.ravel()
+        fname1 = fls[index_pair[0]]
+        fname2 = fls[index_pair[1]]
+        la, ta = int(index_pair[0]) // self.n_tiles_per_layer, int(index_pair[0]) % self.n_tiles_per_layer
+        lb, tb = int(index_pair[1]) // self.n_tiles_per_layer, int(index_pair[1]) % self.n_tiles_per_layer
+        dx = self.FirstPixels[lb, tb, 0] - self.FirstPixels[la, ta, 0]
+        dy = self.FirstPixels[lb, tb, 1] - self.FirstPixels[la, ta, 1]
+
+        # ---- per-pair overlap geometry (mirror determine_transformations_ECC) ------
+        pair_index = np.where((self.index_pairs == index_pair).all(axis=1))[0]
+        if len(pair_index) > 0:
+            overlap_bounds = self.pair_overlap_bounds[pair_index[0]]
+            pair_margins = self.pair_margins[pair_index[0]]
+        else:
+            overlap_bounds = None
+            pair_margins = (self.YResolution, self.XResolution)
+            use_overlap_bounds = False
+            if verbose:
+                print('index_pair not found in self.index_pairs -> falling back to full-image corner crop')
+
+        dt_kwargs = {'ftype': ftype,
+                     'motion': motion,
+                     'criteria': criteria,
+                     'repeats': repeats,           # NOTE: production loop currently omits this; passed here for tuning
+                     'use_existing_data': False,
+                     'verbose': verbose,
+                     'left_crop': left_crop,
+                     'interpolation': interpolation,
+                     'fill_value': fill_value}
+        if use_overlap_bounds and (overlap_bounds is not None):
+            dt_kwargs['overlap_bounds'] = overlap_bounds
+            dt_kwargs['overlap_bound_margin'] = overlap_bound_margin
+        else:
+            dt_kwargs['image_margins'] = pair_margins
+        dt_kwargs['warp_matrix'] = np.array([[1, 0, -dx], [0, 1, -dy]], dtype=np.float32)
+
+        if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Will perform ECC evaluation using following parameters (dt_kwargs):')
+            print(dt_kwargs)
+
+        # ---- 1) canonical result from the production worker ------------------------
+        warp_matrix, error_code = find_Transform_ECC_DASK([fname1, fname2, dt_kwargs], deformation_field)
+        converged = (error_code == 0)
+        tx, ty = float(warp_matrix[0, 2]), float(warp_matrix[1, 2])
+        tx_nominal, ty_nominal = -float(dx), -float(dy)     # the init guess that was refined
+        dtx, dty = tx - tx_nominal, ty - ty_nominal         # deviation of ECC from nominal offset
+
+        # ---- 2) reconstruct images + overlap crops (mirror the worker / find_Transform_ECC)
+        def _load_img(fnm):
+            raw = FIBSEM_frame(fnm, ftype=ftype).RawImageA_8bit_thresholds()[0].astype(np.float32)[:, left_crop:]
+            if perform_deformation:
+                raw = cv2.remap(raw, deformation_field[:, :, 0].astype(np.float32),
+                                deformation_field[:, :, 1].astype(np.float32),
+                                interpolation=interpolation, borderValue=fill_value)
+            return raw.astype(np.uint8)
+        img1 = _load_img(fname1)
+        img2 = _load_img(fname2)
+        ysz, xsz = img1.shape
+
+        if use_overlap_bounds and (overlap_bounds is not None):
+            xa0o, xa1o, ya0o, ya1o, xb0o, xb1o, yb0o, yb1o = overlap_bounds
+            # apply the same left_crop x-shift the DASK wrapper applies, then clamp/margin as find_Transform_ECC
+            m = int(overlap_bound_margin)
+            x0a = int(max(0, (xa0o - left_crop) - m)); x1a = int(min(xsz, (xa1o - left_crop) + m))
+            y0a = int(max(0, ya0o - m));               y1a = int(min(ysz, ya1o + m))
+            x0b = int(max(0, (xb0o - left_crop) - m)); x1b = int(min(xsz, (xb1o - left_crop) + m))
+            y0b = int(max(0, yb0o - m));               y1b = int(min(ysz, yb1o + m))
+            w = max(0, min(x1a - x0a, x1b - x0b)); h = max(0, min(y1a - y0a, y1b - y0b))
+            sub1 = img1[y0a:y0a + h, x0a:x0a + w]
+            sub2 = img2[y0b:y0b + h, x0b:x0b + w]
+            ox, oy = x0a - x0b, y0a - y0b
+            x_ov, y_ov = int(xa1o - xa0o), int(ya1o - ya0o)
+        else:
+            ymargin, xmargin = pair_margins
+            xmargin = xmargin - left_crop
+            sub1 = img1[-ymargin:, -xmargin:]
+            sub2 = img2[0:ymargin, 0:xmargin]
+            ox, oy = xsz - xmargin, ysz - ymargin
+            x_ov, y_ov = int(xmargin), int(ymargin)
+
+        sub1f = sub1.astype(np.float32)
+        sub2f = sub2.astype(np.float32)
+
+        # ---- 3) instrumented ECC: cc trace per repeat ------------------------------
+        cc_trace = []
+        warp_crop = (dt_kwargs['warp_matrix'] + np.array(((0, 0, ox), (0, 0, oy)), dtype=np.float32)).copy()
+        cc_before = np.nan
+        try:
+            cc_before = float(cv2.computeECC(sub1f, sub2f))   # alignment quality at the nominal offset
+        except cv2.error:
+            pass
+        try:
+            for _ in range(repeats):
+                cc_i, warp_crop = cv2.findTransformECC(sub1, sub2, warp_crop, motion, criteria)
+                cc_trace.append(float(cc_i))
+        except cv2.error as e:
+            if verbose:
+                print('Instrumented ECC failed to converge: ', e)
+        cc_final = cc_trace[-1] if len(cc_trace) else np.nan
+
+        # ---- 4) before/after overlap imagery + residual metrics --------------------
+        aligned_sub2 = cv2.warpAffine(sub2, warp_crop, (sub1.shape[1], sub1.shape[0]),
+                                      flags=interpolation + cv2.WARP_INVERSE_MAP,
+                                      borderValue=fill_value)
+        diff_before = np.abs(sub1f - sub2f)
+        diff_after = np.abs(sub1f - aligned_sub2.astype(np.float32))
+        rms_before = float(np.sqrt(np.mean(diff_before ** 2)))
+        rms_after = float(np.sqrt(np.mean(diff_after ** 2)))
+        cc_after = np.nan
+        try:
+            cc_after = float(cv2.computeECC(sub1f, aligned_sub2.astype(np.float32)))
+        except cv2.error:
+            pass
+
+        ecc_results = {'cc_final': cc_final, 'cc_trace': cc_trace,
+                       'cc_before': cc_before, 'cc_after': cc_after,
+                       'tx': tx, 'ty': ty, 'tx_nominal': tx_nominal, 'ty_nominal': ty_nominal,
+                       'dtx': dtx, 'dty': dty, 'rms_before': rms_before, 'rms_after': rms_after,
+                       'overlap_xy': (x_ov, y_ov), 'crop_shape': tuple(sub1.shape),
+                       'converged': converged, 'error_code': error_code}
+
+        if verbose:
+            print('-' * 70)
+            print('ECC_evaluation for index_pair', index_pair, ' (layer,tile a=({:d},{:d}) b=({:d},{:d}))'.format(la, ta, lb, tb))
+            print('motion={}, repeats={:d}, criteria={}'.format(motion_name, repeats, criteria))
+            print('use_overlap_bounds={}, overlap_bound_margin={}, left_crop={:d}, deformation={}'.format(
+                  use_overlap_bounds and (overlap_bounds is not None), overlap_bound_margin, left_crop, perform_deformation))
+            print('Overlap (x,y) = ({:d}, {:d}),  crop shape (h,w) = {}'.format(x_ov, y_ov, tuple(sub1.shape)))
+            print('Converged: {} (error_code={})'.format(converged, error_code))
+            print('Nominal offset (tx,ty) = ({:.3f}, {:.3f}) from FirstPixels'.format(tx_nominal, ty_nominal))
+            print('ECC    offset (tx,ty) = ({:.3f}, {:.3f})'.format(tx, ty))
+            print('Deviation from nominal (dtx,dty) = ({:.3f}, {:.3f}),  |d|={:.3f}'.format(dtx, dty, np.hypot(dtx, dty)))
+            print('ECC correlation coefficient: before={:.5f}, final={:.5f}, after(warp)={:.5f}'.format(cc_before, cc_final, cc_after))
+            print('cc trace per repeat:', ['{:.5f}'.format(c) for c in cc_trace])
+            print('Overlap RMS abs-diff: before={:.3f}, after={:.3f}'.format(rms_before, rms_after))
+            print('full warp_matrix =\n', warp_matrix)
+
+            # ---- plots -------------------------------------------------------------
+            fsz = 9
+            fig, axs = plt.subplots(2, 3, figsize=(13, 8))
+            fig.subplots_adjust(left=0.04, bottom=0.04, right=0.98, top=0.90, wspace=0.20, hspace=0.20)
+            fig.suptitle('{}  ECC eval pair {}   motion={}, repeats={:d}, margin={}, cc_final={:.4f}'.format(
+                         Sample_ID, tuple(index_pair), motion_name, repeats, overlap_bound_margin, cc_final), fontsize=fsz + 1)
+            vmax_d = max(1.0, np.percentile(diff_before, 99))
+            axs[0, 0].imshow(sub1, cmap='Greys'); axs[0, 0].set_title('tile a overlap crop', fontsize=fsz)
+            axs[0, 1].imshow(sub2, cmap='Greys'); axs[0, 1].set_title('tile b overlap crop', fontsize=fsz)
+            axs[0, 2].imshow(aligned_sub2, cmap='Greys'); axs[0, 2].set_title('tile b aligned by ECC', fontsize=fsz)
+            axs[1, 0].imshow(diff_before, cmap='inferno', vmin=0, vmax=vmax_d)
+            axs[1, 0].set_title('|a - b| before  (RMS={:.2f}, cc={:.4f})'.format(rms_before, cc_before), fontsize=fsz)
+            axs[1, 1].imshow(diff_after, cmap='inferno', vmin=0, vmax=vmax_d)
+            axs[1, 1].set_title('|a - b| after   (RMS={:.2f}, cc={:.4f})'.format(rms_after, cc_after), fontsize=fsz)
+            if len(cc_trace):
+                axs[1, 2].plot(np.arange(1, len(cc_trace) + 1), cc_trace, 'o-')
+                axs[1, 2].set_xlabel('repeat'); axs[1, 2].set_ylabel('ECC cc'); axs[1, 2].grid(True)
+                axs[1, 2].set_title('cc convergence', fontsize=fsz)
+            else:
+                axs[1, 2].text(0.1, 0.5, 'ECC failed to converge', transform=axs[1, 2].transAxes)
+            for ax in [axs[0, 0], axs[0, 1], axs[0, 2], axs[1, 0], axs[1, 1]]:
+                ax.axis(False)
+
+            save_filename_default = os.path.join(self.data_dir,
+                'ECC_test_pair_{:d}_{:d}.png'.format(int(index_pair[0]), int(index_pair[1])))
+            save_filename = kwargs.get('save_filename', save_filename_default)
+            if save_res_png:
+                axs[1, 0].text(0.0, -0.18, save_filename, fontsize=5, transform=axs[1, 0].transAxes)
+                fig.savefig(save_filename, dpi=dpi)
+                print('Summary image saved into:', save_filename)
+
+        return warp_matrix, error_code, ecc_results
+
 
     def plot_matches_per_tile(self, **kwargs):
         '''
