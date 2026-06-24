@@ -266,6 +266,7 @@ def _write_zarr3_shard_s0_from_tiles(params, **kwargs):
         tile_I0s_all      = kwargs.pop('tile_I0s_all')
         tile_scales_all   = kwargs.pop('tile_scales_all')
         deformation_field = kwargs.pop('deformation_field')
+        uniform_I0        = kwargs.pop('uniform_I0', 0.0)
     else:
         import pickle
         with open(shared_path, 'rb') as f:
@@ -275,12 +276,14 @@ def _write_zarr3_shard_s0_from_tiles(params, **kwargs):
         tile_I0s_all      = shared['tile_I0s_all']
         tile_scales_all   = shared['tile_scales_all']
         deformation_field = shared['deformation_field']
+        uniform_I0        = shared.get('uniform_I0', 0.0)
 
     kwargs_tt = {
         'verbose': False,
         'interpolation': kwargs.get('interpolation'),
         'border_value':  kwargs.get('border_value', np.nan),
         'border_mode':   kwargs.get('border_mode'),
+        'uniform_I0':    uniform_I0,
     }
     kwargs_awp = {'weight_min': weight_min, 'weight_max': weight_max}
 
@@ -459,6 +462,7 @@ def transform_tile(tile_params, deformation_field, **kwargs):
     interpolation = kwargs.get('interpolation', cv2.INTER_LINEAR)
     border_value = kwargs.get('border_value', np.nan)
     border_mode = kwargs.get('border_mode', cv2.BORDER_CONSTANT)
+    uniform_I0 = kwargs.get('uniform_I0', 0.0)
 
     fr = FIBSEM_frame(fl)
     
@@ -467,7 +471,7 @@ def transform_tile(tile_params, deformation_field, **kwargs):
         tile_initial = fr.RawImageB.astype(np.float32)[:, left_crop:]
     else:
         tile_initial = fr.RawImageA.astype(np.float32)[:, left_crop:]
-    tile_initial_rescaled = (tile_initial - I0) * scale + I0
+    tile_initial_rescaled = (tile_initial - I0) * scale + uniform_I0
 
     # Step 2. Split tr_matr_single into large integer shift (dx, dy) and fractional transformation (transformation_matrix_fract).
     transformation_matrix_fract, dx, dy = split_translation_int_fract(tr_matr_single)
@@ -920,6 +924,7 @@ def assemble_layer(params, deformation_field, **kwargs):
     dtp, bin_factor, verbose = params
     layer_mosaic = np.zeros((Ysize, Xsize-left_crop), dtype=np.float32)
     layer_mosaic_weights = np.zeros((Ysize, Xsize-left_crop), dtype=np.float32)
+    uniform_I0 = kwargs.get('uniform_I0', 0)
     tile_params_mult = []
     for fl, (j, tr_matr_single) in zip(tqdm(fls_layer, desc = 'Building tile parameter sets', display = verbose), enumerate(tr_matr_layer)):
         tile_params_mult.append([j, fl, image_name, tr_matr_single, Ysize, Xsize, left_crop, tile_I0s[j], tile_scales[j]])
@@ -927,7 +932,8 @@ def assemble_layer(params, deformation_field, **kwargs):
     kwargs_tt = {'verbose' : verbose,
                 'interpolation' : interpolation,
                 'border_value' : border_value,
-                'border_mode' : border_mode}
+                'border_mode' : border_mode,
+                'uniform_I0' : uniform_I0}
 
     kwargs_awp = {'weight_min' : weight_min,
                 'weight_max' : weight_max}
@@ -2685,7 +2691,7 @@ class FIBSEM_mosaic_dataset:
         self.min_overlap_pixels                  = kwargs.get('min_overlap_pixels', 5000)
         self.percentile = kwargs.get('percentile', 50)
         self.SIFT_Affine_r2norm = np.nan    # residual 2-norm from the affine bundle solve
-        self.tile_I0s = np.zeros((self.nz_tiles, self.n_tiles_per_layer))
+        self.tile_I0s = np.full((self.nz_tiles, self.n_tiles_per_layer), float(self.Scaling[1, 0]))
         self.tile_scales = np.ones((self.nz_tiles, self.n_tiles_per_layer))
         # Pre-init so that `len(self.fnms_kpts) == 0` works in determine_transformations_SIFT
         # before extract_keypoints() has been called. Both are overwritten with shape
@@ -3367,12 +3373,24 @@ class FIBSEM_mosaic_dataset:
         Z-layer images the same XY region, matched features of two consecutive layers
         expressed in correct global coordinates would coincide; any consistent residual
         translation is the inter-layer FirstPixels drift to be removed.
+        The placement used to build each per-layer cloud is controlled by `position_source`:
+        the default uses the actual per-layer FirstPixels, while 'canonical_hex' uses
+        layer-independent canonical mFOV-hexagon positions so that only true content drift
+        (not per-layer tile-placement variation) survives into the estimated shift.
 
         Algorithm (steps 2, 3 and 4 optionally parallelized by DASK):
         1. Fixed subset of intra-layer tile IDs (`test_tile_ids`), identical for every layer.
         2. Extract SIFT key-points (or read the existing file, controlled by use_existing_data kwarg).
         3. Per layer, merge the test tiles' key-points into one cloud in global coords
-           (local kpt + FirstPixels[layer, tile]).  [DASK: compose_interlayer_keypoints_file]
+           (local kpt + tile XY), where the tile XY is selected by `position_source`:
+             'FirstPixels'   -> self.FirstPixels[layer, tile] (per-layer actual placement;
+                                per-layer placement variation enters each cloud).
+             'canonical_hex' -> a single layer-independent position per tile = (layer-averaged
+                                mFOV center) + avg_disp[tile_mfov_id], where avg_disp is the
+                                canonical hex pattern from check_mfov_hexagonal_pattern().
+                                Identical for every layer, so per-layer placement noise does
+                                NOT enter the clouds and the residual shift isolates true drift.
+           [DASK: compose_interlayer_keypoints_file]
         4. Per consecutive (or vs-first) layer pair, match the clouds and fit a RIGID
            shift (ShiftTransform) with RANSAC and OPENED-UP `drmax`.
            [DASK: determine_transformations_files]
@@ -3389,6 +3407,18 @@ class FIBSEM_mosaic_dataset:
         DASK_client : DASK client. If '' (default), all steps run locally.
         DASK_client_retries : int. Default self.DASK_client_retries.
         max_futures : int. Default self.max_futures.
+        position_source : str
+            XY positions used to place each test tile's key-point cloud into global coords:
+            'FirstPixels' (default) -> actual per-layer self.FirstPixels[layer, tile] (existing
+                behaviour; per-layer placement is baked into each cloud).
+            'canonical_hex' -> layer-independent canonical mFOV-hexagon positions
+                (per-mFOV center averaged over layers + avg displacement from
+                check_mfov_hexagonal_pattern()), identical for every layer, so the residual
+                cloud-to-cloud shift reflects true content drift. Requires an mFOV-hexagonal
+                layout (n_tiles_per_layer divisible by 91).
+        calc_avg_disp : boolean
+            Relevant if position_source=='canonical_hex'. If True (default), compute the canonical pattern (avg_disp) from this dataset.
+            If False, reuse the previously stored self.avg_disp if it exists. If self.avg_disp does not exist, force calc_avg_disp=True - and compute the canonical pattern (avg_disp) from this dataset.
         use_existing_data : boolean
             Passed to self.extract_keypoints(). If True (default), existing key-point
             files are reused; if False, key-points are (re)extracted for test tiles.
@@ -3438,6 +3468,10 @@ class FIBSEM_mosaic_dataset:
         plot_results = kwargs.get('plot_results', True)
         save_res_png = kwargs.get('save_res_png', self.save_res_png)
         Sample_ID = kwargs.get('Sample_ID', getattr(self, 'Sample_ID', ''))
+        position_source = kwargs.get('position_source', 'FirstPixels')
+        calc_avg_disp = kwargs.get('calc_avg_disp', True) or (not hasattr(self, 'avg_disp'))
+        if position_source not in ('FirstPixels', 'canonical_hex'):
+            raise ValueError("position_source must be 'FirstPixels' or 'canonical_hex', got {!r}".format(position_source))
 
         # ---- DASK setup (shared by steps 2, 3 and 4) ----------------------------
         DASK_client = kwargs.get('DASK_client', '')
@@ -3458,11 +3492,39 @@ class FIBSEM_mosaic_dataset:
             raise RuntimeError('extract_keypoints() produced no key-point files.')
         fnms_kpts_loc = fnms_kpts_loc.reshape((L, len(test_tile_ids)))
 
+        # Optional canonical hex positions: layer-independent, used for every layer.
+        # canonical_xy[i] corresponds to test_tile_ids[i].
+        canonical_xy = None
+        if position_source == 'canonical_hex':
+            TPM = 91
+            nt = self.n_tiles_per_layer
+            if nt % TPM != 0:
+                raise ValueError("position_source='canonical_hex' requires an mFOV-hexagonal "
+                                 "layout (n_tiles_per_layer divisible by 91); got {:d}.".format(nt))
+            n_mfov = nt // TPM
+            hex_res = self.check_mfov_hexagonal_pattern(verbose=verbose, calc_avg_disp=calc_avg_disp, save_avg_disp=False)
+            if hex_res is None:
+                raise RuntimeError("check_mfov_hexagonal_pattern() returned None; cannot build canonical positions.")
+            avg_disp   = np.asarray(hex_res['avg_displacement'])                       # (91, 2)
+            fp         = np.asarray(self.FirstPixels[:, :, 0:2], dtype=np.float64).reshape(L, n_mfov, TPM, 2)
+            center_avg = fp.mean(axis=2).mean(axis=0)                                  # (n_mfov, 2) layer-averaged centers
+            canonical_xy = np.empty((len(test_tile_ids), 2), dtype=np.float64)
+            for i, t in enumerate(test_tile_ids):
+                m, tid = divmod(int(t), TPM)
+                canonical_xy[i] = center_avg[m] + avg_disp[tid]
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                      + '   position_source=canonical_hex: test tiles span {:d} mFOV(s)'.format(
+                          len(np.unique(test_tile_ids // TPM))))
+
         # ---- Step 3: composite cloud per layer (global coords), optional DASK -
         params_compose = []
         composite_files = []
         for j in range(L):
-            first_pixels = [(float(self.FirstPixels[j, t, 0]), float(self.FirstPixels[j, t, 1])) for t in test_tile_ids]
+            if position_source == 'canonical_hex':
+                first_pixels = [(float(canonical_xy[i, 0]), float(canonical_xy[i, 1])) for i in range(len(test_tile_ids))]
+            else:
+                first_pixels = [(float(self.FirstPixels[j, t, 0]), float(self.FirstPixels[j, t, 1])) for t in test_tile_ids]
             fnm_out = os.path.join(out_dir, 'composite_interlayer_kpts_layer_{:05d}_kpdes.bin'.format(j))
             params_compose.append([fnms_kpts_loc[j], first_pixels, fnm_out, {'verbose': verbose}])
             composite_files.append(fnm_out)
@@ -3644,6 +3706,10 @@ class FIBSEM_mosaic_dataset:
             Number of histogram bins for building the PDF and CDF. Default is object attribute.
         percentile : int
             Percentile value for data evaluation. Default is obect attribute (50).
+        analyze_SNR : boolean
+            If True, SNR analysis via simulated Variance vs. Intensity is performed and adde to the returned dictionary. Default is True.
+        gradient_thr : float
+            Fractional threshold for gradient filtering. Default is 0.25.
         FIBSEM_Data_parquet : str
             File path of the Parquet file for the FIBSEM data set data to be saved (Data Min/Max, Working Distance, Milling Y Voltage, FOV center positions).
         use_existing_data : boolean
@@ -3696,6 +3762,8 @@ class FIBSEM_mosaic_dataset:
         else:
             Mill_Volt_Rate_um_per_V = kwargs.get("Mill_Volt_Rate_um_per_V", 31.235258870176065)
         percentile = kwargs.get('percentile', self.percentile)
+        analyze_SNR = kwargs.get('analyze_SNR', True)
+        gradient_thr = kwargs.get('gradient_thr', 0.25)
         self.percentile = percentile
         local_kwargs = {'use_DASK' : use_DASK,
                         'DASK_client_retries' : DASK_client_retries,
@@ -3707,6 +3775,8 @@ class FIBSEM_mosaic_dataset:
                         'thr_max' : thr_max,
                         'nbins' : nbins,
                         'percentile' : percentile,
+                        'analyze_SNR' : analyze_SNR,
+                        'gradient_thr' : gradient_thr,
                         'sliding_minmax' : False,
                         'fit_params' : fit_params,
                         'FIBSEM_Data_parquet' : FIBSEM_Data_parquet,
@@ -3773,7 +3843,114 @@ class FIBSEM_mosaic_dataset:
             print('Set the voxel size to: ', self.voxel_size)
 
         return self.FIBSEM_Data
-    
+
+
+    def generate_I0_SNR_report(self, **kwargs):
+        '''
+        Generate Report Plot for Dark Counts and SNRs and set self.tile_I0s
+        Requires that evaluate_FIBSEM_statistics() has been run and self.FIBSEM_Data exists. ©G.Shtengel 12/2022 gleb.shtengel@gmail.com
+
+        kwargs:
+        ----------
+        frame_inds : array or list
+            Array of frame/layer indices to plot; default is np.arange(self.nz_tiles).
+        fit_params : list
+            Savitzky-Golay smoothing for the stored self.tile_I0s, ['SG', window, polyorder].
+            Default ['SG', 101, 3]; window is clamped to the data length.
+        Sample_ID : str
+            Sample label for the plot title; default is self.Sample_ID.
+        n_tiles_per_layer : int
+            Number of tiles to iterate over; default is self.n_tiles_per_layer.
+        data_dir : path
+            Directory used as fallback for save_fname; default is self.data_dir.
+        tile_id : int
+            tile ID to show. Default is 0.
+        save_png : boolean
+            If True (default), the plot is saved into PNG file.
+        dpi : int
+            DPI for PNG. Default is 300.
+        save_fname : string
+            File name to save the PNG image. Default is os.path.splitext(self.fnm_mosaic_stack)[0] + '_I0s_SNRs.png'.
+        verbose : boolean
+            Display intermediate results. Default is False.
+
+        Returns:
+        ----------
+        save_fname
+
+        '''
+        if not hasattr(self, 'FIBSEM_Data') or self.FIBSEM_Data is None:
+            raise RuntimeError("FIBSEM_Data not available. Run evaluate_FIBSEM_statistics(analyze_SNR=True) first.")
+        if 'I0s' not in self.FIBSEM_Data or 'SNRs' not in self.FIBSEM_Data:
+            raise RuntimeError("I0s/SNRs missing from FIBSEM_Data. Re-run evaluate_FIBSEM_statistics(analyze_SNR=True).")
+        n_tiles_per_layer = kwargs.get('n_tiles_per_layer', self.n_tiles_per_layer)
+        frame_inds = kwargs.get('frame_inds', np.arange(self.nz_tiles))
+        tile_id = kwargs.get('tile_id', 0)
+        verbose = kwargs.get('verbose', False)
+        save_png = kwargs.get('save_png', True)
+        dpi = kwargs.get('dpi', 300)
+        data_dir = kwargs.get('data_dir', self.data_dir)
+        fit_params = kwargs.get("fit_params", ['SG', 101, 3])
+        if save_png:
+            try:
+                save_fname = kwargs.get('save_fname', os.path.splitext(self.fnm_mosaic_stack)[0] + '_I0s_SNRs.png')
+            except:
+                save_fname = kwargs.get('save_fname', os.path.join(data_dir, '_I0s_SNRs.png'))
+        else:
+            save_fname = 'Image not saved'
+        Sample_ID = kwargs.get('Sample_ID', self.Sample_ID)
+        
+        I0s  = np.asarray(self.FIBSEM_Data['I0s']).reshape(-1, n_tiles_per_layer)   # (nz_tiles, ntpl)
+        sv_apert = min([fit_params[1], I0s.shape[0]//8*2 + 1])
+        if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Using fit_params: ', 'SG', sv_apert, fit_params[2])
+        SNRs = np.asarray(self.FIBSEM_Data['SNRs']).reshape(-1, n_tiles_per_layer)
+        I0s_smothed = np.zeros_like(I0s)
+
+        if verbose:
+            print('Generating Plot')
+        fig, axs = plt.subplots(4,1, figsize = (6,13), sharex=True)
+        fig.subplots_adjust(left=0.15, bottom=0.06, right=0.99, top=0.97, wspace=0.05, hspace=0.03)
+
+        for k in np.arange(n_tiles_per_layer):
+            my_col = plt.get_cmap("gist_rainbow_r")((n_tiles_per_layer-k)/(n_tiles_per_layer-1))
+            I0k  = I0s[frame_inds, k]
+            I0k_smothed = savgol_filter(I0s[:, k].astype(np.double), sv_apert, fit_params[2])
+            I0s_smothed[:, k] = I0k_smothed
+            SNRk = SNRs[frame_inds, k]
+            if k == tile_id:
+                axs[0].plot(frame_inds, I0k, color=my_col, marker='.', linestyle='none', markersize=4, label='Tile {:d}, I0'.format(tile_id))
+                axs[1].plot(frame_inds, SNRk, color=my_col, marker='.', linestyle='none', markersize=4, label='Tile {:d}, SNR'.format(tile_id))
+                axs[2].plot(frame_inds, I0k, color='red', marker='.', linestyle='none', markersize=4, label='Tile {:d}, I0'.format(tile_id))
+                axs[0].plot(frame_inds, I0k_smothed[frame_inds], color='red', label='Tile {:d}, I0 smoothed'.format(tile_id))
+                axs[3].plot(frame_inds, SNRk, color='blue', marker='.', linestyle='none', markersize=4, label='Tile {:d}, SNR'.format(tile_id))
+            else:
+                axs[0].plot(frame_inds, I0k, color=my_col, marker='.', linestyle='none', markersize=4)
+                axs[1].plot(frame_inds, SNRk, color=my_col, marker='.', linestyle='none', markersize=4)
+
+        for ax in axs:
+            ax.grid(True)
+            ax.legend(fontsize=12, loc='lower right')
+
+        axs[0].text(0.40, 0.92, 'All Tiles: I0s', transform=axs[0].transAxes, fontsize=12)
+        axs[0].text(0.2, 1.03, Sample_ID, transform=axs[0].transAxes, fontsize=12)
+        axs[1].text(0.40, 0.92, 'All Tiles: SNRs', transform=axs[1].transAxes, fontsize=12)
+        axs[3].set_xlabel('Frame')
+        axs[0].set_ylabel('I0 (Dark Count)')
+        axs[1].set_ylabel('SNR')
+        axs[2].set_ylabel('I0 (Dark Count)')
+        axs[3].set_ylabel('SNR')
+        display(fig)
+        if save_png:
+            axs[3].text(-0.1, -0.18, save_fname, transform=axs[3].transAxes, fontsize=5)
+            fig.savefig(save_fname, dpi=dpi)
+        plt.close(fig)
+
+        self.tile_I0s = I0s_smothed
+
+        return save_fname
+
+
     def compute_detector_target_intensity_ratios(self, **kwargs):
         '''
         Compute per-pair "detector-prior" target intensity ratios.
@@ -3785,11 +3962,11 @@ class FIBSEM_mosaic_dataset:
             T_ab = I_{det(b)} / I_{det(a)}.
         Pairs where either detector ID is unparseable or has < min_tiles_per_detector
         samples are marked invalid and excluded from the prior.
+        Uses self.tile_I0s data as image intensity offsets - compute that if desired.
 
         kwargs:
         -------
         method : 'mean' or 'percentile'.    Default 'percentile'.
-        I0 : float.                          Default self.Scaling[1, 0].
         detector_id_pattern : raw str.       Default r'sfov_(\\d+)'.
         min_tiles_per_detector : int.        Default 5.
         verbose : bool.                      Default False.
@@ -3803,7 +3980,6 @@ class FIBSEM_mosaic_dataset:
         '''
         import re
         method                 = kwargs.get('method', 'percentile')
-        I0                     = kwargs.get('I0', self.Scaling[1, 0])
         pattern                = kwargs.get('detector_id_pattern', r'sfov_(\d+)')
         min_tiles_per_detector = kwargs.get('min_tiles_per_detector', 5)
         verbose                = kwargs.get('verbose', False)
@@ -3817,7 +3993,7 @@ class FIBSEM_mosaic_dataset:
             vals = np.array(self.FIBSEM_Data['dpercentiles'], dtype=np.float64)
         else:
             raise ValueError("method must be 'mean' or 'percentile'.")
-        vals_corr = vals - I0    # dark-count corrected
+        vals_corr = vals - self.tile_I0s.ravel()
 
         # --- Parse detector IDs from filenames. ---
         fls_flat = self.fls.ravel()
@@ -3926,8 +4102,6 @@ class FIBSEM_mosaic_dataset:
         ----------
         method : str
             'mean' or 'percentile'. Default is 'percentile'.
-        I0 : float
-            Dark-count offset subtracted before computing ratios. Default is self.Scaling[1, 0].
         verbose : boolean
             Display summary statistics. Default is False.
 
@@ -3938,7 +4112,6 @@ class FIBSEM_mosaic_dataset:
             or self.percentile_intensity_ratios depending on method.
         '''
         method = kwargs.get('method', 'percentile')
-        I0 = kwargs.get('I0', self.Scaling[1, 0])
         verbose = kwargs.get('verbose', False)
 
         if not hasattr(self, 'FIBSEM_Data') or self.FIBSEM_Data is None:
@@ -3953,7 +4126,7 @@ class FIBSEM_mosaic_dataset:
         else:
             raise ValueError("method '{}' not supported. Use 'mean' or 'percentile'.".format(method))
 
-        vals_corr = vals - I0
+        vals_corr = vals - self.tile_I0s.ravel()
         tile_i = self.index_pairs[:, 0]
         tile_j = self.index_pairs[:, 1]
         vi = vals_corr[tile_i]
@@ -3977,15 +4150,13 @@ class FIBSEM_mosaic_dataset:
         inside each pair's overlap ROI, using the post-solve tile positions
         (self.tr_matr). Parallelized across TILES using DASK so that each tile
         file is read at most once even when it participates in several pairs.
+        Uses self.tile_I0s data as image intensity offsets - compute that if desired.
         ©G.Shtengel gleb.shtengel@gmail.com
 
         kwargs
         ------
         method : str
             'mean' or 'percentile'. Default 'percentile'.
-        I0 : float
-            Dark-count offset subtracted before computing ratios.
-            Default self.Scaling[1, 0].
         percentile : int
             Percentile used when method == 'percentile'. Default self.percentile.
         min_overlap_pixels : int
@@ -4012,7 +4183,6 @@ class FIBSEM_mosaic_dataset:
         min_overlap_pixels AND both mean intensities are positive after I0 subtraction).
         '''
         method             = kwargs.get('method', 'percentile')
-        I0                 = kwargs.get('I0', self.Scaling[1, 0])
         percentile         = kwargs.get('percentile', self.percentile)
         min_overlap_pixels = kwargs.get('min_overlap_pixels', self.min_overlap_pixels)
         DASK_client        = kwargs.get('DASK_client', '')
@@ -4033,11 +4203,10 @@ class FIBSEM_mosaic_dataset:
         # roi_id = (pair_index, side)  with side in (0, 1)  for (a, b).
         per_tile_rois = {}
         for j, (abs_a, abs_b) in enumerate(self.index_pairs):
-            if not pair_valid_by_area[j]:
-                continue
-            x_min_a, x_max_a, y_min_a, y_max_a, x_min_b, x_max_b, y_min_b, y_max_b = bounds[j]
-            per_tile_rois.setdefault(int(abs_a), []).append(((j, 0), x_min_a, x_max_a, y_min_a, y_max_a))
-            per_tile_rois.setdefault(int(abs_b), []).append(((j, 1), x_min_b, x_max_b, y_min_b, y_max_b))
+            if pair_valid_by_area[j]:
+                x_min_a, x_max_a, y_min_a, y_max_a, x_min_b, x_max_b, y_min_b, y_max_b = bounds[j]
+                per_tile_rois.setdefault(int(abs_a), []).append(((j, 0), x_min_a, x_max_a, y_min_a, y_max_a))
+                per_tile_rois.setdefault(int(abs_b), []).append(((j, 1), x_min_b, x_max_b, y_min_b, y_max_b))
 
         fls_flat = self.fls.ravel()
         worker_kwargs = {'ftype': ftype, 'method': method, 'percentile': percentile}
@@ -4085,8 +4254,9 @@ class FIBSEM_mosaic_dataset:
             vb = roi_vals.get((j, 1), np.nan)
             if not (np.isfinite(va) and np.isfinite(vb)):
                 continue
-            vi = va - I0
-            vj = vb - I0
+            abs_a, abs_b = self.index_pairs[j]
+            vi = va - self.tile_I0s.ravel()[int(abs_a)]
+            vj = vb - self.tile_I0s.ravel()[int(abs_b)]
             if vi > 0 and vj > 0:
                 ratios[j] = vj / vi
                 valid[j]  = True
@@ -4571,7 +4741,12 @@ class FIBSEM_mosaic_dataset:
                     self.SIFT_nmatches[j] = len(transformations_result[2][0])
                     self.SIFT_transformation_valid[j] = self.SIFT_nmatches[j] > SIFT_nmatches_min
                     src_selected_ints, dst_selected_ints = transformations_result[3]
-                    self.SIFT_intensity_ratios[j] = np.mean(dst_selected_ints / src_selected_ints)
+                    abs_a, abs_b = self.index_pairs[j]
+                    I0_a = self.tile_I0s.ravel()[int(abs_a)]
+                    I0_b = self.tile_I0s.ravel()[int(abs_b)]
+                    num = np.mean(dst_selected_ints) - I0_b
+                    den = np.mean(src_selected_ints) - I0_a
+                    self.SIFT_intensity_ratios[j] = (num / den) if (num > 0 and den > 0) else np.nan
                 except Exception as e:
                     if verbose:
                         print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   An error occurred: {}'.format(e))
@@ -4674,11 +4849,12 @@ class FIBSEM_mosaic_dataset:
             perform_deformation_text = 'True'
         else:
             perform_deformation_text = 'False'
-
+        abs_a, abs_b = index_pair
+        I0_a = self.tile_I0s.ravel()[int(abs_a)]
+        I0_b = self.tile_I0s.ravel()[int(abs_b)]
         thr_min = kwargs.get("thr_min", self.thr_min)
         thr_max = kwargs.get("thr_max", self.thr_max)
         nbins = kwargs.get("nbins", self.nbins)
-        I0 = kwargs.get('I0', self.Scaling[1,0])
         SIFT_nfeatures = kwargs.get("SIFT_nfeatures", self.SIFT_nfeatures)
         SIFT_nOctaveLayers = kwargs.get("SIFT_nOctaveLayers", self.SIFT_nOctaveLayers)
         SIFT_contrastThreshold = kwargs.get("SIFT_contrastThreshold", self.SIFT_contrastThreshold)
@@ -4827,7 +5003,7 @@ class FIBSEM_mosaic_dataset:
             if n_matches>0:
                 src_pts_filtered, dst_pts_filtered = kpts
                 src_intensities, dst_intensities = kpt_ints
-                int_ratios = (dst_intensities-I0)/(src_intensities-I0)
+                int_ratios = (dst_intensities-I0_b)/(src_intensities-I0_a)
                 src_pts_transformed = src_pts_filtered @ transform_matrix[0:2, 0:2].T + transform_matrix[0:2, 2]
                 xshifts = (dst_pts_filtered - src_pts_transformed)[:,0]
                 yshifts = (dst_pts_filtered - src_pts_transformed)[:,1]
@@ -4855,7 +5031,7 @@ class FIBSEM_mosaic_dataset:
                 ax_int = axs0[2]
                 ax_int.set_xlabel('Img1/Img0 Key-Pt Intensity Ratio')
                 ax_int.set_ylabel('Count')
-                axs0[0].text(0.05, 1.12, Sample_ID + ',  thr_min={:.0e}, thr_max={:.0e}, data range: {:.1f} ÷ {:.1f}, I0={:.1f}'.format(thr_min, thr_max, dmin, dmax, I0), transform=axs0[0].transAxes, fontsize=fsz)
+                axs0[0].text(0.05, 1.12, Sample_ID + ',  thr_min={:.0e}, thr_max={:.0e}, data range: {:.1f} ÷ {:.1f}, I0_a={:.1f}, I0_b={:.1f}'.format(thr_min, thr_max, dmin, dmax, I0_a, I0_b), transform=axs0[0].transAxes, fontsize=fsz)
                 axs0[0].text(0.01, 1.03, 'SIFT_nOctaveLayers={:d},  SIFT_edgeThreshold={:.3f}, SIFT_contrastThreshold={:.3f},  SIFT_sigma={:.3f}'.format(SIFT_nOctaveLayers, SIFT_edgeThreshold, SIFT_contrastThreshold, SIFT_sigma), fontsize=fsz, transform=axs0[0].transAxes)
 
                 hist_int, bins_int, patches_int = ax_int.hist(int_ratios, bins = 64)
@@ -6043,8 +6219,6 @@ class FIBSEM_mosaic_dataset:
             'overlap_percentile' — percentile over each pair's overlap ROI.
                                    Requires prior compute_overlap_intensity_ratios(method='percentile', DASK_client=...).
           Default is 'SIFT'.
-        I0 : float
-          Dark-count offset subtracted before computing ratios. Default is self.Scaling[1, 0].
         intralayer_weight : float
           Weight for intra-layer pair constraints. Default is self.intralayer_weight.
         interlayer_weight : float
@@ -6079,7 +6253,6 @@ class FIBSEM_mosaic_dataset:
         '''
         verbose = kwargs.get('verbose', False)
         method = kwargs.get('method', 'SIFT')
-        I0 = kwargs.get('I0', self.Scaling[1, 0])
         intralayer_weight = kwargs.get('intralayer_weight', self.intralayer_weight)
         interlayer_weight = kwargs.get('interlayer_weight', self.interlayer_weight)
         tikhonov_damp = kwargs.get('tikhonov_damp', 0.0)
@@ -6416,6 +6589,7 @@ class FIBSEM_mosaic_dataset:
                     'interpolation' : interpolation,
                     'border_value' : border_value,
                     'border_mode' : border_mode,
+                    'uniform_I0' : float(np.mean(self.tile_I0s)) if perform_intensity_normalization else 0.0,
                     'local_DASK_client' : DASK_client,
                     'DASK_client_retries' : DASK_client_retries}
 
@@ -6977,6 +7151,7 @@ class FIBSEM_mosaic_dataset:
             'interpolation' : interpolation,
             'border_value' : border_value,
             'border_mode' : border_mode}
+        kwargs_al['uniform_I0'] = float(np.mean(self.tile_I0s)) if perform_intensity_normalization else 0.0
         if U8_range is not None:
             kwargs_al['U8_range'] = U8_range
 
@@ -7144,6 +7319,7 @@ class FIBSEM_mosaic_dataset:
         left_crop  = kwargs.get('left_crop', self.left_crop)
         deformation_field = kwargs.get('deformation_field', self.deformation_field)
         perform_norm = kwargs.get('perform_intensity_normalization', False)
+        uniform_I0      = float(np.mean(self.tile_I0s)) if perform_norm else 0.0
         use_default_coords = kwargs.get('use_default_coordinates', False)
         flatten_mosaic = kwargs.get('flatten_mosaic', False)
         dtp = kwargs.get('dtp', np.int16)
@@ -7416,6 +7592,7 @@ class FIBSEM_mosaic_dataset:
                 'tr_matr_all':       tr_matr_all,
                 'tile_I0s_all':      tile_I0s_all,
                 'tile_scales_all':   tile_scales_all,
+                'uniform_I0':        uniform_I0,
             }, f, protocol=pickle.HIGHEST_PROTOCOL)
 
         if use_DASK:
@@ -7454,6 +7631,7 @@ class FIBSEM_mosaic_dataset:
                     tr_matr_all       = tr_matr_all,
                     tile_I0s_all      = tile_I0s_all,
                     tile_scales_all   = tile_scales_all,
+                    uniform_I0        = uniform_I0,
                     **kwargs_tt,
                 )
 
