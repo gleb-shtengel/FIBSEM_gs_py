@@ -1221,6 +1221,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         mean_s = sum_s[sel] / c
         mean_d = sum_d[sel] / c
         var_d  = sum_d2[sel] / c - mean_d ** 2
+    result    = np.column_stack([mean_s, var_d])
     valid     = c > 0
     mean_vals = mean_s[valid]
     var_vals  = var_d[valid]
@@ -9065,7 +9066,7 @@ def evaluate_FIBSEM_frame(params):
         ScanRate = 0
         EHT = 0
         SEMSpecimenI = 0
-        ex_error = err
+        ex_error = repr(err)
         XResolution = 0
         YResolution = 0
         SEMStiX = 0
@@ -9090,7 +9091,7 @@ def evaluate_FIBSEM_frame(params):
                 I0_val, SNR_val = res_SNR['I0'], res_SNR['SNR0a']
             except Exception as err:
                 if ex_error is None:
-                    ex_error = err
+                    ex_error = repr(err)
         return {
             'dmin': dmin, 'dmax': dmax, 'dmean': dmean, 'dpercentile': dpercentile,
             'WD': WD, 'MillingYVoltage': MillingYVoltage,
