@@ -8942,12 +8942,16 @@ def evaluate_FIBSEM_frame(params):
             CDF threshold for determining the maximum data value
         nbins : int
             number of histogram bins for building the PDF and CDF
+        analyze_SNR : boolean
+            If True, SNR analysis via simulated Variance vs. Intensity is performed and adde to the returned dictionary. Default is False.
+        gradient_thr : float
+            Fractional threshold for gradient filtering. Default is 0.25.
 
     Returns:
     ----------
     dictionary : return {'dmin': dmin, 'dmax': dmax, 'dmean': dmean, 'dpercentile': dpercentile, 'WD': WD, 'MillingYVoltage': MillingYVoltage,
         'center_x': center_x, 'center_y': center_y, 'ScanRate': ScanRate, 'EHT': EHT, 'SEMSpecimenI': SEMSpecimenI,
-        'XResolution': XResolution, 'YResolution': YResolution, 'SEMStiX': SEMStiX, 'SEMStiY': SEMStiY, 'SEMAlnX': SEMAlnX, 'SEMAlnY': SEMAlnY, 'ex_error': ex_error} - SEM parameters 
+        'XResolution': XResolution, 'YResolution': YResolution, 'SEMStiX': SEMStiX, 'SEMStiY': SEMStiY, 'SEMAlnX': SEMAlnX, 'SEMAlnY': SEMAlnY, 'I0' : res_SNR['I0'], 'SNR' : res_SNR['SNR0a'], 'ex_error': ex_error} - SEM parameters 
     '''
     fl, kwargs = params
     ftype = kwargs.get("ftype", 0)
@@ -8957,6 +8961,8 @@ def evaluate_FIBSEM_frame(params):
     thr_max = kwargs.get("thr_max", 1e-3)
     nbins = kwargs.get("nbins", 256)
     percentile = kwargs.get('percentile', 50)
+    analyze_SNR = kwargs.get('analyze_SNR', False)
+    gradient_thr = kwargs.get('gradient_thr', 0.25)
     ex_error=None
     try:
         frame = FIBSEM_frame(fl, ftype=ftype, calculate_scaled_images=calculate_scaled_images)
@@ -9060,7 +9066,37 @@ def evaluate_FIBSEM_frame(params):
         dmean = 0.0
         dpercentile = 0.0
 
-    return {
+    if analyze_SNR:
+        I0_val, SNR_val = np.nan, np.nan
+        if ex_error is None:                      # frame is guaranteed bound only here
+            try:
+                if gradient_thr < 0.99:
+                    abs_grad = calculate_gradient_map(frame.RawImageA, disp_res=False)
+                    gr_min, gr_max = get_min_max_thresholds(abs_grad, thr_min=gradient_thr, disp_res=False)
+                    res_SNR = Single_Image_Noise_Statistics(frame.RawImageA,
+                        filter_array=abs_grad < gr_min, disp_res=False, save_res_png=False)
+                else:
+                    res_SNR = Single_Image_Noise_Statistics(frame.RawImageA,
+                        disp_res=False, save_res_png=False)
+                I0_val, SNR_val = res_SNR['I0'], res_SNR['SNR0a']
+            except Exception as err:
+                if ex_error is None:
+                    ex_error = err
+        return {
+            'dmin': dmin, 'dmax': dmax, 'dmean': dmean, 'dpercentile': dpercentile,
+            'WD': WD, 'MillingYVoltage': MillingYVoltage,
+            'center_x': center_x, 'center_y': center_y,
+            'ScanRate': ScanRate, 'EHT': EHT, 'SEMSpecimenI': SEMSpecimenI,
+            'XResolution': XResolution, 'YResolution': YResolution,
+            'SEMStiX': SEMStiX, 'SEMStiY': SEMStiY,
+            'SEMAlnX': SEMAlnX, 'SEMAlnY': SEMAlnY,
+            'I0' : I0_val,
+            'SNR' : SNR_val,
+            'ex_error': ex_error
+        }
+
+    else:
+        return {
             'dmin': dmin, 'dmax': dmax, 'dmean': dmean, 'dpercentile': dpercentile,
             'WD': WD, 'MillingYVoltage': MillingYVoltage,
             'center_x': center_x, 'center_y': center_y,
@@ -9114,32 +9150,40 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
     verbose : boolean
         If True (default), intermediate messages and results will be displayed.
     use_existing_data : boolean
-        Default is False. If True and the data exists (saved to Parquet), use that.   
+        Default is False. If True and the data exists (saved to Parquet), use that.
+    analyze_SNR : boolean
+        If True, SNR analysis via simulated Variance vs. Intensity is performed and adde to the returned dictionary. Default is False.
+    gradient_thr : float
+        Fractional threshold for gradient filtering. Default is 0.25.
 
     Returns:
     ----------
-    FIBSEM_Data : list of 20 parameters
-        FIBSEM_Data_parquet, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding, mill_rate_WD, mill_rate_MV, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolutions, YResolutions, SEMStiX, SEMStiY, SEMAlnX, SEMAlnY, errors_s2
-            FIBSEM_Data_parquet : str
-                path to Parquet file with the FIBSEM data
-            data_min_glob : np.float32   
-                min data value for I8 conversion (open CV SIFT requires I8)
-            data_man_glob : np.float32   
-                max data value for I8 conversion (open CV SIFT requires I8)
-            center_x : np.float32 array
-                FOV Center X-coordinate extracted from the header data
-            center_y : np.float32 array
-                FOV Center Y-coordinate extracted from the header data
-            ScanRate : np.float32 array
-                SEM Scan Rate (Hz)
-            EHT : np.float32 array
-                SEM EHT voltage (kV)
-            SEMSpecimenI : np.float32 array
-                SEM Specimen current (nA)
-            XResolutions : int array
-                X-frame sizes
-            YResolutions : int array
-                Y-frame sizes
+    Dictionary of FIBSEM data analysis results
+            {
+            'FIBSEM_Data_parquet': FIBSEM_Data_parquet_path,
+            'data_min_glob':    data_min_glob,
+            'data_max_glob':    data_max_glob,
+            'data_min_sliding': data_min_sliding,
+            'data_max_sliding': data_max_sliding,
+            'mill_rate_WD':     mill_rate_WD,
+            'mill_rate_MV':     mill_rate_MV,
+            'center_x':         center_x,
+            'center_y':         center_y,
+            'ScanRate':         ScanRate,
+            'EHT':              EHT,
+            'SEMSpecimenI':     SEMSpecimenI,
+            'XResolutions':     XResolutions,
+            'YResolutions':     YResolutions,
+            'SEMStiX':          SEMStiX,
+            'SEMStiY':          SEMStiY,
+            'SEMAlnX':          SEMAlnX,
+            'SEMAlnY':          SEMAlnY,
+            'dmeans':           dmeans,
+            'dpercentiles':     dpercentiles,
+            'I0s' : I0s, present if analyze_SNR==True,
+            'SNRs' : SNRs , present if analyze_SNR==True,
+            'errors':           errors_s2,
+        }
 '''
 
     nfrs = len(fls)
@@ -9166,6 +9210,8 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
     FIBSEM_Data_parquet = kwargs.get('FIBSEM_Data_parquet', 'FIBSEM_Data.parquet')
     FIBSEM_Data_parquet_path = os.path.join(data_dir, FIBSEM_Data_parquet)
     verbose = kwargs.get("verbose", False)
+    analyze_SNR = kwargs.get('analyze_SNR', False)
+    gradient_thr = kwargs.get('gradient_thr', 0.25)
     use_existing_data = kwargs.get('use_existing_data', False)
 
     if use_existing_data and os.path.exists(FIBSEM_Data_parquet_path):
@@ -9220,6 +9266,14 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
             dpercentiles = int_results['Percentile']
         except:
             dpercentiles = fr * 0.0
+        try:
+            I0s = int_results['I0s']
+        except: 
+            I0s = fr * 0.0
+        try:
+            SNRs = int_results['SNRs']
+        except: 
+            SNRs = fr * 0.0
         data_min_glob, trash = get_min_max_thresholds(data_minmax_glob[:, 0], thr_min = thr_min, thr_max = thr_max, nbins = nbins, disp_res=False)
         trash, data_max_glob = get_min_max_thresholds(data_minmax_glob[:, 1], thr_min = thr_min, thr_max = thr_max, nbins = nbins, disp_res=False)
         if fit_params[0] != 'None':
@@ -9257,6 +9311,8 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
             ScanRate = np.zeros(nfrs, dtype=np.float32)
             EHT = np.zeros(nfrs, dtype=np.float32)
             SEMSpecimenI = np.zeros(nfrs, dtype=np.float32)
+            I0s = np.zeros(nfrs, dtype=np.float32)
+            SNRs = np.zeros(nfrs, dtype=np.float32)
             errors_s2 = np.zeros(nfrs, dtype=int)
             dmeans = np.zeros(nfrs, dtype=np.float32)
             dpercentiles = np.zeros(nfrs, dtype=np.float32)
@@ -9272,8 +9328,8 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
             # so each task carries ~150 bytes instead of ~28 MB.  This is the
             # difference between submission completing in seconds vs. hours for
             # million-frame datasets.
-            _WORKER_KWARG_KEYS = ('ftype', 'image_name',
-                'thr_min', 'thr_max', 'nbins', 'percentile')
+            _WORKER_KWARG_KEYS = ('ftype', 'image_name', 'thr_min', 'thr_max', 'nbins',
+                      'percentile', 'analyze_SNR', 'gradient_thr')
             worker_kwargs = {k: kwargs[k] for k in _WORKER_KWARG_KEYS if k in kwargs}
             params_s2 = [[fl, worker_kwargs] for fl in np.array(fls)[frame_inds]]
             results_s2 = []
@@ -9333,47 +9389,94 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
             SEMStiY       = np.array([r['SEMStiY']      for r in results_s2])
             SEMAlnX       = np.array([r['SEMAlnX']      for r in results_s2])
             SEMAlnY       = np.array([r['SEMAlnY']      for r in results_s2])
+            if analyze_SNR:
+                I0s       = np.array([r['I0']      for r in results_s2])
+                SNRs      = np.array([r['SNR']      for r in results_s2])
 
-    columns = ['Frame', 'Min', 'Max', 'Mean', 'Percentile', 'Sliding Min', 'Sliding Max',
-           'Working Distance (mm)', 'Milling Y Voltage (V)',
-           'FOV X Center (Pix)', 'FOV Y Center (Pix)',
-           'XResolutions', 'YResolutions', 'Scan Rate (Hz)', 'EHT (kV)',
-           'SEMSpecimenI (nA)', 'SEMStiX', 'SEMStiY', 'SEMAlnX', 'SEMAlnY', 'Error Code']
-    minmax_df = pd.DataFrame(np.vstack((
-        frame_inds.T, data_minmax_glob.T,
-        dmeans.T, dpercentiles.T,
-        data_min_sliding.T, data_max_sliding.T,
-        mill_rate_WD.T, mill_rate_MV.T,
-        center_x.T, center_y.T,
-        XResolutions.T, YResolutions.T,
-        ScanRate.T, EHT.T, SEMSpecimenI.T,
-        SEMStiX.T, SEMStiY.T, SEMAlnX.T, SEMAlnY.T,
-        np.array(errors_s2).T)).T, columns=columns, index=None)
+    if analyze_SNR:
+        columns = ['Frame', 'Min', 'Max', 'Mean', 'Percentile', 'Sliding Min', 'Sliding Max',
+               'Working Distance (mm)', 'Milling Y Voltage (V)',
+               'FOV X Center (Pix)', 'FOV Y Center (Pix)',
+               'XResolutions', 'YResolutions', 'Scan Rate (Hz)', 'EHT (kV)',
+               'SEMSpecimenI (nA)', 'SEMStiX', 'SEMStiY', 'SEMAlnX', 'SEMAlnY', 'I0s', 'SNRs', 'Error Code']
+        minmax_df = pd.DataFrame(np.vstack((
+            frame_inds.T, data_minmax_glob.T,
+            dmeans.T, dpercentiles.T,
+            data_min_sliding.T, data_max_sliding.T,
+            mill_rate_WD.T, mill_rate_MV.T,
+            center_x.T, center_y.T,
+            XResolutions.T, YResolutions.T,
+            ScanRate.T, EHT.T, SEMSpecimenI.T,
+            SEMStiX.T, SEMStiY.T, SEMAlnX.T, SEMAlnY.T, I0s.T, SNRs.T,
+            np.array(errors_s2).T)).T, columns=columns, index=None)
 
-    # Build the result dict FIRST so it's always returned, even if the save below fails.
-    result = {
-            'FIBSEM_Data_parquet': FIBSEM_Data_parquet_path,
-            'data_min_glob':    data_min_glob,
-            'data_max_glob':    data_max_glob,
-            'data_min_sliding': data_min_sliding,
-            'data_max_sliding': data_max_sliding,
-            'mill_rate_WD':     mill_rate_WD,
-            'mill_rate_MV':     mill_rate_MV,
-            'center_x':         center_x,
-            'center_y':         center_y,
-            'ScanRate':         ScanRate,
-            'EHT':              EHT,
-            'SEMSpecimenI':     SEMSpecimenI,
-            'XResolutions':     XResolutions,
-            'YResolutions':     YResolutions,
-            'SEMStiX':          SEMStiX,
-            'SEMStiY':          SEMStiY,
-            'SEMAlnX':          SEMAlnX,
-            'SEMAlnY':          SEMAlnY,
-            'dmeans':           dmeans,
-            'dpercentiles':     dpercentiles,
-            'errors':           errors_s2,
-        }
+        # Build the result dict FIRST so it's always returned, even if the save below fails.
+        result = {
+                'FIBSEM_Data_parquet': FIBSEM_Data_parquet_path,
+                'data_min_glob':    data_min_glob,
+                'data_max_glob':    data_max_glob,
+                'data_min_sliding': data_min_sliding,
+                'data_max_sliding': data_max_sliding,
+                'mill_rate_WD':     mill_rate_WD,
+                'mill_rate_MV':     mill_rate_MV,
+                'center_x':         center_x,
+                'center_y':         center_y,
+                'ScanRate':         ScanRate,
+                'EHT':              EHT,
+                'SEMSpecimenI':     SEMSpecimenI,
+                'XResolutions':     XResolutions,
+                'YResolutions':     YResolutions,
+                'SEMStiX':          SEMStiX,
+                'SEMStiY':          SEMStiY,
+                'SEMAlnX':          SEMAlnX,
+                'SEMAlnY':          SEMAlnY,
+                'dmeans':           dmeans,
+                'dpercentiles':     dpercentiles,
+                'I0s' :             I0s,
+                'SNRs' :            SNRs, 
+                'errors':           errors_s2,
+            }
+    else:
+        columns = ['Frame', 'Min', 'Max', 'Mean', 'Percentile', 'Sliding Min', 'Sliding Max',
+               'Working Distance (mm)', 'Milling Y Voltage (V)',
+               'FOV X Center (Pix)', 'FOV Y Center (Pix)',
+               'XResolutions', 'YResolutions', 'Scan Rate (Hz)', 'EHT (kV)',
+               'SEMSpecimenI (nA)', 'SEMStiX', 'SEMStiY', 'SEMAlnX', 'SEMAlnY', 'Error Code']
+        minmax_df = pd.DataFrame(np.vstack((
+            frame_inds.T, data_minmax_glob.T,
+            dmeans.T, dpercentiles.T,
+            data_min_sliding.T, data_max_sliding.T,
+            mill_rate_WD.T, mill_rate_MV.T,
+            center_x.T, center_y.T,
+            XResolutions.T, YResolutions.T,
+            ScanRate.T, EHT.T, SEMSpecimenI.T,
+            SEMStiX.T, SEMStiY.T, SEMAlnX.T, SEMAlnY.T,
+            np.array(errors_s2).T)).T, columns=columns, index=None)
+
+        # Build the result dict FIRST so it's always returned, even if the save below fails.
+        result = {
+                'FIBSEM_Data_parquet': FIBSEM_Data_parquet_path,
+                'data_min_glob':    data_min_glob,
+                'data_max_glob':    data_max_glob,
+                'data_min_sliding': data_min_sliding,
+                'data_max_sliding': data_max_sliding,
+                'mill_rate_WD':     mill_rate_WD,
+                'mill_rate_MV':     mill_rate_MV,
+                'center_x':         center_x,
+                'center_y':         center_y,
+                'ScanRate':         ScanRate,
+                'EHT':              EHT,
+                'SEMSpecimenI':     SEMSpecimenI,
+                'XResolutions':     XResolutions,
+                'YResolutions':     YResolutions,
+                'SEMStiX':          SEMStiX,
+                'SEMStiY':          SEMStiY,
+                'SEMAlnX':          SEMAlnX,
+                'SEMAlnY':          SEMAlnY,
+                'dmeans':           dmeans,
+                'dpercentiles':     dpercentiles,
+                'errors':           errors_s2,
+            }
 
     # Save to Parquet (columnar, type-preserving, no row limit). Wrap in try/except
     # so any IO failure doesn't cost the user the just-computed in-memory results.
