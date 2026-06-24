@@ -1160,6 +1160,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     disp_res_SNR0 = kwargs.get("disp_res_SNR0", True)
     disp_res_SNR1 = kwargs.get("disp_res_SNR1", True)
     save_res_png = kwargs.get("save_res_png", True)
+    make_fig = disp_res or save_res_png
     res_fname = kwargs.get("res_fname", 'Noise_Analysis.png')
     image_name = kwargs.get("image_name", '')
     Notes = kwargs.get("Notes", '')
@@ -1236,7 +1237,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     #filter_nonzero = np.product(imdiff_filtered.shape)<np.product(imdiff.shape)
     filter_nonzero = np.prod(imdiff_filtered.shape)<np.prod(imdiff.shape)
 
-    if disp_res:
+    if make_fig:
         range_imdiff = get_min_max_thresholds(imdiff, thr_min = thresholds_disp[0], thr_max = thresholds_disp[1], nbins = nbins_disp, disp_res = False)
         low_mask = img*0.0+255.0
         high_mask = low_mask.copy()
@@ -1271,7 +1272,6 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         axs[2].axis(False)
         axs[2].set_title('Image Difference', fontsize=fs+1)
 
-    if disp_res:
         hist, bins, patches = axs[4].hist(img_smoothed_filtered.ravel(), range=range_disp, bins = nbins_disp)
     else:
         hist, bins = np.histogram(img_smoothed_filtered.ravel(), range=range_disp, bins = nbins_disp)
@@ -1282,7 +1282,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     C_peak = hist_smooth.max()
     Ipeak_lbl = '$I_{peak}$' +'={:.1f}'.format(I_peak)
    
-    if disp_res:
+    if make_fig:
         axs[4].plot(I_peak, C_peak, 'rd', label = Ipeak_lbl)
         if filter_nonzero:
             axs[4].set_title('Histogram of the Filtered Smoothed Image', fontsize=fs+1)
@@ -1297,7 +1297,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         ylim4=np.array(axs[4].get_ylim())
         axs[4].set_ylim(ylim4)
 
-    if disp_res:
+    if make_fig:
         hist, bins, patches = axs[5].hist(imdiff_filtered.ravel(), bins = nbins_disp)
         axs[5].grid(True)
         if filter_nonzero:
@@ -1321,7 +1321,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     Slope_header = np.mean(var_vals/(mean_vals-DarkCount))
           
     var_fit_header = (mean_vals-DarkCount) * Slope_header
-    if disp_res:
+    if make_fig:
         axs[3].plot(mean_vals, var_vals, 'r.', label='data')
         if disp_res_SNR0:
             axs[3].plot(mean_vals, var_fit, 'b', label='linear fit: {:.1f}*x + {:.1f}'.format(popt[0], popt[1]))
@@ -1402,7 +1402,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         Pmax = np.max((popt2[0], popt2[3]))
         I_mean = (I_high + I_low) / 2.0
         contrast = (I_high-I_low)/(I_mean-I0)
-        if disp_res:
+        if make_fig:
             axs[4].plot(x, gauss_fit2, color = 'grey', linewidth = 2, label='Double Gauss Fit')
             axs[4].plot(x, gauss_fit_low, color = 'cyan', linewidth = 2, label='Low Gauss Fit, $I_{low}$' +' = {:.1f}'.format(I_low))
             #axs[4].plot([I_low, I_low], [0, Pmax], color = 'cyan', linestyle='dashed', label='$I_{low}$' +' = {:.1f}'.format(I_low))
@@ -1412,7 +1412,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
             axs[4].plot(x[0], pdf[0], color = 'black', linestyle='none',  label='Image Contrast =  {:.3f}'.format(contrast))
             axs[4].legend(loc='upper right', fontsize=fs+1)
     else:
-        if disp_res: 
+        if make_fig: 
             axs[4].plot([range_SNR_analysis[0], range_SNR_analysis[0]],[ylim4[0]-1000, ylim4[1]], color='lime', linestyle='dashed', label='Ilow')
             axs[4].plot([range_SNR_analysis[1], range_SNR_analysis[1]],[ylim4[0]-1000, ylim4[1]], color='red', linestyle='dashed', label='Ihigh')
             axs[4].plot(bin_centers[hist_center_ind], hist_smooth[hist_center_ind], color='grey', linestyle='dashed', linewidth=2)
@@ -1425,7 +1425,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
             txt3 = '{:.3f}  {:.3f}  {:.3f}'.format(kernel[2,0], kernel[2,1], kernel[2,2])
             axs[4].text(0.69, 0.820, txt3, transform=axs[4].transAxes, backgroundcolor='white', fontsize=fs-2)
             axs[4].legend(loc='center right', fontsize=fs-1)
-    if disp_res:
+    if make_fig:
         axs[4].grid(True)
     
     if disp_res:
@@ -1444,16 +1444,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Data range: I_contrast_low = {:.2f}, I_contrast_high = {:.2f}'.format(Ilow, Ihigh))
             print('Dark Count = {:.2f}'.format(I0))
             print('Contrast = {:.3f}'.format(contrast))
-            '''
-            txt1 = '$I_{contrast.low}$' + ' = {:.2f}'.format(I_low)
-            axs[4].text(0.65, 0.72, txt1, transform=axs[4].transAxes, color='blue', fontsize=fs+1)
-            txt2 = '$I_{contrast.high}$' + ' = {:.2f}'.format(I_high)
-            axs[4].text(0.65, 0.65, txt2, transform=axs[4].transAxes, color='magenta', fontsize=fs+1)
-            txt3 = '$I_{0}$' +' = {:.1f}'.format(I0)
-            axs[4].text(0.65, 0.58, txt3, transform=axs[4].transAxes, color='black', fontsize=fs+1)
-            txt4 = 'Contrast = {:.3f}'.format(contrast)
-            axs[4].text(0.65, 0.51, txt4, transform=axs[4].transAxes, color='black', fontsize=fs+1)
-            '''
+    if make_fig:
         if disp_res_SNR0:
             txt1 = 'Zero Int, Free Fit:    ' +'$I_{0}$' +'={:.1f}'.format(I0)
             axs[3].text(0.35, 0.27, txt1, transform=axs[3].transAxes, color='blue', fontsize=fs+1)
@@ -1461,7 +1452,6 @@ def Single_Image_Noise_Statistics(img, **kwargs):
             axs[3].text(0.35, 0.22, txt2f, transform=axs[3].transAxes, color='blue', fontsize=fs+1)
             txt2a = 'SNR0 all pts. <$S^2$>/<$S$> = '+'{:.2f}'.format(SNR0a)
             axs[3].text(0.35, 0.17, txt2a, transform=axs[3].transAxes, color='blue', fontsize=fs+1)
-        
         if disp_res_SNR1:
             txt3 = 'Zero Int, Dark Cnt.:    ' +'$I_{0}$' +'={:.1f}'.format(DarkCount)
             axs[3].text(0.35, 0.12, txt3, transform=axs[3].transAxes, color='magenta', fontsize=fs+1)
@@ -1470,10 +1460,12 @@ def Single_Image_Noise_Statistics(img, **kwargs):
             txt4a = 'SNR1 all pts. <$S^2$>/<$S$> = '+'{:.2f}'.format(SNR1a)
             axs[3].text(0.35, 0.02, txt4a, transform=axs[3].transAxes, color='magenta', fontsize=fs+1)
 
-        if save_res_png:
-            fig.savefig(res_fname, dpi=dpi)
-            print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   results saved into the file: '+res_fname)
+    if save_res_png:
+        fig.savefig(res_fname, dpi=dpi)
+        print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   results saved into the file: '+res_fname)
+    if disp_res:
         display(fig)
+    if make_fig:
         plt.close(fig)
     return {
         'mean_vals':    mean_vals,
