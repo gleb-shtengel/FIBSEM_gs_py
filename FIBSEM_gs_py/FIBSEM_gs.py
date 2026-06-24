@@ -1183,12 +1183,12 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     else:
         ya_eval = ya
 
-    img = img[yi_eval:ya_eval, xi_eval:xa_eval]
-    img_smoothed = convolve2d(img, kernel, mode='same')[1:-1, 1:-1]
+    img = img[yi_eval:ya_eval, xi_eval:xa_eval].astype(np.float32)
+    img_smoothed = cv2.filter2D(img, -1, kernel, borderType=cv2.BORDER_REFLECT)[1:-1, 1:-1]
     img = img[1:-1, 1:-1]
     filter_array = filter_array[yi_eval:ya_eval, xi_eval:xa_eval][1:-1, 1:-1]
     
-    imdiff = (img-img_smoothed)
+    imdiff = (img-img_smoothed).astype(np.float32)
     img_smoothed_filtered = img_smoothed[filter_array]
     imdiff_filtered = imdiff[filter_array]
     
@@ -1207,31 +1207,42 @@ def Single_Image_Noise_Statistics(img, **kwargs):
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   The EM data range for contrast analysis:     {:.2f} to {:.2f}'.format(Ilow, Ihigh))
     
     bins_analysis = np.linspace(range_SNR_analysis[0], range_SNR_analysis[1], nbins_analysis)
-    range_imdiff = get_min_max_thresholds(imdiff, thr_min = thresholds_disp[0], thr_max = thresholds_disp[1], nbins = nbins_disp, disp_res = False)
-    ind_new = np.digitize(img_smoothed_filtered, bins_analysis)
-    
-    result = np.array([(np.mean(img_smoothed_filtered[ind_new == j]), np.var(imdiff_filtered[ind_new == j]))  for j in range(1, nbins_analysis)])
-    non_nan_ind = np.argwhere(np.invert(np.isnan(result[:, 0])))
-    mean_vals = np.squeeze(result[non_nan_ind, 0])
-    var_vals = np.squeeze(result[non_nan_ind, 1])
+    ind_new = np.digitize(img_smoothed_filtered, bins_analysis).astype(np.int32)
+    s  = img_smoothed_filtered.astype(np.float64)
+    d  = imdiff_filtered.astype(np.float64)
+    nb = nbins_analysis
+    counts = np.bincount(ind_new, minlength=nb + 1).astype(np.float64)
+    sum_s  = np.bincount(ind_new, weights=s,     minlength=nb + 1)
+    sum_d  = np.bincount(ind_new, weights=d,     minlength=nb + 1)
+    sum_d2 = np.bincount(ind_new, weights=d * d, minlength=nb + 1)
+    sel = slice(1, nb)                       # bins 1..nb-1, matching range(1, nbins_analysis)
+    c = counts[sel]
+    with np.errstate(invalid='ignore', divide='ignore'):
+        mean_s = sum_s[sel] / c
+        mean_d = sum_d[sel] / c
+        var_d  = sum_d2[sel] / c - mean_d ** 2
+    valid     = c > 0
+    mean_vals = mean_s[valid]
+    var_vals  = var_d[valid]
     
     xsz=15.0
     yx_ratio = img.shape[0]/img.shape[1]
     ysz = xsz/3.0*yx_ratio + 5.0
     xsz = xsz / max((xsz, ysz)) * 15.0
     ysz = ysz / max((xsz, ysz)) * 15.0
-    low_mask = img*0.0+255.0
-    high_mask = low_mask.copy()
-    filter_mask = low_mask.copy()
-    low_mask[img_smoothed > range_SNR_analysis[0]] = np.nan
-    high_mask[img_smoothed < range_SNR_analysis[1]] = np.nan
-    filter_mask[filter_array==True] = np.nan
     
     # np.product is deprecated, use np.prod instead
     #filter_nonzero = np.product(imdiff_filtered.shape)<np.product(imdiff.shape)
     filter_nonzero = np.prod(imdiff_filtered.shape)<np.prod(imdiff.shape)
 
     if disp_res:
+        range_imdiff = get_min_max_thresholds(imdiff, thr_min = thresholds_disp[0], thr_max = thresholds_disp[1], nbins = nbins_disp, disp_res = False)
+        low_mask = img*0.0+255.0
+        high_mask = low_mask.copy()
+        filter_mask = low_mask.copy()
+        low_mask[img_smoothed > range_SNR_analysis[0]] = np.nan
+        high_mask[img_smoothed < range_SNR_analysis[1]] = np.nan
+        filter_mask[filter_array==True] = np.nan
         fs=11
         fig, axss = plt.subplots(2,3, figsize=(xsz,ysz),  gridspec_kw={"height_ratios" : [yx_ratio, 1.0]})
         fig.subplots_adjust(left=0.07, bottom=0.08, right=0.99, top=0.90, wspace=0.15, hspace=0.10)
@@ -1293,8 +1304,6 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         else:
             axs[5].set_title('Histogram of the Difference Map', fontsize=fs+1)
         axs[5].set_xlabel('Image Difference', fontsize=fs+1) 
-    else:
-        hist, bins = np.histogram(imdiff_filtered.ravel(), bins = nbins_disp)
     try:
         popt = np.polyfit(mean_vals, var_vals, 1)
         I_array = np.array((range_SNR_analysis[0], range_SNR_analysis[1], I_peak))
