@@ -1402,29 +1402,31 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         Pmax = np.max((popt2[0], popt2[3]))
         I_mean = (I_high + I_low) / 2.0
         contrast = (I_high-I_low)/(I_mean-I0)
-        axs[4].plot(x, gauss_fit2, color = 'grey', linewidth = 2, label='Double Gauss Fit')
-        axs[4].plot(x, gauss_fit_low, color = 'cyan', linewidth = 2, label='Low Gauss Fit, $I_{low}$' +' = {:.1f}'.format(I_low))
-        #axs[4].plot([I_low, I_low], [0, Pmax], color = 'cyan', linestyle='dashed', label='$I_{low}$' +' = {:.1f}'.format(I_low))
-        axs[4].plot(x, gauss_fit_high, color = 'magenta', linewidth = 2, label='High Gauss Fit, $I_{high}$' +' = {:.1f}'.format(I_high))
-        #axs[4].plot([I_high, I_high], [0, Pmax], color = 'magenta', linestyle='dashed', label='$I_{high}$' +' = {:.1f}'.format(I_high))
-        axs[4].plot(x[0], pdf[0], color = 'black', linestyle='none',  label='$I_{0}$' +' = {:.1f}'.format(I0))
-        axs[4].plot(x[0], pdf[0], color = 'black', linestyle='none',  label='Image Contrast =  {:.3f}'.format(contrast))
-        axs[4].legend(loc='upper right', fontsize=fs+1)
+        if disp_res:
+            axs[4].plot(x, gauss_fit2, color = 'grey', linewidth = 2, label='Double Gauss Fit')
+            axs[4].plot(x, gauss_fit_low, color = 'cyan', linewidth = 2, label='Low Gauss Fit, $I_{low}$' +' = {:.1f}'.format(I_low))
+            #axs[4].plot([I_low, I_low], [0, Pmax], color = 'cyan', linestyle='dashed', label='$I_{low}$' +' = {:.1f}'.format(I_low))
+            axs[4].plot(x, gauss_fit_high, color = 'magenta', linewidth = 2, label='High Gauss Fit, $I_{high}$' +' = {:.1f}'.format(I_high))
+            #axs[4].plot([I_high, I_high], [0, Pmax], color = 'magenta', linestyle='dashed', label='$I_{high}$' +' = {:.1f}'.format(I_high))
+            axs[4].plot(x[0], pdf[0], color = 'black', linestyle='none',  label='$I_{0}$' +' = {:.1f}'.format(I0))
+            axs[4].plot(x[0], pdf[0], color = 'black', linestyle='none',  label='Image Contrast =  {:.3f}'.format(contrast))
+            axs[4].legend(loc='upper right', fontsize=fs+1)
     else:
-
-        axs[4].plot([range_SNR_analysis[0], range_SNR_analysis[0]],[ylim4[0]-1000, ylim4[1]], color='lime', linestyle='dashed', label='Ilow')
-        axs[4].plot([range_SNR_analysis[1], range_SNR_analysis[1]],[ylim4[0]-1000, ylim4[1]], color='red', linestyle='dashed', label='Ihigh')
-        axs[4].plot(bin_centers[hist_center_ind], hist_smooth[hist_center_ind], color='grey', linestyle='dashed', linewidth=2)
-        txt1 = 'Smoothing Kernel'
-        axs[4].text(0.69, 0.955, txt1, transform=axs[4].transAxes, backgroundcolor='white', fontsize=fs-1)
-        txt2 = '{:.3f}  {:.3f}  {:.3f}'.format(kernel[0,0], kernel[0,1], kernel[0,2])
-        axs[4].text(0.69, 0.910, txt2, transform=axs[4].transAxes, backgroundcolor='white', fontsize=fs-2)
-        txt3 = '{:.3f}  {:.3f}  {:.3f}'.format(kernel[1,0], kernel[1,1], kernel[1,2])
-        axs[4].text(0.69, 0.865, txt3, transform=axs[4].transAxes, backgroundcolor='white', fontsize=fs-2)
-        txt3 = '{:.3f}  {:.3f}  {:.3f}'.format(kernel[2,0], kernel[2,1], kernel[2,2])
-        axs[4].text(0.69, 0.820, txt3, transform=axs[4].transAxes, backgroundcolor='white', fontsize=fs-2)
-        axs[4].legend(loc='center right', fontsize=fs-1)
-    axs[4].grid(True)
+        if disp_res: 
+            axs[4].plot([range_SNR_analysis[0], range_SNR_analysis[0]],[ylim4[0]-1000, ylim4[1]], color='lime', linestyle='dashed', label='Ilow')
+            axs[4].plot([range_SNR_analysis[1], range_SNR_analysis[1]],[ylim4[0]-1000, ylim4[1]], color='red', linestyle='dashed', label='Ihigh')
+            axs[4].plot(bin_centers[hist_center_ind], hist_smooth[hist_center_ind], color='grey', linestyle='dashed', linewidth=2)
+            txt1 = 'Smoothing Kernel'
+            axs[4].text(0.69, 0.955, txt1, transform=axs[4].transAxes, backgroundcolor='white', fontsize=fs-1)
+            txt2 = '{:.3f}  {:.3f}  {:.3f}'.format(kernel[0,0], kernel[0,1], kernel[0,2])
+            axs[4].text(0.69, 0.910, txt2, transform=axs[4].transAxes, backgroundcolor='white', fontsize=fs-2)
+            txt3 = '{:.3f}  {:.3f}  {:.3f}'.format(kernel[1,0], kernel[1,1], kernel[1,2])
+            axs[4].text(0.69, 0.865, txt3, transform=axs[4].transAxes, backgroundcolor='white', fontsize=fs-2)
+            txt3 = '{:.3f}  {:.3f}  {:.3f}'.format(kernel[2,0], kernel[2,1], kernel[2,2])
+            axs[4].text(0.69, 0.820, txt3, transform=axs[4].transAxes, backgroundcolor='white', fontsize=fs-2)
+            axs[4].legend(loc='center right', fontsize=fs-1)
+    if disp_res:
+        axs[4].grid(True)
     
     if disp_res:
         print('')
