@@ -3890,7 +3890,7 @@ class FIBSEM_mosaic_dataset:
         save_png = kwargs.get('save_png', True)
         dpi = kwargs.get('dpi', 300)
         data_dir = kwargs.get('data_dir', self.data_dir)
-        fit_params = kwargs.get("fit_params", ['SG', 101, 3])
+        fit_params = kwargs.get("fit_params", ['SG', 11, 3])
         if save_png:
             try:
                 save_fname = kwargs.get('save_fname', os.path.splitext(self.fnm_mosaic_stack)[0] + '_I0s_SNRs.png')
@@ -3919,14 +3919,14 @@ class FIBSEM_mosaic_dataset:
             I0s_smothed[:, k] = I0k_smothed
             SNRk = SNRs[frame_inds, k]
             if k == tile_id:
-                axs[0].plot(frame_inds, I0k, color=my_col, marker='.', linestyle='none', markersize=4, label='Tile {:d}, I0'.format(tile_id))
-                axs[1].plot(frame_inds, SNRk, color=my_col, marker='.', linestyle='none', markersize=4, label='Tile {:d}, SNR'.format(tile_id))
-                axs[2].plot(frame_inds, I0k, color='red', marker='.', linestyle='none', markersize=4, label='Tile {:d}, I0'.format(tile_id))
-                axs[0].plot(frame_inds, I0k_smothed[frame_inds], color='red', label='Tile {:d}, I0 smoothed'.format(tile_id))
-                axs[3].plot(frame_inds, SNRk, color='blue', marker='.', linestyle='none', markersize=4, label='Tile {:d}, SNR'.format(tile_id))
+                axs[0].plot(frame_inds, I0k, color=my_col, marker='.', linestyle='none', markersize=2, label='Tile {:d}, I0'.format(tile_id))
+                axs[1].plot(frame_inds, SNRk, color=my_col, marker='.', linestyle='none', markersize=2, label='Tile {:d}, SNR'.format(tile_id))
+                axs[2].plot(frame_inds, I0k, color='red', marker='.', linestyle='none', markersize=2, label='Tile {:d}, I0'.format(tile_id))
+                axs[2].plot(frame_inds, I0k_smothed[frame_inds], color='red', label='Tile {:d}, I0 smoothed'.format(tile_id))
+                axs[3].plot(frame_inds, SNRk, color='blue', marker='.', linestyle='none', markersize=2, label='Tile {:d}, SNR'.format(tile_id))
             else:
-                axs[0].plot(frame_inds, I0k, color=my_col, marker='.', linestyle='none', markersize=4)
-                axs[1].plot(frame_inds, SNRk, color=my_col, marker='.', linestyle='none', markersize=4)
+                axs[0].plot(frame_inds, I0k, color=my_col, marker='.', linestyle='none', markersize=2)
+                axs[1].plot(frame_inds, SNRk, color=my_col, marker='.', linestyle='none', markersize=2)
 
         for ax in axs:
             ax.grid(True)
