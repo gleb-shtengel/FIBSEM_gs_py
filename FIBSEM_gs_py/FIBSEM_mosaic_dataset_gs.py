@@ -3672,7 +3672,7 @@ class FIBSEM_mosaic_dataset:
                 tid_ids  = np.arange(nt) % TPM
                 canonical_pos_all = center_avg[mfov_ids] + avg_disp[tid_ids]    # (n_tiles_per_layer, 2)
                 self.FirstPixels[:, :, 0:2] = (canonical_pos_all[None, :, :]
-                                               + cumulative_drifts[:, None, :])
+                                               - cumulative_drifts[:, None, :])
             else:
                 # Remove the measured inter-layer drift from the existing FirstPixels.
                 self.FirstPixels[:, :, 0:2] -= cumulative_drifts[:, None, :]
