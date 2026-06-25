@@ -3416,6 +3416,15 @@ class FIBSEM_mosaic_dataset:
                 check_mfov_hexagonal_pattern()), identical for every layer, so the residual
                 cloud-to-cloud shift reflects true content drift. Requires an mFOV-hexagonal
                 layout (n_tiles_per_layer divisible by 91).
+        update_FirstPixel_data : bool
+            If True (default), write the drift correction back into self.FirstPixels and
+            rebuild geometry (compute_index_pairs_and_geometry). The update depends on
+            position_source:
+              'FirstPixels'   -> self.FirstPixels[:, :, :2] -= cumulative_drifts (per layer).
+              'canonical_hex' -> self.FirstPixels[:, :, :2] is REPLACED by the canonical hex
+                                 layout (layer-averaged mFOV center + avg_disp) + cumulative_drifts,
+                                 for ALL tiles (snaps the layout to the ideal hex grid).
+            If False, only the result dict is returned and self.FirstPixels is left untouched.
         calc_avg_disp : boolean
             Relevant if position_source=='canonical_hex'. If True (default), compute the canonical pattern (avg_disp) from this dataset.
             If False, reuse the previously stored self.avg_disp if it exists. If self.avg_disp does not exist, force calc_avg_disp=True - and compute the canonical pattern (avg_disp) from this dataset.
@@ -3446,9 +3455,11 @@ class FIBSEM_mosaic_dataset:
         result : dict with keys 'test_tile_ids', 'relative_shifts' (L,2),
             'cumulative_drifts' (L,2), 'nmatches' (L,), 'valid' (L,), 'composite_files'.
 
-        To apply later (step 5):
+        With update_FirstPixel_data=True (default) self.FirstPixels is corrected in place
+        and geometry is rebuilt automatically (see the update_FirstPixel_data kwarg above).
+        With update_FirstPixel_data=False, apply manually:
             d = res['cumulative_drifts']
-            self.FirstPixels[:, :, :2] -= d[:, None, :]
+            self.FirstPixels[:, :, :2] -= d[:, None, :]        # 'FirstPixels' mode only
             self.compute_index_pairs_and_geometry()
         '''
         verbose = kwargs.get('verbose', False)
@@ -3464,12 +3475,14 @@ class FIBSEM_mosaic_dataset:
         BFMatcher = kwargs.get('BFMatcher', self.BFMatcher)
         SIFT_nmatches_min = kwargs.get('SIFT_nmatches_min', 10)
         save_matches = kwargs.get('save_matches', False)
-        out_dir = kwargs.get('out_dir', self.data_dir)
+        out_dir = kwargs.get('out_dir', os.path.join(self.data_dir, 'FirstPixel_drifts'))
+        os.makedirs(out_dir, exist_ok=True)
         plot_results = kwargs.get('plot_results', True)
         save_res_png = kwargs.get('save_res_png', self.save_res_png)
         Sample_ID = kwargs.get('Sample_ID', getattr(self, 'Sample_ID', ''))
         position_source = kwargs.get('position_source', 'FirstPixels')
         calc_avg_disp = kwargs.get('calc_avg_disp', True) or (not hasattr(self, 'avg_disp'))
+        update_FirstPixel_data = kwargs.get('update_FirstPixel_data', True)
         if position_source not in ('FirstPixels', 'canonical_hex'):
             raise ValueError("position_source must be 'FirstPixels' or 'canonical_hex', got {!r}".format(position_source))
 
@@ -3649,6 +3662,26 @@ class FIBSEM_mosaic_dataset:
                 fig.savefig(save_fname, dpi=300)
             display(fig)
             plt.close(fig)
+
+        # ---- Step 6: optionally write the correction back into self.FirstPixels ----
+        if update_FirstPixel_data:
+            if position_source == 'canonical_hex':
+                # Replace every tile with the regularized canonical hex layout, shifted
+                # per-layer by the measured drift (anchored at layer 0).
+                mfov_ids = np.arange(nt) // TPM
+                tid_ids  = np.arange(nt) % TPM
+                canonical_pos_all = center_avg[mfov_ids] + avg_disp[tid_ids]    # (n_tiles_per_layer, 2)
+                self.FirstPixels[:, :, 0:2] = (canonical_pos_all[None, :, :]
+                                               + cumulative_drifts[:, None, :])
+            else:
+                # Remove the measured inter-layer drift from the existing FirstPixels.
+                self.FirstPixels[:, :, 0:2] -= cumulative_drifts[:, None, :]
+            # FirstPixels-derived geometry is now stale — rebuild it.
+            self.compute_index_pairs_and_geometry(verbose=verbose)
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                      + '   self.FirstPixels updated (position_source={}) and geometry recomputed.'.format(
+                          position_source))
 
         return {
             'test_tile_ids': test_tile_ids,
@@ -6809,7 +6842,7 @@ class FIBSEM_mosaic_dataset:
                     except:
                         det_str = 'Detector:'
                 print(det_str + ', data range: vmin={:.2f}, vmax={:.2f}'.format(vmin, vmax))
-                ax.imshow(layer_mosaic, cmap='Greys', vmin = vmin, vmax = vmax)
+                ax.imshow(layer_mosaic, cmap='Greys', vmin = vmin, vmax = vmax, interpolation='nearest')
                 ax.axis(False)
                 overlay_montage_grid(ax, self,
                                      tile_positions = -tr_matr_layer[:, 0:2, 2],
@@ -6826,7 +6859,8 @@ class FIBSEM_mosaic_dataset:
                     else:
                         image_fname_loc = image_fname
                 fig.savefig(image_fname_loc, dpi=dpi)
-                display(fig)
+                if verbose:
+                    display(fig)
                 plt.close(fig)
 
         return layer_mosaics, layer_id
