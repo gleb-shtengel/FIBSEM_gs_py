@@ -5855,8 +5855,7 @@ class FIBSEM_mosaic_dataset:
             self.tr_matr = self.default_tr_matr.copy()
 
         if method not in valid_methods:
-            if verbose:
-                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Method ' + method +' is not among valid methods: ', valid_methods)
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Method ' + method +' is not among valid methods: ', valid_methods)
             return np.nan
 
         if method == 'SIFT-Affine':
