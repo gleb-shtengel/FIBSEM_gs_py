@@ -3910,7 +3910,7 @@ class FIBSEM_mosaic_dataset:
             Array of frame/layer indices to plot; default is np.arange(self.nz_tiles).
         fit_params : list
             Savitzky-Golay smoothing for the stored self.tile_I0s, ['SG', window, polyorder].
-            Default ['SG', 101, 3]; window is clamped to the data length.
+            Default ['SG', 11, 3]; window is clamped to the data length.
         Sample_ID : str
             Sample label for the plot title; default is self.Sample_ID.
         n_tiles_per_layer : int
@@ -4003,6 +4003,124 @@ class FIBSEM_mosaic_dataset:
         self.tile_I0s = I0s_smothed
 
         return save_fname
+
+
+    def generate_intensity_report(self, **kwargs):
+        '''
+        Generate Report Plot for Image Intensity. ©G.Shtengel 06/2022 gleb.shtengel@gmail.com
+        Uses :
+        self.tile_I0s - per tile Dark Counts
+        self.FIBSEM_Data['dmeans'] - per tile mean intensities
+        self.FIBSEM_Data['dpercentiles'] - per tile percentile intensities
+        self.tile_scales - intensity multipliers
+
+        kwargs:
+        ----------
+        frame_inds : array or list
+            Array of frame/layer indices to plot; default is np.arange(self.nz_tiles).
+        fit_params : list
+            Savitzky-Golay smoothing for the stored self.tile_I0s, ['SG', window, polyorder].
+            Default ['SG', 101, 3]; window is clamped to the data length.
+        Sample_ID : str
+            Sample label for the plot title; default is self.Sample_ID.
+        n_tiles_per_layer : int
+            Number of tiles to iterate over; default is self.n_tiles_per_layer.
+        data_dir : path
+            Directory used as fallback for save_fname; default is self.data_dir.
+        tile_id : int
+            tile ID to show. Default is 0.
+        save_png : boolean
+            If True (default), the plot is saved into PNG file.
+        dpi : int
+            DPI for PNG. Default is 300.
+        save_fname : string
+            File name to save the PNG image. Default is os.path.join(data_dir, 'Intensities.png').
+        verbose : boolean
+            Display intermediate results. Default is False.
+
+        Returns:
+        ----------
+        save_fname, aim, aims, aip, aips:
+            aim : tile intensity means averaged over all tiles across z-layer
+            aims : tile intensity means averaged over all tiles across z-layer, smoothed using fit_params
+            aip : tile intensity percentile values averaged over all tiles across z-layer
+            aips : tile intensity percentile values averaged over all tiles across z-layer, smoothed using fit_params
+
+        '''
+        n_tiles_per_layer = kwargs.get('n_tiles_per_layer', self.n_tiles_per_layer)
+        tile_id = kwargs.get('tile_id', 0)
+        verbose = kwargs.get('verbose', False)
+        save_png = kwargs.get('save_png', True)
+        dpi = kwargs.get('dpi', 300)
+        data_dir = kwargs.get('data_dir', self.data_dir)
+        fit_params = kwargs.get("fit_params", ['SG', 101, 3])
+        sv_apert = min([fit_params[1], self.tile_I0s.shape[0]//8*2 + 1])
+        if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Using fit_params: ', 'SG', sv_apert, fit_params[2])
+        if save_png:
+            try:
+                save_fname = kwargs.get('save_fname', os.path.splitext(self.fnm_mosaic_stack)[0] + '_Intensities.png')
+            except:
+                save_fname = kwargs.get('save_fname', os.path.join(data_dir, 'Intensities.png'))
+        else:
+            save_fname = 'Image not saved'
+        Sample_ID = kwargs.get('Sample_ID', self.Sample_ID)
+        frame_inds = kwargs.get('frame_inds', np.arange(self.nz_tiles))
+        if not hasattr(self, 'FIBSEM_Data') or self.FIBSEM_Data is None:
+            raise RuntimeError("FIBSEM_Data not available. Run evaluate_FIBSEM_statistics() first.")
+        if 'dmeans' not in self.FIBSEM_Data or 'dpercentiles' not in self.FIBSEM_Data:
+            raise RuntimeError("dmeans/dpercentiles missing from FIBSEM_Data. Re-run evaluate_FIBSEM_statistics().")
+        dmeans       = self.FIBSEM_Data['dmeans'].reshape(self.nz_tiles, n_tiles_per_layer)
+        dpercentiles = self.FIBSEM_Data['dpercentiles'].reshape(self.nz_tiles, n_tiles_per_layer)
+        intensity_means       = (dmeans       - self.tile_I0s) * self.tile_scales
+        intensity_percentiles = (dpercentiles - self.tile_I0s) * self.tile_scales
+
+        if verbose:
+            print('Generating Plot')
+        fig, axs = plt.subplots(3,1, figsize = (6,10), sharex=True)
+        fig.subplots_adjust(left=0.15, bottom=0.06, right=0.99, top=0.97, wspace=0.05, hspace=0.03)
+
+        for k in np.arange(n_tiles_per_layer):
+            my_col = plt.get_cmap("gist_rainbow_r")((n_tiles_per_layer-k)/(n_tiles_per_layer-1))
+            intensity_means_k = intensity_means[:, k]
+            intensity_percentiles_k = intensity_percentiles[:, k]
+            if k == tile_id:
+                axs[0].plot(frame_inds, intensity_means_k, color=my_col, marker='x', markersize=4, label='Tile {:d}, Mean Int.'.format(tile_id))
+                axs[1].plot(frame_inds, intensity_percentiles_k, color=my_col, marker='x', markersize=4, label='Tile {:d}, {:.1f} Perc. Int.'.format(tile_id, self.percentile))
+                axs[2].plot(frame_inds, intensity_means_k, color='blue', linewidth = 0.85, label='Tile {:d}, Mean Int.'.format(tile_id))
+                axs[2].plot(frame_inds, intensity_percentiles_k, color='red', linewidth = 0.5, label='Tile {:d}, {:.1f} Percent Intensity'.format(tile_id, self.percentile))
+            else:
+                axs[0].plot(frame_inds, intensity_means_k, color=my_col, linewidth = 0.25)
+                axs[1].plot(frame_inds, intensity_percentiles_k, color=my_col, linewidth = 0.25)
+                
+        average_intensity_means = intensity_means.mean(axis=1)
+        average_intensity_percentiles = intensity_percentiles.mean(axis=1)
+        average_intensity_means_smothed = savgol_filter(average_intensity_means.astype(np.double), sv_apert, fit_params[2])
+        average_intensity_percentiles_smothed = savgol_filter(average_intensity_percentiles.astype(np.double), sv_apert, fit_params[2])   
+        axs[2].plot(frame_inds, average_intensity_means, color='magenta', linewidth = 0.85, label='All Tiles Averaged Mean Int.')
+        axs[2].plot(frame_inds, average_intensity_percentiles, color='lime', linewidth = 0.5, label='All Tiles Averaged {:.1f} Percent Intensity'.format(self.percentile))
+        axs[2].plot(frame_inds, average_intensity_means_smothed, color='navy', linewidth = 0.85, label='All Tiles Averaged Mean Int. smoothed')
+        axs[2].plot(frame_inds, average_intensity_percentiles_smothed, color='yellow', linewidth = 0.5, label='All Tiles Averaged {:.1f} Percent Intensity smoothed'.format(self.percentile))
+        for ax in axs:
+            ax.grid(True)
+            ax.legend(loc='upper left', fontsize = 6)
+
+        axs[0].text(0.40, 0.92, 'All Tiles: Mean Intensity', transform=axs[0].transAxes, fontsize=12)
+        axs[0].text(0.2, 1.03, Sample_ID, transform=axs[0].transAxes, fontsize=12)
+        axs[1].text(0.40, 0.92, 'All Tiles: {:.1f} Percent Intensity'.format(self.percentile), transform=axs[1].transAxes, fontsize=12)
+        axs[2].set_xlabel('Frame')
+        axs[0].set_ylabel('Mean Intensity')
+        axs[1].set_ylabel('{:.1f} Perc. Int.'.format(self.percentile))
+        axs[2].set_ylabel('Intensities')
+        if save_png:
+            axs[2].text(-0.1, -0.18, save_fname, transform=axs[2].transAxes, fontsize=5)
+            fig.savefig(save_fname, dpi=dpi)
+        plt.close(fig) 
+        aim = average_intensity_means/average_intensity_means.mean()
+        aims = average_intensity_means_smothed/average_intensity_means_smothed.mean()
+        aip = average_intensity_percentiles/(average_intensity_percentiles.mean())
+        aips = average_intensity_percentiles_smothed/(average_intensity_percentiles_smothed.mean())
+        return save_fname, aim, aims, aip, aips
 
 
     def compute_detector_target_intensity_ratios(self, **kwargs):
@@ -6457,7 +6575,7 @@ class FIBSEM_mosaic_dataset:
 
     def generate_transformation_report(self, **kwargs):
         '''
-        Generate Report Plot for transformation summary. ©G.Shtengel 12/2022 gleb.shtengel@gmail.com
+        Generate Report Plot for transformation summary. ©G.Shtengel 06/2026 gleb.shtengel@gmail.com
 
         kwargs:
         ----------
