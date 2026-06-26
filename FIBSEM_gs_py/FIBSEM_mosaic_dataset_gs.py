@@ -2721,6 +2721,25 @@ class FIBSEM_mosaic_dataset:
                         format_bytes(shared_after - shared_before),
                         elapsed_time))
 
+    def _build_weighted_A_csr(self, w_sqrt_intra, w_sqrt_inter):
+        '''
+        Rebuild the bundle constraint matrix from self.index_pairs with the given per-pair
+        sqrt-weights, WITHOUT touching registration results. Reproduces the row layout of
+        compute_index_pairs_and_geometry: rows 0..(nh+nv-1) are intra-layer, the remaining
+        nl rows inter-layer; each row r is -w at column index_pairs[r,0], +w at index_pairs[r,1]
+        (so reverse edges, which already swap the columns in index_pairs, are handled).
+        '''
+        C = self.C
+        V = self.A_csr.shape[1]
+        w_row = np.concatenate((np.full(self.nh + self.nv, w_sqrt_intra, dtype=np.float64),
+                                np.full(self.nl,            w_sqrt_inter, dtype=np.float64)))
+        rows = np.repeat(np.arange(C), 2)
+        cols = np.asarray(self.index_pairs).ravel()
+        vals = np.empty(2 * C, dtype=np.float64)
+        vals[0::2] = -w_row
+        vals[1::2] =  w_row
+        return csr_matrix((vals, (rows, cols)), shape=(C, V))
+
 
     def compute_index_pairs_and_geometry(self, **kwargs):
         '''
@@ -2950,6 +2969,8 @@ class FIBSEM_mosaic_dataset:
         self.pair_overlap_bounds = pair_overlap_bounds
 
         self.A_csr = csr_matrix((data, (row_ind, col_ind)), shape=(self.C, V))
+        self._A_csr_intralayer_weight = float(intralayer_weight)   # weights baked into A_csr
+        self._A_csr_interlayer_weight = float(interlayer_weight)
 
         # ---- Reset all C-sized arrays that hold registration / per-pair results ----
         # Any prior SIFT/ECC results are wiped — re-run registration after this call.
@@ -5848,9 +5869,26 @@ class FIBSEM_mosaic_dataset:
         subtract_linear_fit =  kwargs.get("subtract_linear_fit", [True, True])   # If True, the linear slope will be subtracted from the cumulative shifts.
         subtract_FOVtrend_from_fit = kwargs.get("subtract_FOVtrend_from_fit", [True, True])
 
-        w_sqrt_intra = np.sqrt(self.intralayer_weight)  # because LSQR minimizes ||W^{1/2} (Ax - b)||
-        w_sqrt_inter = np.sqrt(self.interlayer_weight)
-        weights = np.concatenate((np.full((self.nh+self.nv), w_sqrt_intra), np.full(self.nl, w_sqrt_inter)))
+        w_sqrt_intra = np.sqrt(intralayer_weight)
+        w_sqrt_inter = np.sqrt(interlayer_weight)
+        weights = np.concatenate((np.full((self.nh + self.nv), w_sqrt_intra),
+                                  np.full(self.nl, w_sqrt_inter)))
+
+        # A_csr carries the intra/inter weights in its entries. Rebuild it ONLY when the
+        # requested weights differ from those used to build self.A_csr, so weighted LSQR
+        # stays consistent (A and b scaled by the same sqrt-weights). The rebuild is cheap
+        # (from index_pairs only) and does NOT reset SIFT/ECC results.
+        A_built_intra = getattr(self, '_A_csr_intralayer_weight', self.intralayer_weight)
+        A_built_inter = getattr(self, '_A_csr_interlayer_weight', self.interlayer_weight)
+        if (not np.isclose(intralayer_weight, A_built_intra)) or \
+           (not np.isclose(interlayer_weight, A_built_inter)):
+            A_csr = self._build_weighted_A_csr(w_sqrt_intra, w_sqrt_inter)
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                      + '   solve_stack_stitching: rebuilt A_csr for intralayer_weight={:.4g}, '
+                        'interlayer_weight={:.4g}'.format(intralayer_weight, interlayer_weight))
+        else:
+            A_csr = self.A_csr
         if initialize_transformation_first:
             self.tr_matr = self.default_tr_matr.copy()
 
@@ -5878,13 +5916,13 @@ class FIBSEM_mosaic_dataset:
                 by = self.SIFT_transformation_matrices[:, 1, 2] * weights
                 if verbose:
                     print(time.strftime('%Y/%m/%d  %H:%M:%S') + f',  Solving for X displacement using method {method}')
-                res_x_all = lsqr(self.A_csr[self.SIFT_transformation_valid], bx[self.SIFT_transformation_valid])
+                res_x_all = lsqr(A_csr[self.SIFT_transformation_valid], bx[self.SIFT_transformation_valid])
                 if verbose:
                     print(time.strftime('%Y/%m/%d  %H:%M:%S') + f',  Solving for Y displacement using method {method}')
-                res_y_all = lsqr(self.A_csr[self.SIFT_transformation_valid], by[self.SIFT_transformation_valid])
+                res_y_all = lsqr(A_csr[self.SIFT_transformation_valid], by[self.SIFT_transformation_valid])
                 # calculate weighted residuals: b_weighted - A_weighted x
-                self.SIFT_residual_error_x[self.SIFT_transformation_valid] = bx[self.SIFT_transformation_valid] - self.A_csr[self.SIFT_transformation_valid] @ res_x_all[0]
-                self.SIFT_residual_error_y[self.SIFT_transformation_valid] = by[self.SIFT_transformation_valid] - self.A_csr[self.SIFT_transformation_valid] @ res_y_all[0]
+                self.SIFT_residual_error_x[self.SIFT_transformation_valid] = bx[self.SIFT_transformation_valid] - A_csr[self.SIFT_transformation_valid] @ res_x_all[0]
+                self.SIFT_residual_error_y[self.SIFT_transformation_valid] = by[self.SIFT_transformation_valid] - A_csr[self.SIFT_transformation_valid] @ res_y_all[0]
                 self.SIFT_r2norm_x = res_x_all[4]
                 self.SIFT_r2norm_y = res_y_all[4]
                 # Valid-constraint mask for this method — used below to identify
@@ -5897,12 +5935,12 @@ class FIBSEM_mosaic_dataset:
                 by = self.ECC_transformation_matrices[:, 1, 2] * weights
                 if verbose:
                     print(time.strftime('%Y/%m/%d  %H:%M:%S') + f',  Solving for X displacement using method {method}')
-                res_x_all = lsqr(self.A_csr[self.ECC_transformation_valid], bx[self.ECC_transformation_valid])
+                res_x_all = lsqr(A_csr[self.ECC_transformation_valid], bx[self.ECC_transformation_valid])
                 if verbose:
                     print(time.strftime('%Y/%m/%d  %H:%M:%S') + f',  Solving for Y displacement using method {method}')
-                res_y_all = lsqr(self.A_csr[self.ECC_transformation_valid], by[self.ECC_transformation_valid])
-                self.ECC_residual_error_x[self.ECC_transformation_valid] = bx[self.ECC_transformation_valid] - self.A_csr[self.ECC_transformation_valid] @ res_x_all[0]
-                self.ECC_residual_error_y[self.ECC_transformation_valid] = by[self.ECC_transformation_valid] - self.A_csr[self.ECC_transformation_valid] @ res_y_all[0]
+                res_y_all = lsqr(A_csr[self.ECC_transformation_valid], by[self.ECC_transformation_valid])
+                self.ECC_residual_error_x[self.ECC_transformation_valid] = bx[self.ECC_transformation_valid] - A_csr[self.ECC_transformation_valid] @ res_x_all[0]
+                self.ECC_residual_error_y[self.ECC_transformation_valid] = by[self.ECC_transformation_valid] - A_csr[self.ECC_transformation_valid] @ res_y_all[0]
                 self.ECC_r2norm_x = res_x_all[4]
                 self.ECC_r2norm_y = res_y_all[4]
                 # Valid-constraint mask for this method — used below to identify
@@ -5939,12 +5977,12 @@ class FIBSEM_mosaic_dataset:
                                 int(use_sift.sum()), int(use_ecc.sum()),
                                 int(combined_valid.sum()), self.C))
                     print(time.strftime('%Y/%m/%d  %H:%M:%S') + f',  Solving for X displacement using method {method}')
-                res_x_all = lsqr(self.A_csr[combined_valid], bx[combined_valid])
+                res_x_all = lsqr(A_csr[combined_valid], bx[combined_valid])
                 if verbose:
                     print(time.strftime('%Y/%m/%d  %H:%M:%S') + f',  Solving for Y displacement using method {method}')
-                res_y_all = lsqr(self.A_csr[combined_valid], by[combined_valid])
-                self.SIFT_ECC_residual_error_x[combined_valid] = bx[combined_valid] - self.A_csr[combined_valid] @ res_x_all[0]
-                self.SIFT_ECC_residual_error_y[combined_valid] = by[combined_valid] - self.A_csr[combined_valid] @ res_y_all[0]
+                res_y_all = lsqr(A_csr[combined_valid], by[combined_valid])
+                self.SIFT_ECC_residual_error_x[combined_valid] = bx[combined_valid] - A_csr[combined_valid] @ res_x_all[0]
+                self.SIFT_ECC_residual_error_y[combined_valid] = by[combined_valid] - A_csr[combined_valid] @ res_y_all[0]
                 self.SIFT_ECC_r2norm_x = res_x_all[4]
                 self.SIFT_ECC_r2norm_y = res_y_all[4]
                 valid_constraint_mask = combined_valid
@@ -6063,8 +6101,10 @@ class FIBSEM_mosaic_dataset:
         verbose  = kwargs.get('verbose', False)
         n        = self.n_tiles_per_layer
         V        = self.nz_tiles * n
-        w_sqrt_intra = np.sqrt(self.intralayer_weight)
-        w_sqrt_inter = np.sqrt(self.interlayer_weight)
+        intralayer_weight = kwargs.get('intralayer_weight', self.intralayer_weight)
+        interlayer_weight = kwargs.get('interlayer_weight', self.interlayer_weight)
+        w_sqrt_intra = np.sqrt(intralayer_weight)
+        w_sqrt_inter = np.sqrt(interlayer_weight)
 
         # ------------------------------------------------------------------ #
         # 1.  Identify valid pairs and pre-count total matches                #
@@ -6292,6 +6332,20 @@ class FIBSEM_mosaic_dataset:
 
         w_sqrt_intra = np.sqrt(intralayer_weight)
         w_sqrt_inter = np.sqrt(interlayer_weight)
+        # A_csr carries the intra/inter weights in its entries; rebuild it (from index_pairs,
+        # no SIFT/ECC reset) when the requested weights differ from those baked into self.A_csr,
+        # so weighted LSQR stays consistent (A and b scaled by the same sqrt-weights).
+        A_built_intra = getattr(self, '_A_csr_intralayer_weight', self.intralayer_weight)
+        A_built_inter = getattr(self, '_A_csr_interlayer_weight', self.interlayer_weight)
+        if (not np.isclose(intralayer_weight, A_built_intra)) or \
+           (not np.isclose(interlayer_weight, A_built_inter)):
+            A_csr = self._build_weighted_A_csr(w_sqrt_intra, w_sqrt_inter)
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                      + '   solve_intensity_normalization: rebuilt A_csr for intralayer_weight={:.4g}, '
+                        'interlayer_weight={:.4g}'.format(intralayer_weight, interlayer_weight))
+        else:
+            A_csr = self.A_csr
         weights = np.concatenate((np.full(self.nh + self.nv, w_sqrt_intra),
                                 np.full(self.nl, w_sqrt_inter)))
         if method == 'SIFT':
@@ -6350,11 +6404,11 @@ class FIBSEM_mosaic_dataset:
             data      = np.tile([-target_damp, target_damp], n_reg).astype(np.float64)
             A_reg     = csr_matrix((data, (rows, cols)), shape=(n_reg, self.A_csr.shape[1]))
             b_reg     = target_damp * np.log(self.target_intensity_ratios[t_valid])
-            A_aug = vstack([self.A_csr[valid], A_reg], format='csr')
+            A_aug = vstack([A_csr[valid], A_reg], format='csr')
             b_aug = np.concatenate([log_ratios, b_reg])
             res = lsqr(A_aug, b_aug, damp=tikhonov_damp)
         else:
-            res = lsqr(self.A_csr[valid], log_ratios, damp=tikhonov_damp)
+            res = lsqr(A_csr[valid], log_ratios, damp=tikhonov_damp)
         log_scales = res[0]
 
         # Normalise: geometric mean of all scale factors = 1
