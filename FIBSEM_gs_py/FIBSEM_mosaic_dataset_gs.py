@@ -4012,7 +4012,9 @@ class FIBSEM_mosaic_dataset:
         self.tile_I0s - per tile Dark Counts
         self.FIBSEM_Data['dmeans'] - per tile mean intensities
         self.FIBSEM_Data['dpercentiles'] - per tile percentile intensities
-        self.tile_scales - intensity multipliers
+        self.tile_scales - intensity multipliers 
+
+        Optionally rescales self.tile_scales(cumulative, in place). None (default) leaves self.tile_scales unchanged.
 
         kwargs:
         ----------
@@ -4021,6 +4023,12 @@ class FIBSEM_mosaic_dataset:
         fit_params : list
             Savitzky-Golay smoothing for the stored self.tile_I0s, ['SG', window, polyorder].
             Default ['SG', 101, 3]; window is clamped to the data length.
+        tile_scale_update_source : str.
+            Default is None. Optional rescaling of the self.tile_scales using:
+                'aim'  - Averaged Tile Intensity Mean Values
+                'aims' - Smoothed Averaged Tile Intensity Mean Values
+                'aip'  - Averaged Tile Intensity Percentile Values
+                'aips' - Smoothed Averaged Tile Intensity Percentile Values
         Sample_ID : str
             Sample label for the plot title; default is self.Sample_ID.
         n_tiles_per_layer : int
@@ -4055,6 +4063,11 @@ class FIBSEM_mosaic_dataset:
         data_dir = kwargs.get('data_dir', self.data_dir)
         fit_params = kwargs.get("fit_params", ['SG', 101, 3])
         sv_apert = min([fit_params[1], self.tile_I0s.shape[0]//8*2 + 1])
+        tile_scale_update_source = kwargs.get('tile_scale_update_source', None)
+        _valid_update_sources = (None, 'aim', 'aims', 'aip', 'aips')
+        if tile_scale_update_source not in _valid_update_sources:
+            raise ValueError("tile_scale_update_source must be one of {}, got {!r}".format(
+                _valid_update_sources, tile_scale_update_source))
         if verbose:
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Using fit_params: ', 'SG', sv_apert, fit_params[2])
         if save_png:
@@ -4120,6 +4133,14 @@ class FIBSEM_mosaic_dataset:
         aims = average_intensity_means_smothed/average_intensity_means_smothed.mean()
         aip = average_intensity_percentiles/(average_intensity_percentiles.mean())
         aips = average_intensity_percentiles_smothed/(average_intensity_percentiles_smothed.mean())
+        if tile_scale_update_source == 'aim':
+            self.tile_scales = self.tile_scales / aim[:, np.newaxis]
+        elif tile_scale_update_source == 'aims':
+            self.tile_scales = self.tile_scales / aims[:, np.newaxis]
+        elif tile_scale_update_source == 'aip':
+            self.tile_scales = self.tile_scales / aip[:, np.newaxis]
+        elif tile_scale_update_source == 'aips':
+            self.tile_scales = self.tile_scales / aips[:, np.newaxis]
         return save_fname, aim, aims, aip, aips
 
 
