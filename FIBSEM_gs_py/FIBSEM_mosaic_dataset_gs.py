@@ -3037,7 +3037,7 @@ class FIBSEM_mosaic_dataset:
         Returns:
         ----------
         res : pandas DataFrame
-            Contains these fields: 'Layer 0', 'Tile 0', 'Layer 1', 'Tile 1', 'SIFT x-shift', 'SIFT y-shift', 'SIFT nmatches', 'SIFT valid'
+            Contains these fields: 'Pair Index', 'Layer 0', 'Tile 0', 'Layer 1', 'Tile 1', 'SIFT x-shift', 'SIFT y-shift', 'SIFT nmatches', 'SIFT valid', 'ECC x-shift', 'ECC y-shift', 'ECC valid'
         '''
         verbose = kwargs.get('verbose', True)
         nl = self.n_tiles_per_layer
@@ -3053,14 +3053,18 @@ class FIBSEM_mosaic_dataset:
         if len(pair_inds) == 0:
             if verbose:
                 print('pair_inds contain no record of this tile')
-            res = pd.DataFrame(columns=['Layer 0', 'Tile 0', 'Layer 1', 'Tile 1',
+            res = pd.DataFrame(columns=['Pair Index', 'Layer 0', 'Tile 0', 'Layer 1', 'Tile 1',
                                          'SIFT x-shift', 'SIFT y-shift',
-                                         'SIFT nmatches', 'SIFT valid'])
+                                         'SIFT nmatches', 'SIFT valid',
+                                         'ECC x-shift', 'ECC y-shift',
+                                         'ECC valid'])
         else:
             tile_pairs = []
             SIFT_shifts = []
             SIFT_valid = []
             SIFT_nmatches = []
+            ECC_shifts = []
+            ECC_valid = []
             for pair_ind in pair_inds:
                 pair = self.index_pairs[pair_ind]
                 layer0 = pair[0]//nl
@@ -3071,11 +3075,15 @@ class FIBSEM_mosaic_dataset:
                 SIFT_shifts.append(self.SIFT_transformation_matrices[pair_ind, 0:2, 2])
                 SIFT_valid.append(self.SIFT_transformation_valid[pair_ind])
                 SIFT_nmatches.append(self.SIFT_nmatches[pair_ind])
+                ECC_shifts.append(self.ECC_transformation_matrices[pair_ind, 0:2, 2])
+                ECC_valid.append(self.ECC_transformation_valid[pair_ind])
             pd_layers = pd.DataFrame(np.array(tile_pairs), columns = ['Pair Index', 'Layer 0', 'Tile 0', 'Layer 1', 'Tile 1'])
             pd_SIFT_shifts = pd.DataFrame(np.array(SIFT_shifts), columns = ['SIFT x-shift', 'SIFT y-shift'])
             pd_SIFT_nmatches = pd.DataFrame(np.array(SIFT_nmatches), columns = ['SIFT nmatches'])
             pd_SIFT_valid = pd.DataFrame(np.array(SIFT_valid), columns = ['SIFT valid'])
-            res = pd.concat([pd_layers, pd_SIFT_shifts, pd_SIFT_nmatches, pd_SIFT_valid], axis=1)
+            pd_ECC_shifts = pd.DataFrame(np.array(ECC_shifts), columns = ['ECC x-shift', 'ECC y-shift'])
+            pd_ECC_valid = pd.DataFrame(np.array(ECC_valid), columns = ['ECC valid'])
+            res = pd.concat([pd_layers, pd_SIFT_shifts, pd_SIFT_nmatches, pd_SIFT_valid, pd_ECC_shifts, pd_ECC_valid], axis=1)
         if verbose:
             display(res)
 
@@ -3114,6 +3122,10 @@ class FIBSEM_mosaic_dataset:
             If False, reuse the previously stored self.avg_disp (requires save_avg_disp=True on a prior call).
         source : string
             source for sfov coordinates. Options are ('FirstPixels' (default) 'tr_matr')
+        sort_by : string
+            sort outliers by a value of a column. Default is 'deviation' (deviation from canonical hex position)
+        sort_ascending : boolean
+            If False (default) report results sorted in descending order.
         save_avg_disp : boolean
             If True, self.avg_disp = avg_disp. Default is False.
 
@@ -3135,6 +3147,8 @@ class FIBSEM_mosaic_dataset:
         calc_avg_disp = kwargs.get('calc_avg_disp', True)
         save_avg_disp = kwargs.get('save_avg_disp', False)
         dev_thr = kwargs.get('dev_thr', None)
+        sort_by = kwargs.get('sort_by', 'deviation')
+        sort_ascending = kwargs.get('sort_ascending', False)
 
         TPM = 91
         L   = self.nz_tiles
@@ -3179,7 +3193,7 @@ class FIBSEM_mosaic_dataset:
             abs_tile = int(m) * TPM + int(t)             # within-layer tile index
             rows.append([int(l), abs_tile, int(m), int(t),
                          float(dev_mag[l, m, t]), flat_fls[int(l), abs_tile]])
-        outliers = pd.DataFrame(rows, columns=['Layer', 'Tile', 'mfov', 'tile_mfov_id', 'deviation', 'File Path'])
+        outliers = pd.DataFrame(rows, columns=['Layer', 'Tile', 'mfov', 'tile_mfov_id', 'deviation', 'File Path']).sort_values(by=sort_by, ascending=sort_ascending)
 
         if verbose:
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
@@ -4111,9 +4125,9 @@ class FIBSEM_mosaic_dataset:
         average_intensity_means_smothed = savgol_filter(average_intensity_means.astype(np.double), sv_apert, fit_params[2])
         average_intensity_percentiles_smothed = savgol_filter(average_intensity_percentiles.astype(np.double), sv_apert, fit_params[2])   
         axs[2].plot(frame_inds, average_intensity_means, color='magenta', linewidth = 0.85, label='All Tiles Averaged Mean Int.')
-        axs[2].plot(frame_inds, average_intensity_percentiles, color='lime', linewidth = 0.5, label='All Tiles Averaged {:.1f} Percent Intensity'.format(self.percentile))
-        axs[2].plot(frame_inds, average_intensity_means_smothed, color='navy', linewidth = 0.85, label='All Tiles Averaged Mean Int. smoothed')
-        axs[2].plot(frame_inds, average_intensity_percentiles_smothed, color='yellow', linewidth = 0.5, label='All Tiles Averaged {:.1f} Percent Intensity smoothed'.format(self.percentile))
+        axs[2].plot(frame_inds, average_intensity_percentiles, color='green', linewidth = 0.5, label='All Tiles Averaged {:.1f} Percent Intensity'.format(self.percentile))
+        axs[2].plot(frame_inds, average_intensity_means_smothed, color='cyan', linewidth = 0.85, label='All Tiles Averaged Mean Int. smoothed')
+        axs[2].plot(frame_inds, average_intensity_percentiles_smothed, color='lime', linewidth = 0.5, label='All Tiles Averaged {:.1f} Percent Intensity smoothed'.format(self.percentile))
         for ax in axs:
             ax.grid(True)
             ax.legend(loc='upper left', fontsize = 6)
@@ -4128,7 +4142,7 @@ class FIBSEM_mosaic_dataset:
         if save_png:
             axs[2].text(-0.1, -0.18, save_fname, transform=axs[2].transAxes, fontsize=5)
             fig.savefig(save_fname, dpi=dpi)
-        plt.close(fig) 
+        #plt.close(fig) 
         aim = average_intensity_means/average_intensity_means.mean()
         aims = average_intensity_means_smothed/average_intensity_means_smothed.mean()
         aip = average_intensity_percentiles/(average_intensity_percentiles.mean())
