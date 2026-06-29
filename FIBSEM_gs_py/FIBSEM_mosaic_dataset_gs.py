@@ -3037,7 +3037,7 @@ class FIBSEM_mosaic_dataset:
         Returns:
         ----------
         res : pandas DataFrame
-            Contains these fields: 'Pair Index', 'Layer 0', 'Tile 0', 'Layer 1', 'Tile 1', 'SIFT x-shift', 'SIFT y-shift', 'SIFT nmatches', 'SIFT valid', 'ECC x-shift', 'ECC y-shift', 'ECC valid'
+            Contains these fields: 'Pair Index', 'Layer 0', 'Tile 0', 'Layer 1', 'Tile 1', 'SIFT x-shift', 'SIFT y-shift', 'SIFT nmatches', 'SIFT valid', 'ECC x-shift', 'ECC y-shift', 'ECC valid', 'overlap_areas'.
         '''
         verbose = kwargs.get('verbose', True)
         nl = self.n_tiles_per_layer
@@ -3057,7 +3057,7 @@ class FIBSEM_mosaic_dataset:
                                          'SIFT x-shift', 'SIFT y-shift',
                                          'SIFT nmatches', 'SIFT valid',
                                          'ECC x-shift', 'ECC y-shift',
-                                         'ECC valid'])
+                                         'ECC valid', 'overlap_areas'])
         else:
             tile_pairs = []
             SIFT_shifts = []
@@ -3065,6 +3065,18 @@ class FIBSEM_mosaic_dataset:
             SIFT_nmatches = []
             ECC_shifts = []
             ECC_valid = []
+            # Overlap areas from the current tr_matr positions (inline — no side effects,
+            # does not touch self.solved_pair_overlap_bounds / self.pair_overlap_areas).
+            positions_flat = (-self.tr_matr[:, :, 0:2, 2]).reshape(-1, 2)   # (total_tiles, 2)
+            abs_a = self.index_pairs[pair_inds, 0].astype(int)
+            abs_b = self.index_pairs[pair_inds, 1].astype(int)
+            dx = positions_flat[abs_b, 0] - positions_flat[abs_a, 0]
+            dy = positions_flat[abs_b, 1] - positions_flat[abs_a, 1]
+            x_ov = self.XResolution - np.abs(dx)
+            y_ov = self.YResolution - np.abs(dy)
+            valid = (x_ov > 0) & (y_ov > 0)
+            overlap_areas = (np.where(valid, x_ov, 0.0)
+                             * np.where(valid, y_ov, 0.0)).astype(np.int64)   # (len(pair_inds),)
             for pair_ind in pair_inds:
                 pair = self.index_pairs[pair_ind]
                 layer0 = pair[0]//nl
@@ -3083,7 +3095,8 @@ class FIBSEM_mosaic_dataset:
             pd_SIFT_valid = pd.DataFrame(np.array(SIFT_valid), columns = ['SIFT valid'])
             pd_ECC_shifts = pd.DataFrame(np.array(ECC_shifts), columns = ['ECC x-shift', 'ECC y-shift'])
             pd_ECC_valid = pd.DataFrame(np.array(ECC_valid), columns = ['ECC valid'])
-            res = pd.concat([pd_layers, pd_SIFT_shifts, pd_SIFT_nmatches, pd_SIFT_valid, pd_ECC_shifts, pd_ECC_valid], axis=1)
+            pd_overlap_areas = pd.DataFrame(np.array(overlap_areas), columns = ['overlap_areas'])
+            res = pd.concat([pd_layers, pd_SIFT_shifts, pd_SIFT_nmatches, pd_SIFT_valid, pd_ECC_shifts, pd_ECC_valid, pd_overlap_areas], axis=1)
         if verbose:
             display(res)
 
@@ -4252,7 +4265,7 @@ class FIBSEM_mosaic_dataset:
         return targets
 
 
-    def compute_solved_pair_overlap_bounds(self):
+    def compute_solved_pair_overlap_bounds(self, **kwargs):
         '''
         Compute fresh per-pair overlap rectangles from the CURRENT (post-solve)
         translations in self.tr_matr, instead of the init-time FirstPixels.
@@ -4261,6 +4274,10 @@ class FIBSEM_mosaic_dataset:
         Only the translation component is used; affine scale/rotation in tr_matr
         is ignored (acceptable for ShiftTransform and a good approximation for
         near-translation AffineTransform solves).
+
+        kwargs:
+        pair_ids : list or array
+            List of index pair id's for whichto calculate overalps. Default is all index_pairs.
 
         Returns
         -------
@@ -4273,13 +4290,15 @@ class FIBSEM_mosaic_dataset:
 
         Side effects
         ------------
-        Stores results as self.solved_pair_overlap_bounds (now an ndarray, was a list)
-        and self.pair_overlap_areas.
+        Updates self.solved_pair_overlap_bounds (now an ndarray, was a list)
+        and self.pair_overlap_areas (creates them if not prior existing).
         '''
+        C = len(self.index_pairs)
+        pair_ids = kwargs.get('pair_ids', np.arange(C))
         positions = -self.tr_matr[:, :, 0:2, 2]        # (nz_tiles, n_tiles_per_layer, 2)
         positions_flat = positions.reshape(-1, 2)      # (total_tiles, 2)
-        abs_a = self.index_pairs[:, 0].astype(int)
-        abs_b = self.index_pairs[:, 1].astype(int)
+        abs_a = self.index_pairs[pair_ids, 0].astype(int)
+        abs_b = self.index_pairs[pair_ids, 1].astype(int)
         dx = positions_flat[abs_b, 0] - positions_flat[abs_a, 0]   # (C,)
         dy = positions_flat[abs_b, 1] - positions_flat[abs_a, 1]
         x_ov = (self.XResolution - np.abs(dx))                     # (C,)
@@ -4294,8 +4313,12 @@ class FIBSEM_mosaic_dataset:
         bounds = np.stack([x_min_a, x_min_a + x_ov, y_min_a, y_min_a + y_ov,
                            x_min_b, x_min_b + x_ov, y_min_b, y_min_b + y_ov], axis=1)
         areas = x_ov * y_ov
-        self.solved_pair_overlap_bounds = bounds
-        self.pair_overlap_areas         = areas
+        if (not hasattr(self, 'solved_pair_overlap_bounds')
+                or np.shape(self.solved_pair_overlap_bounds) != (C, 8)):
+            self.solved_pair_overlap_bounds = np.zeros((C, 8), dtype=np.int64)
+            self.pair_overlap_areas         = np.zeros(C,      dtype=np.int64)
+        self.solved_pair_overlap_bounds[pair_ids] = bounds
+        self.pair_overlap_areas[pair_ids]         = areas
         return bounds, areas
 
 
