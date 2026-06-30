@@ -2349,11 +2349,16 @@ class FIBSEM_mosaic_dataset:
             Weight for pairwise constraints for tiles between adjacent Z-layers.(100–10000 typical).
         add_reverse_edges : bool, default False
             If True, adds both (i->j) and (j->i) with same weight (increases robustness).
-        diagonal_exclusion_threshold : np.float32
-            A criteria for exclusion of "diagonal" neighbours if the sum of margins in X- and Y- directions is larger than a sum of X- and Y- tiles times this number, the pair is NOT considered.
         overlap_bound_margin : int
             Pixels by which the per-pair overlap rectangle is expanded on each side
             when filtering SIFT keypoints during pairwise matching. Default 50.
+        min_intralayer_overlap_pixels : float
+            Minimum overlap area (pixels) for an INTRA-layer tile pair to be kept when building
+            the stitching graph; pairs with a smaller overlap rectangle are discarded.
+            Default 0.02 * (XResolution * YResolution) (2% of a tile).
+        min_interlayer_overlap_pixels : float
+            Minimum overlap area (pixels) for an INTER-layer tile pair to be kept.
+            Default 0.20 * (XResolution * YResolution) (20% of a tile).
         shape : tuple of two int (self.ny_tiles, self.nx_tiles)
             The program will try to auto-determine the shape, but it can be set explicitly.
                 # self.ny_tiles  - # of rows per layer (# of tiles along Y-axis)
@@ -2544,7 +2549,6 @@ class FIBSEM_mosaic_dataset:
         self.intralayer_weight = kwargs.get('intralayer_weight', 1.0)
         self.interlayer_weight = kwargs.get('interlayer_weight', 100.0)
         self.add_reverse_edges = kwargs.get('add_reverse_edges', False)
-        self.diagonal_exclusion_threshold = kwargs.get('diagonal_exclusion_threshold', 0.75)
         self.overlap_bound_margin = kwargs.get('overlap_bound_margin', 50)
         self.U8_conversion = kwargs.get('U8_conversion', 'local')
         self.left_crop = kwargs.get('left_crop', 0)
@@ -2685,7 +2689,9 @@ class FIBSEM_mosaic_dataset:
                 FirstPixels_layer0.append([fr.FirstPixelX, fr.FirstPixelY, 0])
             FirstPixels_layer0 = np.array(FirstPixels_layer0)          # shape (n_tiles, 3)
             self.FirstPixels = np.repeat(FirstPixels_layer0[np.newaxis, :, :], L, axis=0)
-
+        tile_area = float(self.XResolution) * float(self.YResolution)
+        self.min_intralayer_overlap_pixels = kwargs.get('min_intralayer_overlap_pixels', 0.02 * tile_area)
+        self.min_interlayer_overlap_pixels = kwargs.get('min_interlayer_overlap_pixels', 0.20 * tile_area)
         self.compute_index_pairs_and_geometry(verbose=verbose)
 
         self.min_overlap_pixels                  = kwargs.get('min_overlap_pixels', 5000)
@@ -2766,6 +2772,12 @@ class FIBSEM_mosaic_dataset:
             Override self.intralayer_weight for the A_csr build. Default self.intralayer_weight.
         interlayer_weight : float
             Override self.interlayer_weight for the A_csr build. Default self.interlayer_weight.
+        min_intralayer_overlap_pixels : float
+            Override self.min_intralayer_overlap_pixels. Intra-layer pairs whose overlap area
+            is below this are excluded from the graph. Default self.min_intralayer_overlap_pixels.
+        min_interlayer_overlap_pixels : float
+            Override self.min_interlayer_overlap_pixels. Inter-layer (proximity-search) pairs
+            whose overlap area is below this are excluded. Default self.min_interlayer_overlap_pixels.
         FirstPixel_drifts : dict or (L, 2) array, optional
             Inter-layer FirstPixels drift from determine_interlayer_FirstPixel_drifts().
             If given, FirstPixels is rebuilt as
@@ -2793,6 +2805,10 @@ class FIBSEM_mosaic_dataset:
         interlayer_weight = kwargs.get('interlayer_weight', self.interlayer_weight)
         w_sqrt_intra = np.sqrt(intralayer_weight)
         w_sqrt_inter = np.sqrt(interlayer_weight)
+        min_intralayer_overlap_pixels = kwargs.get('min_intralayer_overlap_pixels',
+                                                   getattr(self, 'min_intralayer_overlap_pixels', 0))
+        min_interlayer_overlap_pixels = kwargs.get('min_interlayer_overlap_pixels',
+                                                   getattr(self, 'min_interlayer_overlap_pixels', 0))
 
         FirstPixel_drifts = kwargs.get('FirstPixel_drifts', None)
         if FirstPixel_drifts is not None:
@@ -2813,7 +2829,6 @@ class FIBSEM_mosaic_dataset:
         # Build intra-layer index pairs — vectorized
         intra_index_pairs_x = []
         intra_index_pairs_y = []
-        diag_thresh = self.diagonal_exclusion_threshold * (self.XResolution + self.YResolution)
         for l in tqdm(range(L), desc = 'Determining intra-layer pairs', display=verbose):
             x = self.FirstPixels[l, :, 0]                          # shape (N,)
             y = self.FirstPixels[l, :, 1]
@@ -2822,9 +2837,9 @@ class FIBSEM_mosaic_dataset:
             dx_abs = np.abs(dx)
             dy_abs = np.abs(dy)
 
-            overlap = (dx_abs < self.XResolution) & \
-                      (dy_abs < self.YResolution) & \
-                      (dx_abs + dy_abs < diag_thresh)
+            overlap_area = (self.XResolution - dx_abs) * (self.YResolution - dy_abs)
+            overlap = (dx_abs < self.XResolution) & (dy_abs < self.YResolution) \
+                      & (overlap_area >= min_intralayer_overlap_pixels)
             np.fill_diagonal(overlap, False)
 
             # X-dominant pairs (dx_abs > dy_abs)
@@ -2861,7 +2876,9 @@ class FIBSEM_mosaic_dataset:
                 y_l1 = self.FirstPixels[l+1, :, 1]
                 dx_abs = np.abs(x_l1[np.newaxis, :] - x_l[:, np.newaxis])
                 dy_abs = np.abs(y_l1[np.newaxis, :] - y_l[:, np.newaxis])
-                ii, jj = np.where((dx_abs < self.XResolution) & (dy_abs < self.YResolution))
+                overlap_area = (self.XResolution - dx_abs) * (self.YResolution - dy_abs)
+                ii, jj = np.where((dx_abs < self.XResolution) & (dy_abs < self.YResolution)
+                                  & (overlap_area >= min_interlayer_overlap_pixels))
                 inter_index_pairs.append(np.column_stack([ii, jj]) if len(ii) > 0 else np.empty((0, 2), dtype=int))
         else:
             for l in tqdm(range(L - 1), desc = 'Determining inter-layer pairs', display=verbose):
