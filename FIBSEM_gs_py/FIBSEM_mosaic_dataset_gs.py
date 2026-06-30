@@ -551,7 +551,7 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
     layer_id = kwargs.get('layer_id', 0)
     bin_factor = kwargs.get('bin_factor', 1)
     add_tile_ids = kwargs.get('add_tile_ids', False)
-    tile_id_fontsize = kwargs.get('tile_id_fontsize', 12)
+    tile_id_fontsize = kwargs.get('tile_id_fontsize', 6)
     if not isinstance(bin_factor, int) or bin_factor < 1:
         raise ValueError(
             f"overlay_montage_grid: bin_factor must be a positive int (got {bin_factor!r})."
@@ -570,7 +570,7 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
                 edgecolor=color, facecolor='none')
             ax.add_patch(rect_patch)
             if add_tile_ids:
-                ax.text((xi+dx/2)/bin_factor, (yi+dy/2)/bin_factor, '{:d}'.format(j), color=color, fontsize=tile_id_fontsize)
+                ax.text((xi+dx/4)/bin_factor, (yi+dy/4)/bin_factor, '{:d}'.format(j), color=color, fontsize=tile_id_fontsize)
     else:
         fp = montage_object.FirstPixels[layer_id]      # (n_tiles, 3)
         X0 = fp[:, 0].min()                            # scalar origin (or fp[0, 0] if you want tile-0 ref)
@@ -587,7 +587,7 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
                 edgecolor=color, facecolor='none')
             ax.add_patch(rect_patch)
             if add_tile_ids:
-                ax.text((xi+dx_loc/2)/bin_factor, (yi+dy_loc/2)/bin_factor, '{:d}'.format(j), color=color, fontsize=tile_id_fontsize)
+                ax.text((xi+dx_loc/4)/bin_factor, (yi+dy_loc/4)/bin_factor, '{:d}'.format(j), color=color, fontsize=tile_id_fontsize)
 
 
 def remap_tile(img, deformation_field, **kwargs):
