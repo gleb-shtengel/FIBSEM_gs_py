@@ -6794,6 +6794,10 @@ class FIBSEM_mosaic_dataset:
             Number of histogram bins for building the PDF and CDF.
         overlay_tile_grid : boolean
             If True (Default), overlays tile grid.
+        add_tile_ids : bool
+            If True, tile IDs are added to the plot. Default is False.
+        tile_id_fontsize : int
+            Tile ID text font size. Default is 12.
         dpi : int
             DPI. Default is 300.
         save_to_dat : boolean
@@ -6856,6 +6860,8 @@ class FIBSEM_mosaic_dataset:
         save_images = kwargs.get('save_images', False)
         image_fname = kwargs.get('image_fname',  self.fls[layer_id].ravel()[0].replace('0-0-0.dat', 'layer_mosaic.jpg'))
         overlay_tile_grid = kwargs.get('overlay_tile_grid', True)
+        add_tile_ids = kwargs.get('add_tile_ids', False)
+        tile_id_fontsize = kwargs.get('tile_id_fontsize', 12)
         thr_min = kwargs.get('thr_min', 1.0e-3)
         thr_max = kwargs.get('thr_max', 1.0e-3)
         nbins = kwargs.get('nbins', 256)
@@ -6953,9 +6959,11 @@ class FIBSEM_mosaic_dataset:
                         overlay_montage_grid(ax, self,
                                 tile_positions = -tr_matr_layer[:, 0:2, 2],
                                 bin_factor = bin_factor,
-                                 linewidth = linewidth,
-                                 linestyle = linestyle,
-                                 color = color)
+                                linewidth = linewidth,
+                                linestyle = linestyle,
+                                color = color,
+                                add_tile_ids = add_tile_ids,
+                                tile_id_fontsize = tile_id_fontsize)
             fig.suptitle(snapshot_fname, fontsize = fontsize)
 
             if hasattr(self, 'EHT'):
@@ -7110,7 +7118,9 @@ class FIBSEM_mosaic_dataset:
                                      left_crop = left_crop,
                                      linewidth = linewidth,
                                      linestyle = linestyle,
-                                     color = color)
+                                     color = color,
+                                     add_tile_ids = add_tile_ids,
+                                     tile_id_fontsize = tile_id_fontsize)
                 if j == 1:
                     image_fname_loc = imf1 + '_' + self.DetB.strip('\x00') + imf2
                 else:
