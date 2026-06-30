@@ -523,6 +523,8 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
         If True (default), use actual solved positions from tr_matr. If False, use nominal positions from montage_object.FirstPixels.
     tile_positions : 2D array or list
         Actual tile positions. Default is derived from montage_object.tr_matr (layer 0 positions).
+    layer_id : int
+        Layer whose tile positions are used when tile_positions is not given explicitly. Default 0.
     left_crop : int 
         Cropping value for cropping the image from the left side (used along with deformation_field or on its own). Default is 0 - no cropping.
     dx : int
@@ -534,6 +536,10 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
         to imshow, divide all overlay coordinates (xi, yi, dx, dy) by this
         factor so the grid aligns with the displayed image. Default is 1
         (no binning).
+    add_tile_ids : bool
+        If True, tile IDs are added to the plot. Default is False.
+    tile_id_fontsize : int
+        Tile ID text font size. Default is 12.
     '''
     linestyle = kwargs.get('linestyle', 'dashed')
     linewidth = kwargs.get('linewidth', 1.0)
@@ -542,7 +548,10 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
     dx = kwargs.get('dx', montage_object.XResolution-left_crop)
     dy = kwargs.get('dy', montage_object.YResolution)
     tile_positions_actual = kwargs.get('tile_positions_actual', True)
+    layer_id = kwargs.get('layer_id', 0)
     bin_factor = kwargs.get('bin_factor', 1)
+    add_tile_ids = kwargs.get('add_tile_ids', False)
+    tile_id_fontsize = kwargs.get('tile_id_fontsize', 12)
     if not isinstance(bin_factor, int) or bin_factor < 1:
         raise ValueError(
             f"overlay_montage_grid: bin_factor must be a positive int (got {bin_factor!r})."
@@ -551,8 +560,8 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
     if tile_positions_actual:
         # Default: derive (positive) tile positions from tr_matr on the fly.
         # Callers can override by passing tile_positions= explicitly.
-        tile_positions = kwargs.get('tile_positions', -montage_object.tr_matr[0, :, 0:2, 2])
-        for tile_position in tile_positions:
+        tile_positions = kwargs.get('tile_positions', -montage_object.tr_matr[layer_id, :, 0:2, 2])
+        for j, tile_position in enumerate(tile_positions):
             xi, yi = tile_position
             rect_patch = patches.Rectangle(
                 (xi / bin_factor, yi / bin_factor),
@@ -560,12 +569,15 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
                 linewidth=linewidth, linestyle=linestyle,
                 edgecolor=color, facecolor='none')
             ax.add_patch(rect_patch)
+            if add_tile_ids:
+                ax.text((xi+dx/2)/bin_factor, (yi+dy/2)/bin_factor, '{:d}'.format(j), color=color, fontsize=tile_id_fontsize)
     else:
-        X0 = montage_object.FirstPixels[0, 0]
-        Y0 = montage_object.FirstPixels[0, 1]
-        for FirstPixel_pair in montage_object.FirstPixels:
-            xi = np.max((FirstPixel_pair[0]- X0, 0))
-            yi = np.max((FirstPixel_pair[1]- Y0, 0))
+        fp = montage_object.FirstPixels[layer_id]      # (n_tiles, 3)
+        X0 = fp[:, 0].min()                            # scalar origin (or fp[0, 0] if you want tile-0 ref)
+        Y0 = fp[:, 1].min()
+        for j, FirstPixel_pair in enumerate(fp):                     # iterate TILES of this layer
+            xi = np.max((FirstPixel_pair[0] - X0, 0))
+            yi = np.max((FirstPixel_pair[1] - Y0, 0))
             dx_loc = dx  + np.min((FirstPixel_pair[0]- X0, 0))
             dy_loc = dy  + np.min((FirstPixel_pair[1]- Y0, 0))
             rect_patch = patches.Rectangle(
@@ -574,6 +586,8 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
                 linewidth=linewidth, linestyle=linestyle,
                 edgecolor=color, facecolor='none')
             ax.add_patch(rect_patch)
+            if add_tile_ids:
+                ax.text((xi+dx_loc/2)/bin_factor, (yi+dy_loc/2)/bin_factor, '{:d}'.format(j), color=color, fontsize=tile_id_fontsize)
 
 
 def remap_tile(img, deformation_field, **kwargs):
