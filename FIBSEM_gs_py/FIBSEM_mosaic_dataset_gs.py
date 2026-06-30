@@ -570,7 +570,7 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
                 edgecolor=color, facecolor='none')
             ax.add_patch(rect_patch)
             if add_tile_ids:
-                ax.text((xi+dx/4)/bin_factor, (yi+dy/4)/bin_factor, '{:d}'.format(j), color=color, fontsize=tile_id_fontsize)
+                ax.text((xi+dx/2)/bin_factor, (yi+dy/2)/bin_factor, '{:d}'.format(j), color=color, fontsize=tile_id_fontsize, ha='center', va='center')
     else:
         fp = montage_object.FirstPixels[layer_id]      # (n_tiles, 3)
         X0 = fp[:, 0].min()                            # scalar origin (or fp[0, 0] if you want tile-0 ref)
@@ -587,7 +587,7 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
                 edgecolor=color, facecolor='none')
             ax.add_patch(rect_patch)
             if add_tile_ids:
-                ax.text((xi+dx_loc/4)/bin_factor, (yi+dy_loc/4)/bin_factor, '{:d}'.format(j), color=color, fontsize=tile_id_fontsize)
+                ax.text((xi+dx_loc/2)/bin_factor, (yi+dy_loc/2)/bin_factor, '{:d}'.format(j), color=color, fontsize=tile_id_fontsize, ha='center', va='center')
 
 
 def remap_tile(img, deformation_field, **kwargs):
