@@ -519,6 +519,9 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
         Matplotlib linewidth. Default is 1.0.
     color : string
         Matplotlib color. Default 'cyan'.
+    TPM : int
+        Tiles per mFOV used to group tiles for per-mFOV border/index colors.
+        Default montage_object.TPM (set at __init__, default 91).
     tile_positions_actual : bool
         If True (default), use actual solved positions from tr_matr. If False, use nominal positions from montage_object.FirstPixels.
     tile_positions : 2D array or list
@@ -541,6 +544,7 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
     tile_id_fontsize : int
         Tile ID text font size. Default is 12.
     '''
+    TPM = kwargs.get('TPM', getattr(montage_object, 'TPM', 91))
     linestyle = kwargs.get('linestyle', 'dashed')
     linewidth = kwargs.get('linewidth', 1.0)
     color = kwargs.get('color', 'cyan')
@@ -561,8 +565,17 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
         # Default: derive (positive) tile positions from tr_matr on the fly.
         # Callers can override by passing tile_positions= explicitly.
         tile_positions = kwargs.get('tile_positions', -montage_object.tr_matr[layer_id, :, 0:2, 2])
+        NTP = len(tile_positions)
+        if (NTP % TPM == 0):
+            nc = NTP // TPM
+            inds = np.arange(NTP) // TPM
+            colors = get_cmap("gist_rainbow_r")((nc - inds) / nc)
+        else:
+            nc = 1
         for j, tile_position in enumerate(tile_positions):
             xi, yi = tile_position
+            if nc > 1:
+                color = colors[j]
             rect_patch = patches.Rectangle(
                 (xi / bin_factor, yi / bin_factor),
                 (dx - 2) / bin_factor, (dy - 2) / bin_factor,
@@ -575,11 +588,20 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
         fp = montage_object.FirstPixels[layer_id]      # (n_tiles, 3)
         X0 = fp[:, 0].min()                            # scalar origin (or fp[0, 0] if you want tile-0 ref)
         Y0 = fp[:, 1].min()
+        NTP = len(fp)
+        if (NTP % TPM == 0):
+            nc = NTP // TPM
+            inds = np.arange(NTP) // TPM
+            colors = get_cmap("gist_rainbow_r")((nc - inds) / nc)
+        else:
+            nc = 1
         for j, FirstPixel_pair in enumerate(fp):                     # iterate TILES of this layer
             xi = np.max((FirstPixel_pair[0] - X0, 0))
             yi = np.max((FirstPixel_pair[1] - Y0, 0))
             dx_loc = dx  + np.min((FirstPixel_pair[0]- X0, 0))
             dy_loc = dy  + np.min((FirstPixel_pair[1]- Y0, 0))
+            if nc > 1:
+                color = colors[j]
             rect_patch = patches.Rectangle(
                 (xi / bin_factor, yi / bin_factor),
                 (dx_loc - 2) / bin_factor, (dy_loc - 2) / bin_factor,
@@ -2341,6 +2363,10 @@ class FIBSEM_mosaic_dataset:
             If empty string '' (default), tile positions are read from the .dat file        headers (Option 1).
         metadata_file : str
             Path to a text file with MSEM acquisition metadata. Will be parsed using parse_metadata_file(filename).
+        TPM : int
+            Tiles per mFOV for hexagonal (MSEM) layouts. Used wherever the per-layer
+            tile axis is split into mFOVs: per-mFOV grid coloring, canonical-hex
+            validation, and inter-layer drift estimation. Default 91 (rows 6,7,8,9,10,11,10,9,8,7,6).
         grid : str
             grid for default tiles positions. Default is 'rect' - rectilinear grid, typical for FIB-SEM. Another options is 'hex' - hexagonal, typical for MSEM
         fnm_mosaic_stack : str
@@ -2358,9 +2384,9 @@ class FIBSEM_mosaic_dataset:
             Override at call time on a per-routine basis if you have evidence
             a different value works better for your workload.
         intralayer_weight : np.float32, default 1.0
-            Weight for pairwise constraints within a single Z-layer.
+            Weight for pairwise constraints for the A_csr build for tiles within a single Z-layer.
         interlayer_weight : np.float32, default 100.0
-            Weight for pairwise constraints for tiles between adjacent Z-layers.(100–10000 typical).
+            Weight for pairwise constraints for the A_csr build for tiles between adjacent Z-layers.(100–10000 typical).
         add_reverse_edges : bool, default False
             If True, adds both (i->j) and (j->i) with same weight (increases robustness).
         overlap_bound_margin : int
@@ -2706,6 +2732,7 @@ class FIBSEM_mosaic_dataset:
         tile_area = float(self.XResolution) * float(self.YResolution)
         self.min_intralayer_overlap_pixels = kwargs.get('min_intralayer_overlap_pixels', 0.02 * tile_area)
         self.min_interlayer_overlap_pixels = kwargs.get('min_interlayer_overlap_pixels', 0.20 * tile_area)
+        self.TPM = kwargs.get('TPM', 91)   # tiles per mFOV (hexagonal MSEM layout)
         self.compute_index_pairs_and_geometry(verbose=verbose)
 
         self.min_overlap_pixels                  = kwargs.get('min_overlap_pixels', 5000)
@@ -3161,6 +3188,8 @@ class FIBSEM_mosaic_dataset:
         save_res_png : bool - save PNG. Default False.
         png_name : str - output path. Default <data_dir>/mfov_hex_pattern.png.
         figsize : tuple - Default (12, 5).
+        TPM : int
+            Tiles per mFOV (hexagonal layout). Default self.TPM (set at __init__, default 91).
         calc_avg_disp : boolean
             If True (default), compute the canonical pattern (avg_disp) from this dataset.
             If False, reuse the previously stored self.avg_disp (requires save_avg_disp=True on a prior call).
@@ -3194,7 +3223,7 @@ class FIBSEM_mosaic_dataset:
         sort_by = kwargs.get('sort_by', 'deviation')
         sort_ascending = kwargs.get('sort_ascending', False)
 
-        TPM = 91
+        TPM = kwargs.get('TPM', self.TPM)
         L   = self.nz_tiles
         nt  = self.n_tiles_per_layer
         if nt % TPM != 0:
@@ -3294,6 +3323,8 @@ class FIBSEM_mosaic_dataset:
         only_sift_invalid : bool - if True (default), skip tiles already present in >=1 valid SIFT
             pair (replace only unconstrained tiles). Set False to replace every listed tile.
         verbose : bool - print/display the replaced tiles. Default True.
+        TPM : int
+            Tiles per mFOV (hexagonal layout). Default self.TPM (set at __init__, default 91).
 
         Returns:
         ----------
@@ -3303,7 +3334,7 @@ class FIBSEM_mosaic_dataset:
         only_sift_invalid = kwargs.get('only_sift_invalid', True)
         verbose           = kwargs.get('verbose', True)
 
-        TPM   = 91
+        TPM = kwargs.get('TPM', self.TPM)
         L, nt = self.nz_tiles, self.n_tiles_per_layer
         if nt % TPM != 0:
             print('n_tiles_per_layer ({:d}) is not divisible by {:d}; not an mFOV hexagonal layout.'.format(nt, TPM))
@@ -3515,6 +3546,8 @@ class FIBSEM_mosaic_dataset:
             'previous' (default) -> chain shifts between consecutive layers.
             'first' -> match every layer directly to layer 0.
         TransformType : object reference. Default ShiftTransform (rigid shift).
+        TPM : int
+            Tiles per mFOV (hexagonal layout). Default self.TPM (set at __init__, default 91).
         solver : str. 'RANSAC' (default) or 'LinReg'.
         drmax : float
             Inlier threshold (pixels), OPENED UP vs intra-layer. Default 25.0.
@@ -3588,13 +3621,13 @@ class FIBSEM_mosaic_dataset:
         # canonical_xy[i] corresponds to test_tile_ids[i].
         canonical_xy = None
         if position_source == 'canonical_hex':
-            TPM = 91
+            TPM = kwargs.get('TPM', self.TPM)
             nt = self.n_tiles_per_layer
             if nt % TPM != 0:
                 raise ValueError("position_source='canonical_hex' requires an mFOV-hexagonal "
                                  "layout (n_tiles_per_layer divisible by 91); got {:d}.".format(nt))
             n_mfov = nt // TPM
-            hex_res = self.check_mfov_hexagonal_pattern(verbose=verbose, calc_avg_disp=calc_avg_disp, save_avg_disp=False)
+            hex_res = self.check_mfov_hexagonal_pattern(verbose=verbose, calc_avg_disp=calc_avg_disp, TPM=TPM, save_avg_disp=False)
             if hex_res is None:
                 raise RuntimeError("check_mfov_hexagonal_pattern() returned None; cannot build canonical positions.")
             avg_disp   = np.asarray(hex_res['avg_displacement'])                       # (91, 2)
