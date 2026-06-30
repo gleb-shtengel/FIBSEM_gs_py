@@ -569,7 +569,7 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
         if (NTP % TPM == 0):
             nc = NTP // TPM
             inds = np.arange(NTP) // TPM
-            colors = get_cmap("gist_rainbow_r")((nc - inds) / nc)
+            colors = plt.get_cmap("gist_rainbow_r")((nc - inds) / nc)
         else:
             nc = 1
         for j, tile_position in enumerate(tile_positions):
@@ -592,7 +592,7 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
         if (NTP % TPM == 0):
             nc = NTP // TPM
             inds = np.arange(NTP) // TPM
-            colors = get_cmap("gist_rainbow_r")((nc - inds) / nc)
+            colors = plt.get_cmap("gist_rainbow_r")((nc - inds) / nc)
         else:
             nc = 1
         for j, FirstPixel_pair in enumerate(fp):                     # iterate TILES of this layer
