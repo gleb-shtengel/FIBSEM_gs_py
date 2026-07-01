@@ -542,7 +542,7 @@ def overlay_montage_grid(ax, montage_object, **kwargs):
     add_tile_ids : bool
         If True, tile IDs are added to the plot. Default is False.
     tile_id_fontsize : int
-        Tile ID text font size. Default is 12.
+        Tile ID text font size. Default is 6.
     '''
     TPM = kwargs.get('TPM', getattr(montage_object, 'TPM', 91))
     linestyle = kwargs.get('linestyle', 'dashed')
@@ -2156,12 +2156,11 @@ class FIBSEM_mosaic_dataset:
         filenames for the individual data frames in the set
     data_dir : str
         data directory (path)
-    grid : str
-        grid for default tiles positions. Default is 'rect' - rectilinear grid, typical for FIB-SEM. Another options is 'hex' - hexagonal, typical for MSEM
-    index_pairs : array of pairs of absolute (in 1D sense of fls.ravel()) tile indices. Auto-determined during initialization, depends on grid setting.
-        if grid == 'rect':  index_pairs = np.array(col_ind).reshape((row, 2))
+    index_pairs : (n_pairs, 2) int array
+        Absolute tile indices (in the fls.ravel() sense) of neighboring tile pairs.
+        Auto-determined during initialization from bounding-box overlap in compute_index_pairs_and_geometry().
     Sample_ID : str
-            Sample ID
+        Sample ID
     ftype : int
         file type (0 - Shan Xu's .dat, 1 - tif)
     PixelSize : np.float32
@@ -2199,7 +2198,7 @@ class FIBSEM_mosaic_dataset:
     solver : str
         Solver used for SIFT ('RANSAC' or 'LinReg')
     RANSAC_initial_fraction : float
-        Fraction of data points for initial RANSAC iteration step. Default is 0.005.
+        Fraction of data points for initial RANSAC iteration step. Default is 0.05.
     drmax : float
         In the case of 'RANSAC' - Maximum distance for a data point to be classified as an inlier.
         In the case of 'LinReg' - outlier threshold for iterative regression
@@ -2367,8 +2366,6 @@ class FIBSEM_mosaic_dataset:
             Tiles per mFOV for hexagonal (MSEM) layouts. Used wherever the per-layer
             tile axis is split into mFOVs: per-mFOV grid coloring, canonical-hex
             validation, and inter-layer drift estimation. Default 91 (rows 6,7,8,9,10,11,10,9,8,7,6).
-        grid : str
-            grid for default tiles positions. Default is 'rect' - rectilinear grid, typical for FIB-SEM. Another options is 'hex' - hexagonal, typical for MSEM
         fnm_mosaic_stack : str
             Filename for registered mosaic stack. Default is os.path.splitext(os.path.split(self.fls.ravel()[0])[1])[0][0:-5] + 'mosaic_stack.mrc'
         recall_parameters : boolean
@@ -2378,7 +2375,7 @@ class FIBSEM_mosaic_dataset:
         memory_profiling : boolean
             Perform memory profiling during the data load and output it. Default is False.
         max_futures : int
-            max number of running DASK futures per batch. Default is 10000.
+            max number of running DASK futures per batch. Default is 50000.
             Smaller batches reduce scheduler placement-decision overhead for
             tasks with future-kwarg dependencies (non-rootish in DASK terms).
             Override at call time on a per-routine basis if you have evidence
@@ -2474,7 +2471,7 @@ class FIBSEM_mosaic_dataset:
         solver : str
             Solver used for SIFT ('RANSAC' or 'LinReg'). Default is 'RANSAC'.
         RANSAC_initial_fraction : float
-            Fraction of data points for initial RANSAC iteration step. Default is 0.005.
+            Fraction of data points for initial RANSAC iteration step. Default is 0.05.
         Lowe_Ratio_Threshold : float
             Threshold for Lowe's Ratio Test. Default is 0.7.
         drmax : float
@@ -2482,7 +2479,7 @@ class FIBSEM_mosaic_dataset:
             In the case of 'LinReg' - outlier threshold for iterative regression.
             Default is 1.5.
         max_iter : int
-            Max number of iterations in the iterative procedure above (RANSAC or LinReg). Default is 1000.
+            Max number of iterations in the iterative procedure above (RANSAC or LinReg). Default is 10000.
         SIFT_nmatches_min : int
             Min number of matches for the transformation to be considered valid. Default is 5.
         interpolation : int
@@ -2494,10 +2491,6 @@ class FIBSEM_mosaic_dataset:
                                                                     #    cv2.INTER_LANCZOS4  Uses a Lanczos kernel with an 8x8 neighborhood, providing the best quality, but it is the slowest method.
         dtp : Data Type
             Python data type for saving. Default is np.int16.
-        pad_edges : boolean
-            If True, the data will be padded before transformation to avoid clipping. 
-        disp_res : boolean
-            If False, the intermediate printouts will be suppressed. Default is True.
         save_res_png  : boolean
             Save PNG images of the intermediate processing statistics and final registration quality check. Default is True.
 
@@ -3557,7 +3550,7 @@ class FIBSEM_mosaic_dataset:
         BFMatcher : boolean. Default self.BFMatcher.
         SIFT_nmatches_min : int. Min RANSAC inliers for a pair to be valid. Default 10.
         save_matches : boolean. Default False.
-        out_dir : str. Default self.data_dir.
+        out_dir : str. Default is os.path.join(self.data_dir, 'FirstPixel_drifts').
         plot_results : boolean. Default True.
         save_res_png : boolean. Default self.save_res_png.
         verbose : boolean.
@@ -3839,8 +3832,6 @@ class FIBSEM_mosaic_dataset:
             max number of running DASK futures. Default is self.max_futures (50000).
         ftype : int
             File type (0 - Shan Xu's .dat, 1 - tif). Default is object attribute.
-        frame_inds : array
-            Array of frames to be used for evaluation. If not provided, evaluation will be performed on all frames.
         data_dir : str
             Data directory (path). Default is object attribute.
         thr_min : float
@@ -3850,9 +3841,9 @@ class FIBSEM_mosaic_dataset:
         nbins : int
             Number of histogram bins for building the PDF and CDF. Default is object attribute.
         percentile : int
-            Percentile value for data evaluation. Default is obect attribute (50).
+            Percentile value for data evaluation. Default is object attribute (50).
         analyze_SNR : boolean
-            If True, SNR analysis via simulated Variance vs. Intensity is performed and adde to the returned dictionary. Default is True.
+            If True, SNR analysis via simulated Variance vs. Intensity is performed and added to the returned dictionary. Default is True.
         gradient_thr : float
             Fractional threshold for gradient filtering. Default is 0.25.
         FIBSEM_Data_parquet : str
@@ -3864,28 +3855,30 @@ class FIBSEM_mosaic_dataset:
 
         Returns:
         ----------
-        FIBSEM_Data : list of 20 parameters
-            FIBSEM_Data_parquet, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding, mill_rate_WD, mill_rate_MV, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolutions, YResolutions, SEMStiX, SEMStiY, SEMAlnX, SEMAlnY, errors_s2
-                FIBSEM_Data_parquet : str
-                    path to Parquet file with the FIBSEM data
-                data_min_glob : np.float32   
-                    min data value for I8 conversion (open CV SIFT requires I8)
-                data_max_glob : np.float32   
-                    max data value for I8 conversion (open CV SIFT requires I8)
-                center_x : np.float32 array
-                    FOV Center X-coordinate extracted from the header data
-                center_y : np.float32 array
-                    FOV Center Y-coordinate extracted from the header data
-                ScanRate : np.float32 array
-                    SEM Scan Rate (Hz)
-                EHT : np.float32 array
-                    SEM EHT voltage (kV)
-                SEMSpecimenI : np.float32 array
-                    SEM Specimen current (nA)
-                XResolutions : int array
-                    X-frame sizes
-                YResolutions : int array
-                    Y-frame sizes
+        Dictionary of FIBSEM data analysis results
+            {'FIBSEM_Data_parquet': FIBSEM_Data_parquet_path,
+            'data_min_glob':    data_min_glob,
+            'data_max_glob':    data_max_glob,
+            'data_min_sliding': data_min_sliding,
+            'data_max_sliding': data_max_sliding,
+            'mill_rate_WD':     mill_rate_WD,
+            'mill_rate_MV':     mill_rate_MV,
+            'center_x':         center_x,
+            'center_y':         center_y,
+            'ScanRate':         ScanRate,
+            'EHT':              EHT,
+            'SEMSpecimenI':     SEMSpecimenI,
+            'XResolutions':     XResolutions,
+            'YResolutions':     YResolutions,
+            'SEMStiX':          SEMStiX,
+            'SEMStiY':          SEMStiY,
+            'SEMAlnX':          SEMAlnX,
+            'SEMAlnY':          SEMAlnY,
+            'dmeans':           dmeans,
+            'dpercentiles':     dpercentiles,
+            'I0s' : I0s, present if analyze_SNR==True,
+            'SNRs' : SNRs , present if analyze_SNR==True,
+            'errors':           errors_s2}
         '''
         verbose = kwargs.get('verbose', True)
         DASK_client = kwargs.get('DASK_client', '')
@@ -3893,7 +3886,6 @@ class FIBSEM_mosaic_dataset:
         DASK_client_retries = kwargs.get("DASK_client_retries", self.DASK_client_retries)
         max_futures = kwargs.get('max_futures', self.max_futures)
         ftype = kwargs.get("ftype", self.ftype)
-        frame_inds = kwargs.get("frame_inds", np.arange(self.nz_tiles))
         data_dir = kwargs.get('data_dir', self.data_dir)
         thr_min = kwargs.get("thr_min", self.thr_min)
         thr_max = kwargs.get("thr_max", self.thr_max)
@@ -3952,7 +3944,7 @@ class FIBSEM_mosaic_dataset:
         self.XResolution = np.max(self.XResolutions)
         self.YResolution = np.max(self.YResolutions)
         
-        frame_inds_ext = np.repeat(np.array(frame_inds), self.n_tiles_per_layer)
+        frame_inds_ext = np.repeat(np.arange(self.nz_tiles), self.n_tiles_per_layer)
 
         try:
             WD_fit_coef = np.polyfit(frame_inds_ext, WD, 1)
@@ -4303,7 +4295,7 @@ class FIBSEM_mosaic_dataset:
         self.detector_avg_intensities = det_avg
 
         if verbose:
-            print('Parsed {} unique detector IDs; {} retained (>= {} tiles each).'.format(
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Parsed {} unique detector IDs; {} retained (>= {} tiles each).'.format(
                 int(np.sum(np.unique(det_ids) >= 0)), len(det_avg), min_tiles_per_detector))
 
         # --- Per-pair target ratios. ---
@@ -4322,7 +4314,7 @@ class FIBSEM_mosaic_dataset:
         self.target_intensity_ratios_valid = valid
 
         if verbose:
-            print('Target ratios: {:d}/{:d} pairs valid, range [{:.4f}, {:.4f}]'.format(
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Target ratios: {:d}/{:d} pairs valid, range [{:.4f}, {:.4f}]'.format(
                 int(np.sum(valid)), self.C,
                 float(np.min(targets[valid])) if np.any(valid) else float('nan'),
                 float(np.max(targets[valid])) if np.any(valid) else float('nan')))
@@ -4431,7 +4423,7 @@ class FIBSEM_mosaic_dataset:
         if verbose:
             valid = np.isfinite(ratios) & (ratios > 0)
             label = '{} (p={})'.format(method, self.percentile) if method == 'percentile' else method
-            print('{} intensity ratios: {:d}/{:d} valid pairs, mean={:.4f}, std={:.4f}'.format(
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   {} intensity ratios: {:d}/{:d} valid pairs, mean={:.4f}, std={:.4f}'.format(
                 label, int(np.sum(valid)), self.C,
                 float(np.mean(ratios[valid])) if np.any(valid) else float('nan'),
                 float(np.std(ratios[valid]))  if np.any(valid) else float('nan')))
@@ -4583,10 +4575,6 @@ class FIBSEM_mosaic_dataset:
             before the next is submitted.
         ftype : int
             File type (0 - Shan Xu's .dat, 1 - tif). Default is object attribute.
-        EightBit : int
-            0 - 16-bit data, 1: 8-bit data. Default is object attribute.
-        data_dir : str
-            Data directory (path). Default is object attribute.
         thr_min : float
             CDF threshold for determining the minimum data value. Default is object attribute.
         thr_max : float
@@ -4599,7 +4587,7 @@ class FIBSEM_mosaic_dataset:
         nbins : int
             Number of histogram bins for building the PDF and CDF. Default is object attribute.
         U8_conversion : str
-            Range selection for U8 conversion. Options are: 'global', 'sliding', and 'local'. Default is 'local'.
+            Range selection for U8 conversion. Options are: 'global', 'sliding', and 'local'. Default is object attribute.
         data_minmax : list of 5 parameters
             minmax_parquet : str
                 path to Parquet file with Min/Max data.
@@ -4609,8 +4597,8 @@ class FIBSEM_mosaic_dataset:
                 min data values (one per file) for I8 conversion.
             data_max_sliding : np.float32 array
                 max data values (one per file) for I8 conversion.
-            data_minmax_glob : 2D np.float32 array
-                min and max data values without sliding averaging.
+            data_max_glob : 2D np.float32 array
+                max data value for I8 conversion.
         SIFT_nfeatures : int
             The number of best features to retain. Default is object attribute. SIFT library default is 0 (all features retained).
             The features are ranked by their scores (measured in SIFT algorithm as the local contrast)
@@ -4653,7 +4641,7 @@ class FIBSEM_mosaic_dataset:
         thr_max = kwargs.get("thr_max", self.thr_max)
         fls = kwargs.get('fls', self.fls.ravel())
         nbins = kwargs.get("nbins", self.nbins)
-        U8_conversion = kwargs.get('U8_conversion', self.U8_conversion)
+        U8_conversion = kwargs.get('U8_conversion', getattr(self, 'U8_conversion', 'local'))
         if U8_conversion != 'local':
             data_minmax = kwargs.get("data_minmax", self.data_minmax)
             minmax_parquet, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding = data_minmax
@@ -4742,7 +4730,7 @@ class FIBSEM_mosaic_dataset:
         dpi : int
             DPI for PNG. Default is 300.
         save_fname : string
-            File name to save the PNG image. Default is os.path.join(data_dir, 'nkpts_Outliers.png').
+            File name to save the PNG image. Default is os.path.join(data_dir, 'Nkpts_Outliers.png').
         verbose : boolean
             Display intermediate results. Default is False.
         mark_outliers : boolean
@@ -4767,6 +4755,7 @@ class FIBSEM_mosaic_dataset:
         else:
             save_fname = 'Image not saved'
         if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Analyzing Key-Point Statistics')
             print('Loading kwarg Data')
         Sample_ID = kwargs.get('Sample_ID', '')
         fit_params = kwargs.get("fit_params", ['SG', 11, 3])
@@ -4910,7 +4899,7 @@ class FIBSEM_mosaic_dataset:
         Returns:
         ----------
         transformations_results_3D : array of lists containing the results:
-            [transformation_matrix, fnm_matches, npt, kpt_ints, error_abs_mean, error_FWHMx, error_FWHMy, iteration]
+            [transformation_matrix, fnm_matches, kpts, kpt_ints, error_abs_mean, error_FWHMx, error_FWHMy, iteration]
             transformation_matrix : 2D np.float32 array
                 Transformation matrix for each sequential frame pair.
             fnm_matches : str
@@ -4943,7 +4932,7 @@ class FIBSEM_mosaic_dataset:
         max_iter = kwargs.get("max_iter", self.max_iter)
         SIFT_nmatches_min = kwargs.get('SIFT_nmatches_min', self.SIFT_nmatches_min)
         overlap_bound_margin = kwargs.get('overlap_bound_margin', getattr(self, 'overlap_bound_margin', 50))
-        Lowe_Ratio_Threshold = kwargs.get("Lowe_Ratio_Threshold", 0.7)   # threshold for Lowe's Ratio Test
+        Lowe_Ratio_Threshold = kwargs.get('Lowe_Ratio_Threshold', getattr(self, 'Lowe_Ratio_Threshold', 0.7))   # threshold for Lowe's Ratio Test
         BFMatcher = kwargs.get("BFMatcher", self.BFMatcher)
         save_matches = kwargs.get("save_matches", self.save_matches)
         save_res_png  = kwargs.get("save_res_png", self.save_res_png )
@@ -5077,19 +5066,8 @@ class FIBSEM_mosaic_dataset:
             CDF threshold for determining the maximum data value. Default is object attribute.
         nbins : int
             Number of histogram bins for building the PDF and CDF. Default is object attribute.
-        data_minmax : list of 5 parameters
-            minmax_parquet : str
-                path to Parquet file with Min/Max data.
-            data_min_glob : np.float32   
-                min data value for I8 conversion (open CV SIFT requires I8).
-            data_min_sliding : np.float32 array
-                min data values (one per file) for I8 conversion.
-            data_max_sliding : np.float32 array
-                max data values (one per file) for I8 conversion.
-            data_minmax_glob : 2D np.float32 array
-                min and max data values without sliding averaging.
         I0 : float
-            Dark Count used for Intensity calculation. Default is self.Scaling[1,0].
+            Dark Count used for Intensity calculation. Default is derived from self.tile_I0s.
         SIFT_nfeatures : int
             The number of best features to retain. Default is object attribute. SIFT library default is 0 (all features retained).
             The features are ranked by their scores (measured in SIFT algorithm as the local contrast)
@@ -5618,7 +5596,7 @@ class FIBSEM_mosaic_dataset:
             cv2 termination criteria (type, max_count, eps). Default self.criteria or
             (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 1000, 1e-7).
         ECC_refine_passes : int
-            Number of sequential ECC refinements. Default 2.
+            Number of sequential ECC refinements. Default 5.
         use_overlap_bounds : boolean
             If True (default), crop to the exact per-pair overlap rectangle; else legacy corner crop.
         overlap_bound_margin : int
@@ -5907,7 +5885,7 @@ class FIBSEM_mosaic_dataset:
             If True (default), each outlier is marked with "x" and its frame and tile number are printed next to "x".
           sigma_thr : float
             Threshold (multiplied by sigma) for outlier determination. Default is 6.0 (6-sigma outliers).
-          figsize : tuple. Default (14, 6).
+          figsize : tuple. Default (21, 6).
           save_res_png : bool - save PNG. Default False.
           png_name : str - output path. Default <data_dir>/SIFT_matches_per_tile.png.
 
@@ -5924,6 +5902,8 @@ class FIBSEM_mosaic_dataset:
             if no outliers are found. Compatible with generate_outliers_report().
         '''
         verbose = kwargs.get('verbose', False)
+        if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Plotting number of SIFT matches per tile')
         both_endpoints = kwargs.get('both_endpoints', True)
         cmap = kwargs.get('cmap', 'viridis')
         figsize = kwargs.get('figsize', (21, 6))
@@ -6728,6 +6708,8 @@ class FIBSEM_mosaic_dataset:
         n_tiles_per_layer = kwargs.get('n_tiles_per_layer', self.n_tiles_per_layer)
         tile_id = kwargs.get('tile_id', 0)
         verbose = kwargs.get('verbose', False)
+        if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Generating transformation report')
         save_png = kwargs.get('save_png', True)
         dpi = kwargs.get('dpi', 300)
         data_dir = kwargs.get('data_dir', self.data_dir)

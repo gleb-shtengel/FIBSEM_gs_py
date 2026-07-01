@@ -8947,7 +8947,7 @@ def evaluate_FIBSEM_frame(params):
         nbins : int
             number of histogram bins for building the PDF and CDF
         analyze_SNR : boolean
-            If True, SNR analysis via simulated Variance vs. Intensity is performed and adde to the returned dictionary. Default is False.
+            If True, SNR analysis via simulated Variance vs. Intensity is performed and added to the returned dictionary. Default is False.
         gradient_thr : float
             Fractional threshold for gradient filtering. Default is 0.25.
 
@@ -9155,8 +9155,10 @@ def evaluate_FIBSEM_frames_dataset(fls, DASK_client, **kwargs):
         If True (default), intermediate messages and results will be displayed.
     use_existing_data : boolean
         Default is False. If True and the data exists (saved to Parquet), use that.
+    percentile : int
+        Percentile value for data evaluation. Default is 50.
     analyze_SNR : boolean
-        If True, SNR analysis via simulated Variance vs. Intensity is performed and adde to the returned dictionary. Default is False.
+        If True, SNR analysis via simulated Variance vs. Intensity is performed and added to the returned dictionary. Default is False.
     gradient_thr : float
         Fractional threshold for gradient filtering. Default is 0.25.
 
@@ -12937,6 +12939,12 @@ class FIBSEM_dataset:
             Other options are:
                 ['LF'] - use linear fit with forces start points Sxx and Syy = 1 and Sxy and Syx = 0
                 ['PF', 2]  - use polynomial fit (in this case of order 2)
+        percentile : int
+            Percentile value for data evaluation. Default is object attribute (50).
+        analyze_SNR : boolean
+            If True, SNR analysis via simulated Variance vs. Intensity is performed and added to the returned dictionary. Default is True.
+        gradient_thr : float
+            Fractional threshold for gradient filtering. Default is 0.25.
         Mill_Volt_Rate_um_per_V : float
             Milling Voltage to Z conversion (µm/V). Default is 31.235258870176065.
         FIBSEM_Data_parquet : str
@@ -12948,36 +12956,30 @@ class FIBSEM_dataset:
 
         Returns:
         ----------
-        FIBSEM_Data : list of 20 parameters
-            FIBSEM_Data_parquet, data_min_glob, data_max_glob, data_min_sliding, data_max_sliding, mill_rate_WD, mill_rate_MV, center_x, center_y, ScanRate, EHT, SEMSpecimenI, XResolutions, YResolutions, SEMStiX, SEMStiY, SEMAlnX, SEMAlnY, errors_s2
-                FIBSEM_Data_parquet : str
-                    path to Parquet file with the FIBSEM data
-                data_min_glob : np.float32   
-                    min data value for I8 conversion (open CV SIFT requires I8)
-                data_man_glob : np.float32   
-                    max data value for I8 conversion (open CV SIFT requires I8)
-                data_min_sliding : np.float32 array
-                    min data values (one per file) for I8 conversion
-                data_max_sliding : np.float32 array
-                    max data values (one per file) for I8 conversion
-                mill_rate_WD : np.float32 array
-                    Milling rate calculated based on Working Distance (WD)
-                mill_rate_MV : np.float32 array
-                    Milling rate calculated based on Milling Y Voltage (MV)
-                center_x : np.float32 array
-                    FOV Center X-coordinate extracted from the header data
-                center_y : np.float32 array
-                    FOV Center Y-coordinate extracted from the header data
-                ScanRate : np.float32 array
-                    SEM Scan Rate (Hz)
-                EHT : np.float32 array
-                    SEM EHT voltage (kV)
-                SEMSpecimenI : np.float32 array
-                    SEM Specimen current (nA)
-                XResolutions : int array
-                    X-frame sizes
-                YResolutions : int array
-                    Y-frame sizes
+            Dictionary of FIBSEM data analysis results
+            {'FIBSEM_Data_parquet': FIBSEM_Data_parquet_path,
+            'data_min_glob':    data_min_glob,
+            'data_max_glob':    data_max_glob,
+            'data_min_sliding': data_min_sliding,
+            'data_max_sliding': data_max_sliding,
+            'mill_rate_WD':     mill_rate_WD,
+            'mill_rate_MV':     mill_rate_MV,
+            'center_x':         center_x,
+            'center_y':         center_y,
+            'ScanRate':         ScanRate,
+            'EHT':              EHT,
+            'SEMSpecimenI':     SEMSpecimenI,
+            'XResolutions':     XResolutions,
+            'YResolutions':     YResolutions,
+            'SEMStiX':          SEMStiX,
+            'SEMStiY':          SEMStiY,
+            'SEMAlnX':          SEMAlnX,
+            'SEMAlnY':          SEMAlnY,
+            'dmeans':           dmeans,
+            'dpercentiles':     dpercentiles,
+            'I0s' : I0s, present if analyze_SNR==True,
+            'SNRs' : SNRs , present if analyze_SNR==True,
+            'errors':           errors_s2}
         '''
         DASK_client = kwargs.get('DASK_client', '')
         use_DASK, status_update_address = check_DASK(DASK_client)
@@ -12992,6 +12994,9 @@ class FIBSEM_dataset:
         thr_max = kwargs.get("thr_max", self.thr_max)
         nbins = kwargs.get("nbins", self.nbins)
         fit_params = kwargs.get("fit_params", self.fit_params)
+        percentile = kwargs.get('percentile', self.percentile)
+        analyze_SNR = kwargs.get('analyze_SNR', True)
+        gradient_thr = kwargs.get('gradient_thr', 0.25)
 
         if hasattr(self, 'Mill_Volt_Rate_um_per_V'):
             Mill_Volt_Rate_um_per_V = kwargs.get("Mill_Volt_Rate_um_per_V", self.Mill_Volt_Rate_um_per_V)
@@ -13012,6 +13017,9 @@ class FIBSEM_dataset:
                         'thr_max' : thr_max,
                         'nbins' : nbins,
                         'fit_params' : fit_params,
+                        'percentile' : percentile,
+                        'analyze_SNR' : analyze_SNR,
+                        'gradient_thr' : gradient_thr,
                         'Mill_Volt_Rate_um_per_V' : Mill_Volt_Rate_um_per_V,
                         'FIBSEM_Data_parquet' : FIBSEM_Data_parquet,
                         'verbose' : verbose,
