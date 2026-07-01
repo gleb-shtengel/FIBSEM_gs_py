@@ -4174,8 +4174,8 @@ class FIBSEM_mosaic_dataset:
             raise RuntimeError("FIBSEM_Data not available. Run evaluate_FIBSEM_statistics() first.")
         if 'dmeans' not in self.FIBSEM_Data or 'dpercentiles' not in self.FIBSEM_Data:
             raise RuntimeError("dmeans/dpercentiles missing from FIBSEM_Data. Re-run evaluate_FIBSEM_statistics().")
-        dmeans       = self.FIBSEM_Data['dmeans'].reshape(self.nz_tiles, n_tiles_per_layer)
-        dpercentiles = self.FIBSEM_Data['dpercentiles'].reshape(self.nz_tiles, n_tiles_per_layer)
+        dmeans       = np.array(self.FIBSEM_Data['dmeans']).reshape(self.nz_tiles, n_tiles_per_layer)
+        dpercentiles = np.array(self.FIBSEM_Data['dpercentiles']).reshape(self.nz_tiles, n_tiles_per_layer)
         intensity_means       = (dmeans       - self.tile_I0s) * self.tile_scales
         intensity_percentiles = (dpercentiles - self.tile_I0s) * self.tile_scales
 
