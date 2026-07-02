@@ -479,21 +479,40 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
     find_tile_pairs(layer_id, tile_id, **kwargs)
         Identify intra-layer and inter-layer tile pairs that share an overlap region for a given
         layer / tile set. Used as input to transformation determination and to bundle solving.
+    compute_index_pairs_and_geometry(**kwargs)
+        Compute all FirstPixels-derived geometry: neighbor index_pairs, per-pair overlap
+        bounds/areas, montage size, and the weighted constraint matrix A_csr. Called during
+        init and whenever FirstPixels change.
     save_parameters(**kwargs)
         Save transformation attributes and parameters (including transformation matrices).
     evaluate_FIBSEM_statistics(**kwargs)
         Evaluates parameters of FIBSEM data set (data Min/Max, Working Distance, Milling Y Voltage, FOV center positions).
+    generate_I0_SNR_report(**kwargs)
+        Report plot of per-tile I0 (dark count) and SNR across the stack.
+    generate_intensity_report(**kwargs)
+        Report plot of per-tile mean/percentile intensities across the stack; optionally
+        rescales tile_scales.
     compute_frame_intensity_ratios(**kwargs)
         Required precondition for solve_intensity_normalization(method='mean'/'percentile').
     extract_keypoints(**kwargs)
         Extract Key-Points and Descriptors.
+    determine_interlayer_FirstPixel_drifts(test_tile_ids, **kwargs)
+        Estimate (and optionally remove) inter-layer FirstPixels drifts from composite SIFT
+        key-point clouds, so each Z-layer's tiles are placed consistently before solving.
     analyze_kpt_statistics(**kwargs)
         Report per-tile-pair keypoint match statistics produced by extract_keypoints /
         determine_transformations_SIFT (counts, residual errors, drop reasons).
+    histogram_valid_matches_per_tile(**kwargs)
+        Histogram of valid SIFT pair-connections (edges) per tile; report tiles with zero or
+        exactly one valid match.
+    plot_matches_per_tile(**kwargs)
+        Plot 2D maps of the number of SIFT matches per tile, flagging low-connectivity tiles.
     determine_transformations_SIFT(**kwargs)
         Determine transformation matrices for frame pairs using SIFT.
     SIFT_evaluation(index_pair, **kwargs)
         Evaluate SIFT performance on a given index_pair.
+    ECC_evaluation(index_pair, **kwargs)
+        Evaluate ECC performance on a given index_pair.
     determine_transformations_ECC(**kwargs)
         Determine transformation matrices for frame pairs using ECC. Uses find_Transform_ECC(img1, img2, **kwargs).
     compute_solved_pair_overlap_bounds(**kwargs)
@@ -504,6 +523,17 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
         Required for intensity normalization when using target_damp > 0.
     solve_stack_stitching(**kwargs)
         Solve mosaic stack stitching (perform bundle optimization).
+    analyze_solve_residuals(**kwargs)
+        Analyze per-pair residual errors from the most recent stack solve, flag outlier pairs
+        (robust MAD test), and optionally invalidate them for a re-solve.
+    check_mfov_hexagonal_pattern(**kwargs)
+        Validate the hexagonal mFOV tile layout (MSEM) from FirstPixels or tr_matr; report
+        tiles deviating from the canonical hex pattern.
+    replace_tiles_with_canonical_mfov_positions(outliers, **kwargs)
+        Overwrite tr_matr translations of the listed (outlier) tiles with their canonical
+        mFOV-hexagon positions.
+    recalculate_FirstPixels_from_tr_matr(update=True, round_to_int=False)
+        Recompute FirstPixels from the current tr_matr translations.
     solve_intensity_normalization(**kwargs)
         Solve a global per-tile multiplicative scale factor so that overlapping tile
         regions match in intensity across the whole stack. Five methods, each consuming
@@ -525,3 +555,6 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
         Apply previously-determined flattening parameters to assembled layer mosaics.
     save_stack(**kwargs)
         Assemble all layers based on transformation matrices for each tile and save them into stack.
+    save_stack_zarr3(**kwargs)
+        Assemble and save the registered stack as a multiscale OME-ZARR v3 (sharded) store
+        with a Neuroglancer link.
