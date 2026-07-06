@@ -2166,7 +2166,23 @@ class FIBSEM_mosaic_dataset:
     PixelSize : np.float32
         pixel size in nm. This is inherited from FIBSEM_frame object. Default is 8.0
     voxel_size : rec.array(( np.float32,  np.float32,  np.float32), dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4')])
-        voxel size in nm. Default is isotropic (PixelSize, PixelSize, PixelSize)
+        voxel size in nm. Default is isotropic (PixelSize, PixelSize, PixelSize).
+    intralayer_weight : np.float32, default 1.0
+        Weight for pairwise constraints for the A_csr build for tiles within a single Z-layer.
+    interlayer_weight : np.float32, default 100.0
+        Weight for pairwise constraints for the A_csr build for tiles between adjacent Z-layers.(100–10000 typical).
+    add_reverse_edges : bool, default False
+        If True, adds both (i->j) and (j->i) with same weight (increases robustness).
+    overlap_bound_margin : int
+        Pixels by which the per-pair overlap rectangle is expanded on each side
+        when filtering SIFT keypoints during pairwise matching. Default 50.
+    min_intralayer_overlap_pixels : float
+        Minimum overlap area (pixels) for an INTRA-layer tile pair to be kept when building
+        the stitching graph; pairs with a smaller overlap rectangle are discarded.
+        Default 0.02 * (XResolution * YResolution) (2% of a tile).
+    min_interlayer_overlap_pixels : float
+        Minimum overlap area (pixels) for an INTER-layer tile pair to be kept.
+        Default 0.20 * (XResolution * YResolution) (20% of a tile).
     Scaling : 2D array of floats
         scaling parameters allowing to convert I16 data into actual electron counts 
     fnm_reg : str
@@ -4283,6 +4299,15 @@ class FIBSEM_mosaic_dataset:
         method : 'mean' or 'percentile'.    Default 'percentile'.
         detector_id_pattern : raw str.       Default r'sfov_(\\d+)'.
         min_tiles_per_detector : int.        Default 5.
+        plot_zlayer_trends : bool.           Default False.
+            If True, plot each detector's intensity averaged over all MFOVs within
+            a Z-layer, normalized by that layer's overall average intensity, vs
+            Z-layer index. Diverging curves indicate the global ratio is a poor
+            target. Stores self.detector_zlayer_norm_intensities.
+        save_png : bool.                     Default True (only used if plotting).
+        save_fname : str.                    Default <mosaic_stack>_detector_zlayer_trends.png.
+        dpi : int.                           Default 300.
+        figsize : tuple.                     Default (8, 5).
         verbose : bool.                      Default False.
 
         Stores:
@@ -4291,11 +4316,14 @@ class FIBSEM_mosaic_dataset:
         self.detector_avg_intensities   : dict {detector_id -> avg float}
         self.target_intensity_ratios              : 1D float64, length C
         self.target_intensity_ratios_valid        : 1D bool,   length C
+        self.detector_zlayer_norm_intensities : dict {detector_id -> 1D array (nz_tiles,)}
+                                                (only if plot_zlayer_trends=True)
         '''
         import re
         method                 = kwargs.get('method', 'percentile')
         pattern                = kwargs.get('detector_id_pattern', r'sfov_(\d+)')
         min_tiles_per_detector = kwargs.get('min_tiles_per_detector', 5)
+        plot_zlayer_trends     = kwargs.get('plot_zlayer_trends', False)
         verbose                = kwargs.get('verbose', False)
 
         if not hasattr(self, 'FIBSEM_Data') or self.FIBSEM_Data is None:
@@ -4356,6 +4384,61 @@ class FIBSEM_mosaic_dataset:
                 int(np.sum(valid)), self.C,
                 float(np.min(targets[valid])) if np.any(valid) else float('nan'),
                 float(np.max(targets[valid])) if np.any(valid) else float('nan')))
+        
+        # --- Optional per-Z-layer detector trend diagnostic. ---
+        if plot_zlayer_trends:
+            ret_dets = sorted(det_avg.keys())
+            vals_2d  = vals_corr.reshape(self.nz_tiles, self.n_tiles_per_layer)
+            det_2d   = det_ids.reshape(self.nz_tiles, self.n_tiles_per_layer)
+            finite_2d = np.isfinite(vals_2d) & (vals_2d > 0)
+
+            # Per-layer average intensity over all valid tiles (all detectors).
+            layer_mean = np.full(self.nz_tiles, np.nan, dtype=np.float64)
+            for z in range(self.nz_tiles):
+                m = finite_2d[z]
+                if np.any(m):
+                    layer_mean[z] = np.mean(vals_2d[z][m])
+
+            # Per-detector, per-layer average, normalized by the layer mean.
+            curves = np.full((len(ret_dets), self.nz_tiles), np.nan, dtype=np.float64)
+            for di, d in enumerate(ret_dets):
+                for z in range(self.nz_tiles):
+                    m = finite_2d[z] & (det_2d[z] == d)
+                    if np.any(m) and np.isfinite(layer_mean[z]) and layer_mean[z] > 0:
+                        curves[di, z] = np.mean(vals_2d[z][m]) / layer_mean[z]
+            self.detector_zlayer_norm_intensities = {
+                int(d): curves[di].copy() for di, d in enumerate(ret_dets)}
+
+            save_png = kwargs.get('save_png', True)
+            dpi      = kwargs.get('dpi', 300)
+            figsize  = kwargs.get('figsize', (8, 5))
+            try:
+                save_fname_default = os.path.splitext(self.fnm_mosaic_stack)[0] + '_detector_zlayer_trends.png'
+            except Exception:
+                save_fname_default = os.path.join(self.data_dir, 'detector_zlayer_trends.png')
+            save_fname = kwargs.get('save_fname', save_fname_default)
+
+            zz = np.arange(self.nz_tiles)
+            fig, ax = plt.subplots(1, 1, figsize=figsize)
+            for di, d in enumerate(ret_dets):
+                c = plt.get_cmap('gist_rainbow_r')((di + 1) / (len(ret_dets) + 1))
+                ax.plot(zz, curves[di], color=c, marker='.', markersize=3,
+                        linewidth=0.75, label='det {:d}'.format(int(d)))
+            ax.axhline(1.0, color='k', linewidth=0.5, linestyle='--')
+            ax.set_xlabel('Z-layer index')
+            ax.set_ylabel('Detector intensity / layer-average intensity')
+            ax.set_title('{}  (method={})'.format(getattr(self, 'Sample_ID', ''), method))
+            ax.grid(True)
+            ax.legend(fontsize=8, ncol=2, loc='best')
+            if save_png:
+                ax.text(0.0, -0.14, save_fname, transform=ax.transAxes, fontsize=5)
+                fig.tight_layout()
+                fig.savefig(save_fname, dpi=dpi)
+            if verbose:
+                spread = np.nanmax(np.nanstd(curves, axis=0))
+                print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                      + '   Detector Z-layer trend: max across-detector std within a layer = {:.4f}'.format(spread))
+
         return targets
 
 
