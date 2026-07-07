@@ -4423,13 +4423,13 @@ class FIBSEM_mosaic_dataset:
             for di, d in enumerate(ret_dets):
                 c = plt.get_cmap('gist_rainbow_r')((di + 1) / (len(ret_dets) + 1))
                 ax.plot(zz, curves[di], color=c, marker='.', markersize=3,
-                        linewidth=0.75, label='det {:d}'.format(int(d)))
+                        linewidth=0.25, label='det {:d}'.format(int(d)))
             ax.axhline(1.0, color='k', linewidth=0.5, linestyle='--')
             ax.set_xlabel('Z-layer index')
             ax.set_ylabel('Detector intensity / layer-average intensity')
             ax.set_title('{}  (method={})'.format(getattr(self, 'Sample_ID', ''), method))
             ax.grid(True)
-            ax.legend(fontsize=8, ncol=2, loc='best')
+            #ax.legend(fontsize=8, ncol=2, loc='best')
             if save_png:
                 ax.text(0.0, -0.14, save_fname, transform=ax.transAxes, fontsize=5)
                 fig.tight_layout()
@@ -6886,6 +6886,34 @@ class FIBSEM_mosaic_dataset:
           differences are explained largely by known detector sensitivity
           differences. 0.0 disables this term (default).
           Coexists with `tikhonov_damp` (both can be nonzero).
+        anchor_damp : float
+          Strength of a per-tile SOFT ANCHOR pulling each tile's log-scale toward its
+          own measured whole-frame relative log-intensity x0 (Z-local and detector-aware,
+          because it is measured per tile). Unlike `tikhonov_damp` (which pulls toward
+          scale=1.0, wrong when detectors are uneven) and `target_damp` (a GLOBAL detector
+          ratio, wrong when detector levels drift over Z), this anchor lets well-connected
+          interior tiles stay data-driven while rescuing anchor-starved edge/corner tiles.
+          0.0 disables it (default). Coexists with `tikhonov_damp` and `target_damp`.
+          Because anchor rows compete with the sqrt(intralayer_weight)-weighted data rows,
+          set anchor_damp relative to that weight: a good starting range is
+          anchor_damp = c * sqrt(intralayer_weight) with c between about 0.5 and 1.0.
+          (Example: intralayer_weight=4 -> sqrt=2 -> try anchor_damp ~ 1 to 2.)
+          Larger values pull edge/corner tiles harder toward the per-tile anchor.
+        anchor_source : str
+          Source of the per-tile anchor level x0 when `anchor_log_scales` is not given.
+          'frame_percentile' (default) uses FIBSEM_Data['dpercentiles'];
+          'frame_mean' uses FIBSEM_Data['dmeans']. Both are dark-count-subtracted with
+          self.tile_I0s and require a prior evaluate_FIBSEM_statistics().
+        anchor_log_scales : 1D array or None
+          Optional explicit per-tile anchor in log space, length V = nz_tiles *
+          n_tiles_per_layer (flat self.fls order). Overrides `anchor_source`. Use to pass
+          a custom prior, e.g. a per-(detector, Z-layer) level derived from
+          self.detector_zlayer_norm_intensities. It is re-centered to mean 0 internally.
+        anchor_degree_weighted : bool
+          If True (default), scale the anchor strength per tile by 1/sqrt(1 + degree),
+          where degree is the tile's number of valid pairs. Keeps interior tiles data-driven
+          and concentrates the anchor on poorly-connected tiles. If False, apply anchor_damp
+          uniformly to every tile.
 
         verbose : boolean
           Display intermediate results. Default is False.
@@ -6902,6 +6930,10 @@ class FIBSEM_mosaic_dataset:
         interlayer_weight = kwargs.get('interlayer_weight', self.interlayer_weight)
         tikhonov_damp = kwargs.get('tikhonov_damp', 0.0)
         target_damp = kwargs.get('target_damp', 0.0)
+        anchor_damp          = kwargs.get('anchor_damp', 0.0)
+        anchor_source        = kwargs.get('anchor_source', 'frame_percentile')
+        anchor_log_scales    = kwargs.get('anchor_log_scales', None)
+        anchor_degree_weighted = kwargs.get('anchor_degree_weighted', True)
 
         w_sqrt_intra = np.sqrt(intralayer_weight)
         w_sqrt_inter = np.sqrt(interlayer_weight)
@@ -6957,28 +6989,82 @@ class FIBSEM_mosaic_dataset:
 
         log_ratios = np.log(ratios[valid]) * weights[valid]
 
+        # --- Assemble optional regularization rows (detector target + per-tile anchor). ---
+        V = A_csr.shape[1]
+        A_blocks = [A_csr[valid]]
+        b_blocks = [log_ratios]
+
         if target_damp > 0.0:
             if not np.any(self.target_intensity_ratios_valid):
                 raise RuntimeError(
                     "target_intensity_ratios not available. Call compute_detector_target_intensity_ratios() first.")
-            from scipy.sparse import csr_matrix, vstack
             t_valid = self.target_intensity_ratios_valid & np.isfinite(self.target_intensity_ratios) & (self.target_intensity_ratios > 0)
-            if verbose:
-                print('Detector prior: stacking {} target rows (target_damp={:.4g})'.format(
-                    int(t_valid.sum()), target_damp))
-            # Build A_reg from scratch with uniform ±target_damp entries (one row per valid
-            # pair). Independent of A_csr's pre-weighted row scaling, so this stays correct
-            # when the caller overrides intralayer_weight / interlayer_weight kwargs.
+            # A_reg from scratch with uniform +/-target_damp entries (one row per valid pair),
+            # independent of A_csr's pre-weighted row scaling.
             t_indices = np.where(t_valid)[0]
             n_reg     = len(t_indices)
             pairs     = self.index_pairs[t_indices]                # (n_reg, 2)
             rows      = np.repeat(np.arange(n_reg), 2)
             cols      = pairs.ravel().astype(np.int64)
             data      = np.tile([-target_damp, target_damp], n_reg).astype(np.float64)
-            A_reg     = csr_matrix((data, (rows, cols)), shape=(n_reg, self.A_csr.shape[1]))
-            b_reg     = target_damp * np.log(self.target_intensity_ratios[t_valid])
-            A_aug = vstack([A_csr[valid], A_reg], format='csr')
-            b_aug = np.concatenate([log_ratios, b_reg])
+            A_blocks.append(csr_matrix((data, (rows, cols)), shape=(n_reg, V)))
+            b_blocks.append(target_damp * np.log(self.target_intensity_ratios[t_valid]))
+            if verbose:
+                print('Detector prior: stacking {} target rows (target_damp={:.4g})'.format(n_reg, target_damp))
+
+        if anchor_damp > 0.0:
+            # Per-tile soft anchor toward each tile's own measured whole-frame relative
+            # log-intensity x0. Strength ~ 1/sqrt(1+degree): weak where well-connected,
+            # strong where anchor-starved. Also pins otherwise-disconnected tiles (degree 0),
+            # which A_csr[valid] leaves undetermined.
+            if anchor_log_scales is not None:
+                x0 = np.asarray(anchor_log_scales, dtype=np.float64).ravel()
+                if x0.size != V:
+                    raise ValueError("anchor_log_scales must have length {} (got {}).".format(V, x0.size))
+            else:
+                if not hasattr(self, 'FIBSEM_Data') or self.FIBSEM_Data is None:
+                    raise RuntimeError(
+                        "anchor_source needs FIBSEM_Data; run evaluate_FIBSEM_statistics() first, "
+                        "or pass anchor_log_scales explicitly.")
+                if anchor_source == 'frame_mean':
+                    av = np.asarray(self.FIBSEM_Data['dmeans'], dtype=np.float64)
+                elif anchor_source == 'frame_percentile':
+                    av = np.asarray(self.FIBSEM_Data['dpercentiles'], dtype=np.float64)
+                else:
+                    raise ValueError(
+                        "anchor_source must be 'frame_mean' or 'frame_percentile' "
+                        "(or pass anchor_log_scales explicitly).")
+                av = av - self.tile_I0s.ravel()
+                x0 = np.log(np.where(av > 0, av, np.nan))
+            # Fail loud if nothing usable survived, instead of silently contributing 0 anchor rows.
+            if not np.any(np.isfinite(x0)):
+                if anchor_log_scales is not None:
+                    raise ValueError(
+                        "anchor_damp > 0 but anchor_log_scales has no finite entries.")
+                raise RuntimeError(
+                    "anchor_damp > 0 but no finite per-tile anchor levels from "
+                    "anchor_source='{}'. Check that FIBSEM_Data['{}'] and self.tile_I0s give "
+                    "positive dark-subtracted intensities.".format(
+                        anchor_source,
+                        'dmeans' if anchor_source == 'frame_mean' else 'dpercentiles'))
+            # Center so the anchor is a pure relative prior (mean log-scale 0), matching the gauge.
+            x0 = x0 - np.nanmean(x0)
+
+            deg = np.bincount(self.index_pairs[valid].ravel().astype(np.int64),
+                              minlength=V).astype(np.float64)
+            lam = (anchor_damp / np.sqrt(1.0 + deg)) if anchor_degree_weighted \
+                  else np.full(V, anchor_damp, dtype=np.float64)
+            good = np.isfinite(x0) & (lam > 0)
+            idx  = np.where(good)[0]
+            A_blocks.append(csr_matrix((lam[good], (np.arange(idx.size), idx)), shape=(idx.size, V)))
+            b_blocks.append(lam[good] * x0[good])
+            if verbose:
+                print('Per-tile anchor: stacking {} anchor rows (anchor_damp={:.4g}, source={}, degree_weighted={})'.format(
+                    idx.size, anchor_damp, anchor_source, anchor_degree_weighted))
+
+        if len(A_blocks) > 1:
+            A_aug = sparse.vstack(A_blocks, format='csr')
+            b_aug = np.concatenate(b_blocks)
             res = lsqr(A_aug, b_aug, damp=tikhonov_damp)
         else:
             res = lsqr(A_csr[valid], log_ratios, damp=tikhonov_damp)
@@ -6990,8 +7076,9 @@ class FIBSEM_mosaic_dataset:
 
         if verbose:
             print('Intensity normalization method: ' + method)
-            print('Intensity normalization parameters (tikhonov_damp={:.4g}, target_damp={:.4g}): '
-                'intralayer_weight={:.4f}, interlayer_weight={:.4f}'.format( tikhonov_damp, target_damp, intralayer_weight, interlayer_weight))
+            print('Intensity normalization parameters (tikhonov_damp={:.4g}, target_damp={:.4g}, anchor_damp={:.4g}): '
+                'intralayer_weight={:.4f}, interlayer_weight={:.4f}'.format(
+                    tikhonov_damp, target_damp, anchor_damp, intralayer_weight, interlayer_weight))
             print('Intensity scale factors: min={:.4f}, max={:.4f}, std={:.4f}'.format(np.min(tile_scales), np.max(tile_scales), np.std(tile_scales)))
 
         self.tile_scales = tile_scales
