@@ -7571,7 +7571,8 @@ class FIBSEM_mosaic_dataset:
                 print(det_str + ', data range: vmin={:.2f}, vmax={:.2f}'.format(vmin, vmax))
                 ax.imshow(layer_mosaic, cmap='Greys', vmin = vmin, vmax = vmax, interpolation='nearest')
                 ax.axis(False)
-                overlay_montage_grid(ax, self,
+                if overlay_tile_grid:
+                    overlay_montage_grid(ax, self,
                                      tile_positions = -tr_matr_layer[:, 0:2, 2],
                                      bin_factor = bin_factor,
                                      left_crop = left_crop,
