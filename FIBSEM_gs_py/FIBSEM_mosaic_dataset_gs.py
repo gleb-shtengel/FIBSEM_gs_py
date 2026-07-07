@@ -239,8 +239,6 @@ def _write_zarr3_shard_s0_from_tiles(params, **kwargs):
         tile_scales_all    : np.ndarray of shape (nz, n_tiles); per-tile intensity scale
         interpolation, border_value, border_mode : cv2 transform_tile kwargs
     """
-    import os, time
-    import numpy as np
     import zarr
 
     t0 = time.time()
@@ -268,7 +266,6 @@ def _write_zarr3_shard_s0_from_tiles(params, **kwargs):
         deformation_field = kwargs.pop('deformation_field')
         uniform_I0        = kwargs.pop('uniform_I0', 0.0)
     else:
-        import pickle
         with open(shared_path, 'rb') as f:
             shared = pickle.load(f)
         fls_flat_by_layer = shared['fls_flat_by_layer']
@@ -371,8 +368,6 @@ def _downsample_zarr3_shard(params):
         [output_zarr_path, src_lvl_arr_path, dst_lvl_arr_path,
          src_slices, dst_slices, downsample_factor, dtp]
     """
-    import time
-    import numpy as np
     import zarr
 
     t0 = time.time()
@@ -4304,10 +4299,12 @@ class FIBSEM_mosaic_dataset:
             a Z-layer, normalized by that layer's overall average intensity, vs
             Z-layer index. Diverging curves indicate the global ratio is a poor
             target. Stores self.detector_zlayer_norm_intensities.
+        det_id : int
+            Detector ID to show. Default is ret_det[0].
         save_png : bool.                     Default True (only used if plotting).
         save_fname : str.                    Default <mosaic_stack>_detector_zlayer_trends.png.
         dpi : int.                           Default 300.
-        figsize : tuple.                     Default (8, 5).
+        figsize : tuple.                     Default (6, 8).
         verbose : bool.                      Default False.
 
         Stores:
@@ -4319,7 +4316,6 @@ class FIBSEM_mosaic_dataset:
         self.detector_zlayer_norm_intensities : dict {detector_id -> 1D array (nz_tiles,)}
                                                 (only if plot_zlayer_trends=True)
         '''
-        import re
         method                 = kwargs.get('method', 'percentile')
         pattern                = kwargs.get('detector_id_pattern', r'sfov_(\d+)')
         min_tiles_per_detector = kwargs.get('min_tiles_per_detector', 5)
@@ -4388,6 +4384,7 @@ class FIBSEM_mosaic_dataset:
         # --- Optional per-Z-layer detector trend diagnostic. ---
         if plot_zlayer_trends:
             ret_dets = sorted(det_avg.keys())
+            det_id = kwargs.get('det_id', ret_dets[0])
             vals_2d  = vals_corr.reshape(self.nz_tiles, self.n_tiles_per_layer)
             det_2d   = det_ids.reshape(self.nz_tiles, self.n_tiles_per_layer)
             finite_2d = np.isfinite(vals_2d) & (vals_2d > 0)
@@ -4411,7 +4408,7 @@ class FIBSEM_mosaic_dataset:
 
             save_png = kwargs.get('save_png', True)
             dpi      = kwargs.get('dpi', 300)
-            figsize  = kwargs.get('figsize', (8, 5))
+            figsize  = kwargs.get('figsize', (6, 8))
             try:
                 save_fname_default = os.path.splitext(self.fnm_mosaic_stack)[0] + '_detector_zlayer_trends.png'
             except Exception:
@@ -4419,20 +4416,27 @@ class FIBSEM_mosaic_dataset:
             save_fname = kwargs.get('save_fname', save_fname_default)
 
             zz = np.arange(self.nz_tiles)
-            fig, ax = plt.subplots(1, 1, figsize=figsize)
+            fig, axs = plt.subplots(2,1, figsize = figsize, sharex=True)
+            fig.subplots_adjust(left=0.15, bottom=0.08, right=0.99, top=0.97, wspace=0.05, hspace=0.03)
             for di, d in enumerate(ret_dets):
                 c = plt.get_cmap('gist_rainbow_r')((di + 1) / (len(ret_dets) + 1))
-                ax.plot(zz, curves[di], color=c, marker='.', markersize=3,
-                        linewidth=0.25, label='det {:d}'.format(int(d)))
-            ax.axhline(1.0, color='k', linewidth=0.5, linestyle='--')
-            ax.set_xlabel('Z-layer index')
-            ax.set_ylabel('Detector intensity / layer-average intensity')
-            ax.set_title('{}  (method={})'.format(getattr(self, 'Sample_ID', ''), method))
-            ax.grid(True)
-            #ax.legend(fontsize=8, ncol=2, loc='best')
+                if d == det_id:
+                    axs[1].plot(zz, curves[di], color=c, marker='.', markersize=3,
+                        linewidth=0.25, label='Detector {:d}'.format(int(det_id)))
+                axs[0].plot(zz, curves[di], color=c, #marker='.', markersize=3,
+                        linewidth=0.25, label='Detector {:d}'.format(int(d)))
+            for ax in axs:
+                ax.axhline(1.0, color='k', linewidth=0.5, linestyle='--')
+                ax.grid(True)
+                ax.set_ylabel('Detector intensity / layer-average intensity')
+                
+            axs[1].set_xlabel('Z-layer index')
+            axs[0].set_title('{}  (method={})'.format(getattr(self, 'Sample_ID', ''), method))
+            axs[1].legend(fontsize=8, ncol=2, loc='best')
+            
             if save_png:
-                ax.text(0.0, -0.14, save_fname, transform=ax.transAxes, fontsize=5)
-                fig.tight_layout()
+                axs[1].text(-0.1, -0.15, save_fname, transform=axs[1].transAxes, fontsize=5)
+                #fig.tight_layout()
                 fig.savefig(save_fname, dpi=dpi)
             if verbose:
                 spread = np.nanmax(np.nanstd(curves, axis=0))
@@ -8057,8 +8061,7 @@ class FIBSEM_mosaic_dataset:
             {'output_zarr_path', 'shape_zyx', 'shape_out', 'dtype',
              'chunks', 'shards', 'n_levels', 'elapsed_s', 'neuroglancer_link'}
         '''
-        import math, itertools, time
-        import numpy as np
+        import math, itertools
         import zarr
         from FIBSEM_gs_py.tif_stack_to_zarr import (
             _make_v3_compressor, _resolve_chunks_shards, _translation_at_level,
