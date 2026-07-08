@@ -3454,8 +3454,8 @@ class FIBSEM_mosaic_dataset:
         dict:
           'counts'    : np.int64 array (nz_tiles, n_tiles_per_layer) - valid-degree per tile.
           'hist'      : (counts_per_bin, bin_values) integer histogram over tiles.
-          'no_valid'  : DataFrame ['Layer','Tile','Incident pairs'] for tiles with 0 valid matches.
-          'one_valid' : DataFrame ['Layer','Tile','Incident pairs'] for tiles with exactly 1 valid match.
+          'no_valid'  : DataFrame ['Layer','Tile','Incident pairs','File Path'] for tiles with 0 valid matches.
+          'one_valid' : DataFrame ['Layer','Tile','Incident pairs','File Path'] for tiles with exactly 1 valid match.
         '''
         verbose        = kwargs.get('verbose', True)
         both_endpoints = kwargs.get('both_endpoints', True)
@@ -3503,6 +3503,9 @@ class FIBSEM_mosaic_dataset:
             ax.set_title('Valid SIFT tile-pair correspondences per tile')
             ax.set_xticks(bins)
             ax.grid(True)
+            ax.text(0.02, 0.95, 'SIFT_nmatches_min   = {:d}'.format(int(self.SIFT_nmatches_min)), transform = ax.transAxes)
+            ax.text(0.02, 0.90, 'No valid pairs count  = {:d}'.format(int(len(no_valid))), transform = ax.transAxes)
+            ax.text(0.02, 0.85, 'One valid pair count  = {:d}'.format(int(len(one_valid))), transform = ax.transAxes)
             if save_res_png:
                 fig.savefig(png_name, dpi=kwargs.get('dpi', 300))
                 print('Saved:', png_name)
@@ -7243,7 +7246,7 @@ class FIBSEM_mosaic_dataset:
         outliers = pd.DataFrame(rows, columns=['Layer', 'Tile', 'mfov', 'tile_mfov_id', 'Relative Abs. Shift', 'File Path'])
         if len(outliers) and sort_by is not None:
             outliers = outliers.sort_values(by=sort_by, ascending=sort_ascending)
-            
+
         for ax in axs:
             ax.grid(True)
             ax.legend(fontsize=12, loc='lower right')
