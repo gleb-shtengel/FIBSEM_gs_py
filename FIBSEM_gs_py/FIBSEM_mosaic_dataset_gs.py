@@ -2022,11 +2022,13 @@ def analyze_minmax_outliers_montage_parquet(minmax_parquet_file, **kwargs):
         outliersk_max = np.where(np.abs(framek_max_delta) > framek_max_std * sigma_thr)[0]
         if mark_outliers:
             axs[0].plot(frames[outliersk_min], framek_min[outliersk_min], color=my_col, marker='x', markersize=4, linestyle='')
-            for outlier_k_min in outliersk_min:
-                axs[0].text(frames[outlier_k_min], framek_min[outlier_k_min], '{:d}, {:d}'.format(k, frames[outlier_k_min]), fontsize=fsmark)
+            idx_mins = outliersk_min[np.argsort(np.abs(framek_min_delta)[outliersk_min])[::-1][:50]]   # top 50 by residual
+            for idx_min in idx_mins:
+                axs[0].text(frames[idx_min], framek_min[idx_min], '{:d}, {:d}'.format(int(k), int(frames[idx_min])), fontsize=fsmark)
             axs[1].plot(frames[outliersk_max], framek_max[outliersk_max], color=my_col, marker='x', markersize=4, linestyle='')
-            for outlier_k_max in outliersk_max:
-                axs[1].text(frames[outlier_k_max], framek_max[outlier_k_max], '{:d}, {:d}'.format(k, frames[outlier_k_max]), fontsize=fsmark)
+            idx_maxs = outliersk_max[np.argsort(np.abs(framek_max_delta)[outliersk_max])[::-1][:50]]   # top 50 by residual
+            for idx_max in idx_maxs:
+                axs[1].text(frames[idx_max], framek_max[idx_max], '{:d}, {:d}'.format(int(k), int(frames[idx_max])), fontsize=fsmark)
         if len(outliersk_max) > 0:
             for o in outliersk_max:
                 fp = fls[int(frames[o]), int(k)] if fls is not None else ''
@@ -4859,7 +4861,7 @@ class FIBSEM_mosaic_dataset:
         verbose : boolean
             Display intermediate results. Default is False.
         mark_outliers : boolean
-            If True (default), each outlier is marked with "x" and its frame and tile number are printed next to "x".
+            If True (default), each of 50 worst outliers is marked with "x" and its frame and tile number are printed next to "x".
 
         Returns:
         ----------
@@ -6430,6 +6432,8 @@ class FIBSEM_mosaic_dataset:
         figsize : tuple - Default (14, 10).
         dpi : int - Default 300.
         verbose : bool - Default True.
+        mark_outliers : boolean
+            If True (default), each outlier is marked with "x" and its frame and tile number are printed next to "x".
 
         Returns:
         ----------
@@ -6454,6 +6458,7 @@ class FIBSEM_mosaic_dataset:
         figsize           = kwargs.get('figsize', (14, 10))
         dpi               = kwargs.get('dpi', 300)
         verbose           = kwargs.get('verbose', True)
+        mark_outliers = kwargs.get('mark_outliers', True)
         png_name          = kwargs.get('png_name',
             os.path.join(getattr(self, 'data_dir', '.'), 'solve_residual_outliers.png'))
 
@@ -6597,7 +6602,13 @@ class FIBSEM_mosaic_dataset:
             if m_in.any(): ax.plot(Lpair[m_in] + inter_off[m_in], mag[m_in], '.', ms=2, color='tab:blue', alpha=0.4, label='intra')
             if m_it.any(): ax.plot(Lpair[m_it] + inter_off[m_it], mag[m_it], '.', ms=2, color='tab:red',  alpha=0.4, label='inter')
             mo = is_outlier & valid
-            if mo.any(): ax.plot(Lpair[mo] + inter_off[mo], mag[mo], 'o', ms=4, mfc='none', mec='k', label='outlier')
+            if mo.any():
+                ax.plot(Lpair[mo] + inter_off[mo], mag[mo], 'o', ms=4, markeredgewidth=0.5, mfc='none', mec='k', label='outlier')
+                if mark_outliers:
+                    idx = np.where(mo)[0]
+                    idx = idx[np.argsort(mag[idx])[::-1][:50]]   # top 50 by residual
+                    for m in idx:
+                        ax.text(Lpair[m] + inter_off[m], mag[m], '{:d}, {:d}'.format(int(T0[m]), int(L0[m])), fontsize=6)
             ax.set_xlabel('Z-layer'); ax.set_ylabel('Residual Magnitude (pix)')
             ax.set_title('Residual vs Z-layer'); ax.grid(True); ax.legend(fontsize=7)
 
@@ -6605,7 +6616,13 @@ class FIBSEM_mosaic_dataset:
             ax = axs[1, 1]
             mv2 = valid & np.isfinite(mag)
             sc = ax.scatter(rx_pix[mv2], ry_pix[mv2], c=mag[mv2], s=8, cmap='viridis')
-            if mo.any(): ax.scatter(rx_pix[mo], ry_pix[mo], s=40, facecolors='none', edgecolors='r')
+            if mo.any():
+                ax.scatter(rx_pix[mo], ry_pix[mo], s=40, facecolors='none', edgecolors='r', linewidths=0.25)
+                if mark_outliers:
+                    idx = np.where(mo)[0]
+                    idx = idx[np.argsort(mag[idx])[::-1][:50]]   # top 50 by residual
+                    for m in idx:
+                        ax.text(rx_pix[m], ry_pix[m], '{:d}, {:d}'.format(int(T0[m]), int(L0[m])), fontsize=6)
             ax.axhline(0, color='k', lw=0.5); ax.axvline(0, color='k', lw=0.5)
             ax.set_aspect('equal'); ax.set_xlabel('Residual X (pix)'); ax.set_ylabel('Residual Y (pix)')
             ax.set_title('Directional residuals'); ax.grid(True)
@@ -7129,8 +7146,6 @@ class FIBSEM_mosaic_dataset:
             Array of frame/layer indices to plot; default is np.arange(self.nz_tiles).
         Sample_ID : str
             Sample label for the plot title; default is self.Sample_ID.
-        n_tiles_per_layer : int
-            Number of tiles to iterate over; default is self.n_tiles_per_layer.
         data_dir : path
             Directory used as fallback for save_fname; default is self.data_dir.
         tile_id : int
@@ -7143,15 +7158,33 @@ class FIBSEM_mosaic_dataset:
             File name to save the PNG image. Default is os.path.join(data_dir, 'Relative_Tile_Shifts.png').
         verbose : boolean
             Display intermediate results. Default is False.
+        sigma_thr : float - outlier threshold in sigmas. Default 10.0.
+        mark_outliers : boolean
+            If True (default), each of 50 worst outliers is marked with "o" and its frame and tile number are printed next to "o".
+        
 
         Returns:
         ----------
-        save_fname
+        dict with keys:
+          'outliers'         : pd.DataFrame ['Layer','Tile','mfov','tile_mfov_id', 'Relative Abs. Shift', 'File Path']
+          'save_fname'    : save_fname.
 
         '''
-        n_tiles_per_layer = kwargs.get('n_tiles_per_layer', self.n_tiles_per_layer)
+        TPM = kwargs.get('TPM', self.TPM)
+        L   = self.nz_tiles
+        nt  = self.n_tiles_per_layer
+        if nt % TPM != 0:
+            print('n_tiles_per_layer ({:d}) is not divisible by {:d}; not an mFOV hexagonal layout.'.format(nt, TPM))
+            return None
+        n_mfov = nt // TPM
+        
         tile_id = kwargs.get('tile_id', 0)
         verbose = kwargs.get('verbose', False)
+        sigma_thr      = kwargs.get('sigma_thr', 10.0)
+        mark_outliers = kwargs.get('mark_outliers', True)
+        sort_by        = kwargs.get('sort_by', 'Relative Abs. Shift')
+        sort_ascending = kwargs.get('sort_ascending', False)
+
         if verbose:
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Generating transformation report')
         save_png = kwargs.get('save_png', True)
@@ -7176,19 +7209,41 @@ class FIBSEM_mosaic_dataset:
         fig, axs = plt.subplots(3,1, figsize = (6,10), sharex=True)
         fig.subplots_adjust(left=0.15, bottom=0.06, right=0.99, top=0.97, wspace=0.05, hspace=0.03)
 
-        for k in np.arange(n_tiles_per_layer):
-            my_col = plt.get_cmap("gist_rainbow_r")((n_tiles_per_layer-k)/(n_tiles_per_layer-1))
+        rows = []
+        for k in np.arange(nt):
+            my_col = plt.get_cmap("gist_rainbow_r")((nt-k)/(nt-1))
             tile_positions_xk = tile_positions_x[:, k] - np.mean(tile_positions_x[:, k])
             tile_positions_yk = tile_positions_y[:, k] - np.mean(tile_positions_y[:, k])
+            tp_abs = np.sqrt(tile_positions_xk*tile_positions_xk + tile_positions_yk*tile_positions_yk)
+            outlier_mask = tp_abs > np.std(tp_abs)*sigma_thr
+            if outlier_mask.any():
+                mfov_id      = k // TPM      # mFOV this tile belongs to (mFOV-major layout)
+                tile_mfov_id = k %  TPM      # tile index within the mFOV
+                idx = np.where(outlier_mask)[0]
+                for m in idx:                       # one row per outlier
+                    layer = int(frame_inds[m])
+                    rows.append([layer, int(k), int(mfov_id), int(tile_mfov_id),
+                                 float(tp_abs[m]), self.fls[layer, k]])
+                axs[0].plot(frame_inds[outlier_mask], tile_positions_xk[outlier_mask], 'o', ms=4, markeredgewidth=0.5, mfc='none', mec='k')
+                axs[1].plot(frame_inds[outlier_mask], tile_positions_yk[outlier_mask], 'o', ms=4, markeredgewidth=0.5, mfc='none', mec='k')
+                if mark_outliers:
+                    idx_top = idx[np.argsort(tp_abs[idx])[::-1][:50]]   # top 50 by residual
+                    for m in idx_top:
+                        axs[0].text(frame_inds[m], tile_positions_xk[m], '{:d}, {:d}'.format(int(k), int(frame_inds[m])), fontsize=6)
+                        axs[1].text(frame_inds[m], tile_positions_yk[m], '{:d}, {:d}'.format(int(k), int(frame_inds[m])), fontsize=6)
             if k == tile_id:
                 axs[0].plot(frame_inds, tile_positions_xk, color=my_col, marker='x', markersize=4, label='Tile {:d}, X-shift'.format(tile_id))
                 axs[1].plot(frame_inds, tile_positions_yk, color=my_col, marker='x', markersize=4, label='Tile {:d}, Y-shift'.format(tile_id))
                 axs[2].plot(frame_inds, tile_positions_xk, color='red', linewidth = 0.25, label='Tile {:d}, X-shift'.format(tile_id))
-                axs[2].plot(frame_inds, tile_positions_yk, color='blue', linewidth = 0.25, label='Tile {:d}, Y-shift'.format(tile_id))
+                axs[2].plot(frame_inds, tile_positions_yk, color='blue', linewidth = 0.25, label='Tile {:d}, Y-shift'.format(tile_id))            
             else:
                 axs[0].plot(frame_inds, tile_positions_xk, color=my_col, linewidth = 0.25)
                 axs[1].plot(frame_inds, tile_positions_yk, color=my_col, linewidth = 0.25)
-
+        
+        outliers = pd.DataFrame(rows, columns=['Layer', 'Tile', 'mfov', 'tile_mfov_id', 'Relative Abs. Shift', 'File Path'])
+        if len(outliers) and sort_by is not None:
+            outliers = outliers.sort_values(by=sort_by, ascending=sort_ascending)
+            
         for ax in axs:
             ax.grid(True)
             ax.legend(fontsize=12, loc='lower right')
@@ -7203,7 +7258,7 @@ class FIBSEM_mosaic_dataset:
         if save_png:
             axs[2].text(-0.1, -0.18, save_fname, transform=axs[2].transAxes, fontsize=5)
             fig.savefig(save_fname, dpi=dpi)
-        return save_fname
+        return {'outliers' : outliers, 'save_fname' : save_fname}
 
 
     def assemble_layer_mosaic(self, layer_id, **kwargs):
