@@ -7256,6 +7256,10 @@ class FIBSEM_mosaic_dataset:
 
         axs[0].text(0.40, 0.92, 'All Tiles: X-shift', transform=axs[0].transAxes, fontsize=12)
         axs[0].text(0.2, 1.03, Sample_ID, transform=axs[0].transAxes, fontsize=12)
+        axs[0].text(0.05, 0.15, 'Solve Method: ' + self._last_solve_method, transform = axs[0].transAxes)
+        axs[0].text(0.05, 0.10, 'Solve intralayer_weight = {:.1f}'.format(getattr(self, '_last_solve_intralayer_weight', self.intralayer_weight)), transform = axs[0].transAxes)
+        axs[0].text(0.05, 0.05, 'Solve interlayer_weight = {:.1f}'.format(getattr(self, '_last_solve_interlayer_weight', self.interlayer_weight)), transform = axs[0].transAxes)
+
         axs[1].text(0.40, 0.92, 'All Tiles: Y-shift', transform=axs[1].transAxes, fontsize=12)
         axs[2].set_xlabel('Frame')
         axs[0].set_ylabel('Relative X-Shift (pix)')
