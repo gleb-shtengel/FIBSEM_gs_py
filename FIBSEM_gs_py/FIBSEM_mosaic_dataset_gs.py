@@ -6575,7 +6575,7 @@ class FIBSEM_mosaic_dataset:
         make_fig = disp_res or save_res_png
         if make_fig:
             fig, axs = plt.subplots(2, 2, figsize=figsize)
-            fig.subplots_adjust(hspace=0.28, wspace=0.24)
+            fig.subplots_adjust(left=0.05, bottom=0.07, right=0.99, top=0.94, hspace=0.25, wspace=0.24)
             m_in = intra_rows & valid & np.isfinite(mag)
             m_it = (~intra_rows) & valid & np.isfinite(mag)
 
@@ -6585,11 +6585,11 @@ class FIBSEM_mosaic_dataset:
             if m_it.any(): ax.hist(mag[m_it], bins=60, histtype='step', color='tab:red',   label='inter')
             if resid_thr_pixels is not None:
                 ax.axvline(resid_thr_pixels, color='k', ls='--', lw=0.8, label='abs thr')
-            ax.set_yscale('log'); ax.set_xlabel('Residual Magnitude (pix)'); ax.set_ylabel('count')
+            ax.set_yscale('log'); ax.set_xlabel('Residual Magnitude (pix)'); ax.set_ylabel('Count')
             ax.set_title('Residual magnitude distribution'); ax.grid(True); ax.legend(fontsize=7)
-            ax.text(0.3, 0.90, 'Solve Method: ' + self._last_solve_method)
-            ax.text(0.3, 0.90, 'Solve intralayer_weight = {:.1f}'.format(self._last_solve_intralayer_weight))
-            ax.text(0.3, 0.85, 'Solve interlayer_weight = {:.1f}'.format(self._last_solve_interlayer_weight))
+            ax.text(0.3, 0.95, 'Solve Method: ' + self._last_solve_method, transform = ax.transAxes)
+            ax.text(0.3, 0.90, 'Solve intralayer_weight = {:.1f}'.format(getattr(self, '_last_solve_intralayer_weight', self.intralayer_weight)), transform=ax.transAxes, color='tab:blue')
+            ax.text(0.3, 0.85, 'Solve interlayer_weight = {:.1f}'.format(getattr(self, '_last_solve_interlayer_weight', self.interlayer_weight)), transform=ax.transAxes, color='tab:red')
 
             # (0,1) sorted residual with outliers highlighted.
             ax = axs[0, 1]
@@ -6597,8 +6597,8 @@ class FIBSEM_mosaic_dataset:
             mv    = mag[valid & np.isfinite(mag)][order]
             ov    = is_outlier[valid & np.isfinite(mag)][order]
             ax.plot(np.arange(mv.size), mv, '.', ms=2, color='0.6')
-            if ov.any(): ax.plot(np.where(ov)[0], mv[ov], 'x', ms=5, color='tab:red', label='outlier')
-            ax.set_yscale('log'); ax.set_xlabel('Pairs Sorted by Residual '); ax.set_ylabel('residual magnitude (pix)')
+            if ov.any(): ax.plot(np.where(ov)[0], mv[ov], 'x', ms=5, color='tab:red', label='outliers')
+            ax.set_yscale('log'); ax.set_xlabel('Pairs Sorted by Residual '); ax.set_ylabel('Residual Magnitude (pix)')
             ax.set_title('Sorted residuals'); ax.grid(True); ax.legend(fontsize=7)
 
             # (1,0) residual vs z-layer (which layers are problematic).
@@ -6609,7 +6609,7 @@ class FIBSEM_mosaic_dataset:
             if m_it.any(): ax.plot(Lpair[m_it] + inter_off[m_it], mag[m_it], '.', ms=2, color='tab:red',  alpha=0.4, label='inter')
             mo = is_outlier & valid
             if mo.any():
-                ax.plot(Lpair[mo] + inter_off[mo], mag[mo], 'o', ms=4, markeredgewidth=0.5, mfc='none', mec='k', label='outlier')
+                ax.plot(Lpair[mo] + inter_off[mo], mag[mo], 'o', ms=4, markeredgewidth=0.5, mfc='none', mec='k', label='outliers')
                 if mark_outliers:
                     idx = np.where(mo)[0]
                     idx = idx[np.argsort(mag[idx])[::-1][:50]]   # top 50 by residual
@@ -6638,7 +6638,7 @@ class FIBSEM_mosaic_dataset:
                 getattr(self, 'Sample_ID', ''), method, stats['n_outliers'], stats['n_valid']),
                 fontsize=12)
             if save_res_png:
-                axs[1, 0].text(0.0, -0.22, png_name, transform=axs[1, 0].transAxes, fontsize=5)
+                axs[1, 0].text(0.0, -0.15, png_name, transform=axs[1, 0].transAxes, fontsize=5)
                 fig.savefig(png_name, dpi=dpi)
             if disp_res:
                 display(fig)
@@ -7142,249 +7142,129 @@ class FIBSEM_mosaic_dataset:
         return new_FP
 
 
-    def analyze_solve_residuals(self, **kwargs):
+    def generate_transformation_report(self, **kwargs):
         '''
-        Analyze per-pair residual errors from the most recent stack solve, flag outlier
-        pairs, and optionally invalidate them so a subsequent solve_stack_stitching()
-        excludes them. ©G.Shtengel
-
-        solve_stack_stitching() stores, per constraint row (length self.C), the WEIGHTED
-        residual self.<M>_residual_error_x/_y = sqrt(weight)*(measured_shift - modeled_shift),
-        where <M> is SIFT / ECC / SIFT_ECC. This method divides by the per-pair sqrt(weight)
-        to express the misfit in PIXELS, detects outliers with a robust (MAD - Median Absolute Deviation) test computed
-        separately for intra- and inter-layer pairs (their scales differ), and reports a
-        sorted table plus a 4-panel diagnostic figure.
+        Generate Report Plot for transformation summary. ©G.Shtengel 06/2026 gleb.shtengel@gmail.com
 
         kwargs:
         ----------
-        method : str - 'SIFT', 'ECC', or 'SIFT-ECC'. Default self._last_solve_method (else 'ECC').
-            ('SIFT-Affine' residuals are per keypoint match, not per pair, and are not handled here.)
-        sigma_thr : float - robust modified-z threshold; a pair is an outlier if
-            0.6745*(mag - median)/MAD > z_thr within its group. Default 10.0.
-        resid_thr_pixels : float or None - if set, ALSO flag any pair whose residual
-            magnitude exceeds this absolute value (pixels). Default None.
-        separate_intra_inter : bool - robust stats per group if True (default), else pooled.
-        apply : bool - if True, set flagged pairs' SOURCE *_transformation_valid flag to
-            False in place so a re-solve drops them. Default False (report only).
-        sort_by : str - column to sort by. Default 'residual_mag_pix'.
-        sort_ascending : bool - Default False.
-        disp_res : bool - show the figure. Default True.
-        save_res_png : bool - save the figure. Default True.
-        png_name : str - output path. Default <data_dir>/solve_residual_outliers.png.
-        figsize : tuple - Default (14, 10).
-        dpi : int - Default 300.
-        verbose : bool - Default True.
+        frame_inds : array or list
+            Array of frame/layer indices to plot; default is np.arange(self.nz_tiles).
+        Sample_ID : str
+            Sample label for the plot title; default is self.Sample_ID.
+        data_dir : path
+            Directory used as fallback for save_fname; default is self.data_dir.
+        tile_id : int
+            tile ID to show. Default is 0.
+        save_png : boolean
+            If True (default), the plot is saved into PNG file.
+        dpi : int
+            DPI for PNG. Default is 300.
+        save_fname : string
+            File name to save the PNG image. Default is os.path.join(data_dir, 'Relative_Tile_Shifts.png').
+        verbose : boolean
+            Display intermediate results. Default is False.
+        sigma_thr : float - outlier threshold in sigmas. Default 10.0.
         mark_outliers : boolean
-            If True (default), each outlier is marked with "x" and its frame and tile number are printed next to "x".
+            If True (default), each of 50 worst outliers is marked with "o" and its frame and tile number are printed next to "o".
+        
 
         Returns:
         ----------
         dict with keys:
-          'residuals'   : pd.DataFrame (one row per VALID pair), columns
-              ['Pair Index','Layer 0','Tile 0','Layer 1','Tile 1','type',('source',)
-               'residual_x_pix','residual_y_pix','residual_mag_pix','z_score','is_outlier',
-               'File Path 0','File Path 1'], sorted by sort_by.
-          'outliers'    : the is_outlier==True subset (same columns, sorted).
-          'stats'       : per-group {median, MAD, n, n_outliers} plus totals.
-          'invalidated' : int, number of pairs whose valid flag was set False (0 if apply=False).
+          'outliers'         : pd.DataFrame ['Layer','Tile','mfov','tile_mfov_id', 'Relative Abs. Shift', 'File Path']
+          'save_fname'    : save_fname.
+
         '''
-        method            = kwargs.get('method', getattr(self, '_last_solve_method', 'ECC'))
-        sigma_thr         = kwargs.get('sigma_thr', 10.0)
-        resid_thr_pixels  = kwargs.get('resid_thr_pixels', None)
-        separate          = kwargs.get('separate_intra_inter', True)
-        apply             = kwargs.get('apply', False)
-        sort_by           = kwargs.get('sort_by', 'residual_mag_pix')
-        sort_ascending    = kwargs.get('sort_ascending', False)
-        disp_res          = kwargs.get('disp_res', True)
-        save_res_png      = kwargs.get('save_res_png', True)
-        figsize           = kwargs.get('figsize', (14, 10))
-        dpi               = kwargs.get('dpi', 300)
-        verbose           = kwargs.get('verbose', True)
-        mark_outliers = kwargs.get('mark_outliers', True)
-        png_name          = kwargs.get('png_name',
-            os.path.join(getattr(self, 'data_dir', '.'), 'solve_residual_outliers.png'))
-
-        if verbose:
-            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   analyze_solve_residuals ({})'.format(method))
+        TPM = kwargs.get('TPM', self.TPM)
+        L   = self.nz_tiles
+        nt  = self.n_tiles_per_layer
+        if nt % TPM != 0:
+            print('n_tiles_per_layer ({:d}) is not divisible by {:d}; not an mFOV hexagonal layout.'.format(nt, TPM))
+            return None
+        n_mfov = nt // TPM
         
-        key = {'SIFT': 'SIFT', 'ECC': 'ECC', 'SIFT-ECC': 'SIFT_ECC'}.get(method)
-        if key is None:
-            raise ValueError("analyze_solve_residuals: method must be 'SIFT', 'ECC', or "
-                             "'SIFT-ECC' (got {!r}).".format(method))
-        rx_attr, ry_attr = key + '_residual_error_x', key + '_residual_error_y'
-        valid_attr       = key + '_transformation_valid'
-        if not hasattr(self, rx_attr) or not hasattr(self, valid_attr):
-            raise RuntimeError("No {} residuals found. Run solve_stack_stitching(method='{}') "
-                               "first.".format(method, method))
-        rx    = np.asarray(getattr(self, rx_attr), dtype=np.float64)
-        ry    = np.asarray(getattr(self, ry_attr), dtype=np.float64)
-        valid = np.asarray(getattr(self, valid_attr), dtype=bool)
-
-        # Un-weight to pixels using the weights baked into the last solve.
-        w_intra = np.sqrt(getattr(self, '_last_solve_intralayer_weight', self.intralayer_weight))
-        w_inter = np.sqrt(getattr(self, '_last_solve_interlayer_weight', self.interlayer_weight))
-        sqrt_w  = np.concatenate((np.full(self.nh + self.nv, w_intra), np.full(self.nl, w_inter)))
-        rx_pix, ry_pix = rx / sqrt_w, ry / sqrt_w
-        mag = np.hypot(rx_pix, ry_pix)
-
-        # Pair identity and type (row layout: intra-h | intra-v | inter).
-        ntl = self.n_tiles_per_layer
-        i0, i1 = self.index_pairs[:, 0], self.index_pairs[:, 1]
-        L0, T0 = i0 // ntl, i0 % ntl
-        L1, T1 = i1 // ntl, i1 % ntl
-        rows  = np.arange(self.C)
-        ptype = np.empty(self.C, dtype=object)
-        ptype[:self.nh]                     = 'intra-h'
-        ptype[self.nh:self.nh + self.nv]    = 'intra-v'
-        ptype[self.nh + self.nv:]           = 'inter'
-        intra_rows = rows < (self.nh + self.nv)
-
-        # Robust (MAD-based) one-sided outlier test; large residual == bad.
-        z          = np.full(self.C, np.nan)
-        is_outlier = np.zeros(self.C, dtype=bool)
-        def _flag(group_mask):
-            idx = np.where(group_mask & valid & np.isfinite(mag))[0]
-            if idx.size < 3:
-                return
-            med = np.median(mag[idx])
-            mad = np.median(np.abs(mag[idx] - med))
-            if mad > 0:
-                zz = 0.6745 * (mag[idx] - med) / mad
-            else:
-                sd = np.std(mag[idx])
-                zz = (mag[idx] - med) / sd if sd > 0 else np.zeros(idx.size)
-            z[idx] = zz
-            is_outlier[idx] = zz > sigma_thr
-        if separate:
-            _flag(intra_rows); _flag(~intra_rows)
-        else:
-            _flag(np.ones(self.C, dtype=bool))
-        if resid_thr_pixels is not None:
-            is_outlier |= valid & np.isfinite(mag) & (mag > resid_thr_pixels)
-
-        # Assemble the table (valid pairs only).
-        fls_flat = np.asarray(self.fls).ravel()
-        data = {
-            'Pair Index': rows, 'Layer 0': L0, 'Tile 0': T0, 'Layer 1': L1, 'Tile 1': T1,
-            'type': ptype, 'residual_x_pix': rx_pix, 'residual_y_pix': ry_pix,
-            'residual_mag_pix': mag, 'z_score': z, 'is_outlier': is_outlier,
-            'File Path 0': fls_flat[i0], 'File Path 1': fls_flat[i1],
-        }
-        if key == 'SIFT_ECC' and hasattr(self, 'SIFT_ECC_source'):
-            data['source'] = np.asarray(self.SIFT_ECC_source)
-        df       = pd.DataFrame(data)
-        df_valid = df[valid].copy().sort_values(sort_by, ascending=sort_ascending)
-        outliers = df_valid[df_valid['is_outlier']].copy()
-
-        # Optionally invalidate — target the SOURCE arrays so a re-solve honors it.
-        invalidated = 0
-        if apply:
-            out_idx = np.where(is_outlier & valid)[0]
-            if key == 'SIFT_ECC':
-                src = np.asarray(self.SIFT_ECC_source)
-                for i in out_idx:
-                    if   src[i] == 'SIFT': self.SIFT_transformation_valid[i] = False
-                    elif src[i] == 'ECC':  self.ECC_transformation_valid[i]  = False
-                self.SIFT_ECC_transformation_valid[out_idx] = False   # keep current state consistent
-            else:
-                getattr(self, valid_attr)[out_idx] = False
-            invalidated = int(out_idx.size)
-
-        # Stats.
-        def _grp_stats(m):
-            idx = np.where(m & valid & np.isfinite(mag))[0]
-            if idx.size == 0:
-                return {'n': 0, 'median': np.nan, 'MAD': np.nan, 'n_outliers': 0}
-            med = np.median(mag[idx])
-            return {'n': int(idx.size), 'median': float(med),
-                    'MAD': float(np.median(np.abs(mag[idx] - med))),
-                    'n_outliers': int(is_outlier[idx].sum())}
-        stats = {'method': method, 'intra': _grp_stats(intra_rows), 'inter': _grp_stats(~intra_rows),
-                 'n_valid': int(valid.sum()), 'n_outliers': int((is_outlier & valid).sum())}
+        tile_id = kwargs.get('tile_id', 0)
+        verbose = kwargs.get('verbose', False)
+        sigma_thr      = kwargs.get('sigma_thr', 10.0)
+        mark_outliers = kwargs.get('mark_outliers', True)
+        sort_by        = kwargs.get('sort_by', 'Relative Abs. Shift')
+        sort_ascending = kwargs.get('sort_ascending', False)
 
         if verbose:
-            print(time.strftime('%Y/%m/%d  %H:%M:%S')
-                  + '   analyze_solve_residuals ({}): {} valid pairs, {} outliers '
-                    '(intra median {:.3f} px, inter median {:.3f} px){}'.format(
-                        method, stats['n_valid'], stats['n_outliers'],
-                        stats['intra']['median'], stats['inter']['median'],
-                        '; {} invalidated'.format(invalidated) if apply else ''))
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Generating transformation report')
+        save_png = kwargs.get('save_png', True)
+        dpi = kwargs.get('dpi', 300)
+        data_dir = kwargs.get('data_dir', self.data_dir)
+        if save_png:
+            try:
+                save_fname = kwargs.get('save_fname', os.path.splitext(self.fnm_mosaic_stack)[0] + '_Relative_Tile_Shifts.png')
+            except:
+                save_fname = kwargs.get('save_fname', os.path.join(data_dir, 'Relative_Tile_Shifts.png'))
+        else:
+            save_fname = 'Image not saved'
+        Sample_ID = kwargs.get('Sample_ID', self.Sample_ID)
+        frame_inds = kwargs.get('frame_inds', np.arange(self.nz_tiles))
+        # Derive relative tile positions from tr_matr (tr_matr[:,:,i,2] = -position_i).
+        # Subtracting frame 0 gives positions relative to the first layer.
+        tile_positions_x = - self.tr_matr[frame_inds, :, 0, 2]
+        tile_positions_y = - self.tr_matr[frame_inds, :, 1, 2]
 
-        # ---- Diagnostic figure ----
-        make_fig = disp_res or save_res_png
-        if make_fig:
-            fig, axs = plt.subplots(2, 2, figsize=figsize)
-            fig.subplots_adjust(left=0.05, bottom=0.07, right=0.99, top=0.94, hspace=0.25, wspace=0.24)
-            m_in = intra_rows & valid & np.isfinite(mag)
-            m_it = (~intra_rows) & valid & np.isfinite(mag)
+        if verbose:
+            print('Generating Plot')
+        fig, axs = plt.subplots(3,1, figsize = (6,10), sharex=True)
+        fig.subplots_adjust(left=0.15, bottom=0.06, right=0.99, top=0.97, wspace=0.05, hspace=0.03)
 
-            # (0,0) magnitude histogram, intra vs inter.
-            ax = axs[0, 0]
-            if m_in.any(): ax.hist(mag[m_in], bins=60, histtype='step', color='tab:blue',  label='intra')
-            if m_it.any(): ax.hist(mag[m_it], bins=60, histtype='step', color='tab:red',   label='inter')
-            if resid_thr_pixels is not None:
-                ax.axvline(resid_thr_pixels, color='k', ls='--', lw=0.8, label='abs thr')
-            ax.set_yscale('log'); ax.set_xlabel('Residual Magnitude (pix)'); ax.set_ylabel('Count')
-            ax.set_title('Residual magnitude distribution'); ax.grid(True); ax.legend(fontsize=7)
-            ax.text(0.3, 0.95, 'Solve Method: ' + self._last_solve_method, transform = ax.transAxes)
-            ax.text(0.3, 0.90, 'Solve intralayer_weight = {:.1f}'.format(self._last_solve_intralayer_weight), transform = ax.transAxes, color='tab:blue' )
-            ax.text(0.3, 0.85, 'Solve interlayer_weight = {:.1f}'.format(self._last_solve_interlayer_weight), transform = ax.transAxes, color='tab:red')
-
-            # (0,1) sorted residual with outliers highlighted.
-            ax = axs[0, 1]
-            order = np.argsort(mag[valid & np.isfinite(mag)])
-            mv    = mag[valid & np.isfinite(mag)][order]
-            ov    = is_outlier[valid & np.isfinite(mag)][order]
-            ax.plot(np.arange(mv.size), mv, '.', ms=2, color='0.6')
-            if ov.any(): ax.plot(np.where(ov)[0], mv[ov], 'x', ms=5, color='tab:red', label='outliers')
-            ax.set_yscale('log'); ax.set_xlabel('Pairs Sorted by Residual '); ax.set_ylabel('Residual Magnitude (pix)')
-            ax.set_title('Sorted residuals'); ax.grid(True); ax.legend(fontsize=7)
-
-            # (1,0) residual vs z-layer (which layers are problematic).
-            ax = axs[1, 0]
-            Lpair     = np.minimum(L0, L1)          # pair's lower layer
-            inter_off = (L0 != L1) * 0.5            # inter-layer pairs sit in the gap between k and k+1
-            if m_in.any(): ax.plot(Lpair[m_in] + inter_off[m_in], mag[m_in], '.', ms=2, color='tab:blue', alpha=0.4, label='intra')
-            if m_it.any(): ax.plot(Lpair[m_it] + inter_off[m_it], mag[m_it], '.', ms=2, color='tab:red',  alpha=0.4, label='inter')
-            mo = is_outlier & valid
-            if mo.any():
-                ax.plot(Lpair[mo] + inter_off[mo], mag[mo], 'o', ms=4, markeredgewidth=0.5, mfc='none', mec='k', label='outliers')
+        rows = []
+        for k in np.arange(nt):
+            my_col = plt.get_cmap("gist_rainbow_r")((nt-k)/(nt-1))
+            tile_positions_xk = tile_positions_x[:, k] - np.mean(tile_positions_x[:, k])
+            tile_positions_yk = tile_positions_y[:, k] - np.mean(tile_positions_y[:, k])
+            tp_abs = np.sqrt(tile_positions_xk*tile_positions_xk + tile_positions_yk*tile_positions_yk)
+            outlier_mask = tp_abs > np.std(tp_abs)*sigma_thr
+            if outlier_mask.any():
+                mfov_id      = k // TPM      # mFOV this tile belongs to (mFOV-major layout)
+                tile_mfov_id = k %  TPM      # tile index within the mFOV
+                idx = np.where(outlier_mask)[0]
+                for m in idx:                       # one row per outlier
+                    layer = int(frame_inds[m])
+                    rows.append([layer, int(k), int(mfov_id), int(tile_mfov_id),
+                                 float(tp_abs[m]), self.fls[layer, k]])
+                axs[0].plot(frame_inds[outlier_mask], tile_positions_xk[outlier_mask], 'o', ms=4, markeredgewidth=0.5, mfc='none', mec='k')
+                axs[1].plot(frame_inds[outlier_mask], tile_positions_yk[outlier_mask], 'o', ms=4, markeredgewidth=0.5, mfc='none', mec='k')
                 if mark_outliers:
-                    idx = np.where(mo)[0]
-                    idx = idx[np.argsort(mag[idx])[::-1][:50]]   # top 50 by residual
-                    for m in idx:
-                        ax.text(Lpair[m] + inter_off[m], mag[m], '{:d}, {:d}'.format(int(T0[m]), int(L0[m])), fontsize=6)
-            ax.set_xlabel('Z-layer'); ax.set_ylabel('Residual Magnitude (pix)')
-            ax.set_title('Residual vs Z-layer'); ax.grid(True); ax.legend(fontsize=7)
+                    idx_top = idx[np.argsort(tp_abs[idx])[::-1][:50]]   # top 50 by residual
+                    for m in idx_top:
+                        axs[0].text(frame_inds[m], tile_positions_xk[m], '{:d}, {:d}'.format(int(k), int(frame_inds[m])), fontsize=6)
+                        axs[1].text(frame_inds[m], tile_positions_yk[m], '{:d}, {:d}'.format(int(k), int(frame_inds[m])), fontsize=6)
+            if k == tile_id:
+                axs[0].plot(frame_inds, tile_positions_xk, color=my_col, marker='x', markersize=4, label='Tile {:d}, X-shift'.format(tile_id))
+                axs[1].plot(frame_inds, tile_positions_yk, color=my_col, marker='x', markersize=4, label='Tile {:d}, Y-shift'.format(tile_id))
+                axs[2].plot(frame_inds, tile_positions_xk, color='red', linewidth = 0.25, label='Tile {:d}, X-shift'.format(tile_id))
+                axs[2].plot(frame_inds, tile_positions_yk, color='blue', linewidth = 0.25, label='Tile {:d}, Y-shift'.format(tile_id))            
+            else:
+                axs[0].plot(frame_inds, tile_positions_xk, color=my_col, linewidth = 0.25)
+                axs[1].plot(frame_inds, tile_positions_yk, color=my_col, linewidth = 0.25)
+        
+        outliers = pd.DataFrame(rows, columns=['Layer', 'Tile', 'mfov', 'tile_mfov_id', 'Relative Abs. Shift', 'File Path'])
+        if len(outliers) and sort_by is not None:
+            outliers = outliers.sort_values(by=sort_by, ascending=sort_ascending)
 
-            # (1,1) directional residual scatter.
-            ax = axs[1, 1]
-            mv2 = valid & np.isfinite(mag)
-            sc = ax.scatter(rx_pix[mv2], ry_pix[mv2], c=mag[mv2], s=8, cmap='viridis')
-            if mo.any():
-                ax.scatter(rx_pix[mo], ry_pix[mo], s=40, facecolors='none', edgecolors='r', linewidths=0.25)
-                if mark_outliers:
-                    idx = np.where(mo)[0]
-                    idx = idx[np.argsort(mag[idx])[::-1][:50]]   # top 50 by residual
-                    for m in idx:
-                        ax.text(rx_pix[m], ry_pix[m], '{:d}, {:d}'.format(int(T0[m]), int(L0[m])), fontsize=6)
-            ax.axhline(0, color='k', lw=0.5); ax.axvline(0, color='k', lw=0.5)
-            ax.set_aspect('equal'); ax.set_xlabel('Residual X (pix)'); ax.set_ylabel('Residual Y (pix)')
-            ax.set_title('Directional residuals'); ax.grid(True)
-            fig.colorbar(sc, ax=ax, shrink=0.8, label='|residual| (pix)')
+        for ax in axs:
+            ax.grid(True)
+            ax.legend(fontsize=12, loc='lower right')
 
-            fig.suptitle('{}  solve residuals — {}: {} outliers / {} valid pairs'.format(
-                getattr(self, 'Sample_ID', ''), method, stats['n_outliers'], stats['n_valid']),
-                fontsize=12)
-            if save_res_png:
-                axs[1, 0].text(0.0, -0.15, png_name, transform=axs[1, 0].transAxes, fontsize=5)
-                fig.savefig(png_name, dpi=dpi)
-            if disp_res:
-                display(fig)
-            plt.close(fig)
-
-        return {'residuals': df_valid, 'outliers': outliers, 'stats': stats,
-                'invalidated': invalidated}
+        axs[0].text(0.40, 0.92, 'All Tiles: X-shift', transform=axs[0].transAxes, fontsize=12)
+        axs[0].text(0.2, 1.03, Sample_ID, transform=axs[0].transAxes, fontsize=12)
+        axs[1].text(0.40, 0.92, 'All Tiles: Y-shift', transform=axs[1].transAxes, fontsize=12)
+        axs[2].set_xlabel('Frame')
+        axs[0].set_ylabel('Relative X-Shift (pix)')
+        axs[1].set_ylabel('Relative Y-Shift (pix)')
+        axs[2].set_ylabel('Relative Shift (pix)')
+        if save_png:
+            axs[2].text(-0.1, -0.18, save_fname, transform=axs[2].transAxes, fontsize=5)
+            fig.savefig(save_fname, dpi=dpi)
+        return {'outliers' : outliers, 'save_fname' : save_fname}
 
 
     def assemble_layer_mosaic(self, layer_id, **kwargs):
