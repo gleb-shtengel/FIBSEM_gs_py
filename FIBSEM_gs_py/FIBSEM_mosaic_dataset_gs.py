@@ -3494,6 +3494,9 @@ class FIBSEM_mosaic_dataset:
 
         no_valid  = _report(counts == 0)
         one_valid = _report(counts == 1)
+        two_valid = _report(counts == 2)
+        three_valid = _report(counts == 3)
+        four_valid = _report(counts == 4)
 
         if verbose:
             fig, ax = plt.subplots(1, 1, figsize=figsize)
@@ -3503,9 +3506,12 @@ class FIBSEM_mosaic_dataset:
             ax.set_title('Valid SIFT tile-pair correspondences per tile')
             ax.set_xticks(bins)
             ax.grid(True)
-            ax.text(0.02, 0.95, 'SIFT_nmatches_min   = {:d}'.format(int(self.SIFT_nmatches_min)), transform = ax.transAxes)
-            ax.text(0.02, 0.90, 'No valid pairs count  = {:d}'.format(int(len(no_valid))), transform = ax.transAxes)
-            ax.text(0.02, 0.85, 'One valid pair count  = {:d}'.format(int(len(one_valid))), transform = ax.transAxes)
+            ax.text(0.02, 0.95, 'SIFT_nmatches_min    = {:d}'.format(int(self.SIFT_nmatches_min)), transform = ax.transAxes)
+            ax.text(0.02, 0.90, 'No valid pairs count   = {:d}'.format(int(len(no_valid))), transform = ax.transAxes)
+            ax.text(0.02, 0.85, 'One valid pair count   = {:d}'.format(int(len(one_valid))), transform = ax.transAxes)
+            ax.text(0.02, 0.80, 'Two valid pairs count  = {:d}'.format(int(len(two_valid))), transform = ax.transAxes)
+            ax.text(0.02, 0.75, 'Three valid pairs count = {:d}'.format(int(len(three_valid))), transform = ax.transAxes)
+            ax.text(0.02, 0.70, 'Four valid pairs count  = {:d}'.format(int(len(four_valid))), transform = ax.transAxes)
             if save_res_png:
                 fig.savefig(png_name, dpi=kwargs.get('dpi', 300))
                 print('Saved:', png_name)
@@ -4879,6 +4885,7 @@ class FIBSEM_mosaic_dataset:
         save_png = kwargs.get('save_png', True)
         dpi = kwargs.get('dpi', 300)
         mark_outliers = kwargs.get('mark_outliers', True)
+        Sample_ID = kwargs.get('Sample_ID', getattr(self, 'Sample_ID', 'cc'))
         fsmark = 6
         if save_png:
             save_fname = kwargs.get('save_fname', os.path.join(data_dir, 'Nkpts_Outliers.png'))
@@ -4887,14 +4894,13 @@ class FIBSEM_mosaic_dataset:
         if verbose:
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Analyzing Key-Point Statistics')
             print('Loading kwarg Data')
-        Sample_ID = kwargs.get('Sample_ID', '')
         fit_params = kwargs.get("fit_params", ['SG', 11, 3])
         frames = np.arange(self.nz_tiles)
         if verbose:
             print('Generating Plots')
         fs = 12
         fig, ax = plt.subplots(1,1, figsize = (6,4), sharex=True)
-        fig.subplots_adjust(left=0.15, bottom=0.06, right=0.99, top=0.97, wspace=0.05, hspace=0.05)
+        fig.subplots_adjust(left=0.15, bottom=0.12, right=0.99, top=0.94, wspace=0.05, hspace=0.05)
         if fit_params[0] != 'None':
             sv_apert = min([fit_params[1], len(frames)//8*2+1])
             if verbose:
@@ -4922,10 +4928,10 @@ class FIBSEM_mosaic_dataset:
         outliers = pd.DataFrame(outliers_nkpts, columns = ['Layer', 'Tile', '# of key-points', 'File Path'])
         ax.set_ylabel('# of Key-Points')
         ax.set_xlabel('Frame')
-        ax.text(0.2, 1.04, Sample_ID, fontsize = fs, transform=ax.transAxes)
+        ax.set_title(Sample_ID)
         ax.grid(True)
         if save_png:
-            ax.text(-0.12, -0.17, save_fname, fontsize=5, transform=ax.transAxes)
+            ax.text(-0.12, -0.14, save_fname, fontsize=5, transform=ax.transAxes)
             fig.savefig(save_fname, dpi=dpi)
         display(fig)
         plt.close(fig)
