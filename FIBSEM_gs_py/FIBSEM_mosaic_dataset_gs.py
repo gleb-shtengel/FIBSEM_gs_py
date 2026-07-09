@@ -4236,6 +4236,13 @@ class FIBSEM_mosaic_dataset:
         fig, axs = plt.subplots(3,1, figsize = (6,10), sharex=True)
         fig.subplots_adjust(left=0.15, bottom=0.06, right=0.99, top=0.97, wspace=0.05, hspace=0.03)
 
+        method = getattr(self, '_last_int_solve_method', '')
+        intralayer_weight = getattr(self, '_last_int_solve_intralayer_weight', -1)
+        interlayer_weight = getattr(self, '_last_int_solve_interlayer_weight', -1)
+        tikhonov_damp = getattr(self, '_last_int_solve_tikhonov_damp', -1)
+        target_damp = getattr(self, '_last_int_solve_target_damp', -1)
+        anchor_damp = getattr(self, '_last_int_solve_anchor_damp', -1)
+
         for k in np.arange(n_tiles_per_layer):
             my_col = plt.get_cmap("gist_rainbow_r")((n_tiles_per_layer-k)/(n_tiles_per_layer-1))
             intensity_means_k = intensity_means[:, k]
@@ -4248,7 +4255,14 @@ class FIBSEM_mosaic_dataset:
             else:
                 axs[0].plot(frame_inds, intensity_means_k, color=my_col, linewidth = 0.25)
                 axs[1].plot(frame_inds, intensity_percentiles_k, color=my_col, linewidth = 0.25)
-                
+        
+        axs[0].text(0.05, 0.30, 'Intensity normalization method: ' + str(method), transform=axs[0].transAxes)
+        axs[0].text(0.05, 0.25, 'intralayer_weight = {:.1f}'.format(intralayer_weight), transform=axs[0].transAxes)
+        axs[0].text(0.05, 0.20, 'interlayer_weight = {:.1f}'.format(interlayer_weight), transform=axs[0].transAxes)
+        axs[0].text(0.05, 0.15, 'tikhonov_damp = {:.1f}'.format(tikhonov_damp), transform=axs[0].transAxes)
+        axs[0].text(0.05, 0.10, 'target_damp   = {:.1f}'.format(target_damp), transform=axs[0].transAxes)
+        axs[0].text(0.05, 0.05, 'anchor_damp   = {:.1f}'.format(anchor_damp), transform=axs[0].transAxes)
+
         average_intensity_means = intensity_means.mean(axis=1)
         average_intensity_percentiles = intensity_percentiles.mean(axis=1)
         average_intensity_means_smothed = savgol_filter(average_intensity_means.astype(np.double), sv_apert, fit_params[2])
@@ -6254,9 +6268,9 @@ class FIBSEM_mosaic_dataset:
 
         # Record what this solve used, so analyze_solve_residuals() can un-weight the
         # stored residuals back into pixels and target the correct result arrays.
-        self._last_solve_method            = method
-        self._last_solve_intralayer_weight = intralayer_weight
-        self._last_solve_interlayer_weight = interlayer_weight
+        self._last_pos_solve_method            = method
+        self._last_pos_solve_intralayer_weight = intralayer_weight
+        self._last_pos_solve_interlayer_weight = interlayer_weight
 
         if method == 'SIFT-Affine':
             # ------------------------------------------------------------------
@@ -6424,7 +6438,7 @@ class FIBSEM_mosaic_dataset:
 
         kwargs:
         ----------
-        method : str - 'SIFT', 'ECC', or 'SIFT-ECC'. Default self._last_solve_method (else 'ECC').
+        method : str - 'SIFT', 'ECC', or 'SIFT-ECC'. Default self._last_pos_solve_method (else 'ECC').
             ('SIFT-Affine' residuals are per keypoint match, not per pair, and are not handled here.)
         sigma_thr : float - robust modified-z threshold; a pair is an outlier if
             0.6745*(mag - median)/MAD > z_thr within its group. Default 10.0.
@@ -6455,7 +6469,7 @@ class FIBSEM_mosaic_dataset:
           'stats'       : per-group {median, MAD, n, n_outliers} plus totals.
           'invalidated' : int, number of pairs whose valid flag was set False (0 if apply=False).
         '''
-        method            = kwargs.get('method', getattr(self, '_last_solve_method', 'ECC'))
+        method            = kwargs.get('method', getattr(self, '_last_pos_solve_method', 'ECC'))
         sigma_thr         = kwargs.get('sigma_thr', 10.0)
         resid_thr_pixels  = kwargs.get('resid_thr_pixels', None)
         separate          = kwargs.get('separate_intra_inter', True)
@@ -6488,8 +6502,8 @@ class FIBSEM_mosaic_dataset:
         valid = np.asarray(getattr(self, valid_attr), dtype=bool)
 
         # Un-weight to pixels using the weights baked into the last solve.
-        w_intra = np.sqrt(getattr(self, '_last_solve_intralayer_weight', self.intralayer_weight))
-        w_inter = np.sqrt(getattr(self, '_last_solve_interlayer_weight', self.interlayer_weight))
+        w_intra = np.sqrt(getattr(self, '_last_pos_solve_intralayer_weight', self.intralayer_weight))
+        w_inter = np.sqrt(getattr(self, '_last_pos_solve_interlayer_weight', self.interlayer_weight))
         sqrt_w  = np.concatenate((np.full(self.nh + self.nv, w_intra), np.full(self.nl, w_inter)))
         rx_pix, ry_pix = rx / sqrt_w, ry / sqrt_w
         mag = np.hypot(rx_pix, ry_pix)
@@ -6593,9 +6607,9 @@ class FIBSEM_mosaic_dataset:
                 ax.axvline(resid_thr_pixels, color='k', ls='--', lw=0.8, label='abs thr')
             ax.set_yscale('log'); ax.set_xlabel('Residual Magnitude (pix)'); ax.set_ylabel('Count')
             ax.set_title('Residual magnitude distribution'); ax.grid(True); ax.legend(fontsize=7)
-            ax.text(0.3, 0.95, 'Solve Method: ' + self._last_solve_method, transform = ax.transAxes)
-            ax.text(0.3, 0.90, 'Solve intralayer_weight = {:.1f}'.format(getattr(self, '_last_solve_intralayer_weight', self.intralayer_weight)), transform=ax.transAxes, color='tab:blue')
-            ax.text(0.3, 0.85, 'Solve interlayer_weight = {:.1f}'.format(getattr(self, '_last_solve_interlayer_weight', self.interlayer_weight)), transform=ax.transAxes, color='tab:red')
+            ax.text(0.3, 0.95, 'Solve Method: ' + self._last_pos_solve_method, transform = ax.transAxes)
+            ax.text(0.3, 0.90, 'Solve intralayer_weight = {:.1f}'.format(getattr(self, '_last_pos_solve_intralayer_weight', self.intralayer_weight)), transform=ax.transAxes, color='tab:blue')
+            ax.text(0.3, 0.85, 'Solve interlayer_weight = {:.1f}'.format(getattr(self, '_last_pos_solve_interlayer_weight', self.interlayer_weight)), transform=ax.transAxes, color='tab:red')
 
             # (0,1) sorted residual with outliers highlighted.
             ax = axs[0, 1]
@@ -6986,6 +7000,15 @@ class FIBSEM_mosaic_dataset:
             A_csr = self.A_csr
         weights = np.concatenate((np.full(self.nh + self.nv, w_sqrt_intra),
                                 np.full(self.nl, w_sqrt_inter)))
+        # Record what this solve used, so generate_intensity_report() can un-weight the
+        # stored residuals and also include these into the report.
+        self._last_int_solve_method            = method
+        self._last_int_solve_intralayer_weight = intralayer_weight
+        self._last_int_solve_interlayer_weight = interlayer_weight
+        self._last_int_solve_tikhonov_damp     = tikhonov_damp
+        self._last_int_solve_target_damp       = target_damp
+        self._last_int_solve_anchor_damp       = anchor_damp
+
         if method == 'SIFT':
             ratios = self.SIFT_intensity_ratios
             valid  = self.SIFT_transformation_valid & np.isfinite(ratios) & (ratios > 0)
@@ -7262,9 +7285,9 @@ class FIBSEM_mosaic_dataset:
 
         axs[0].text(0.40, 0.92, 'All Tiles: X-shift', transform=axs[0].transAxes, fontsize=12)
         axs[0].text(0.2, 1.03, Sample_ID, transform=axs[0].transAxes, fontsize=12)
-        axs[0].text(0.05, 0.15, 'Solve Method: ' + self._last_solve_method, transform = axs[0].transAxes)
-        axs[0].text(0.05, 0.10, 'Solve intralayer_weight = {:.1f}'.format(getattr(self, '_last_solve_intralayer_weight', self.intralayer_weight)), transform = axs[0].transAxes)
-        axs[0].text(0.05, 0.05, 'Solve interlayer_weight = {:.1f}'.format(getattr(self, '_last_solve_interlayer_weight', self.interlayer_weight)), transform = axs[0].transAxes)
+        axs[0].text(0.05, 0.15, 'Solve Method: ' + self._last_pos_solve_method, transform = axs[0].transAxes)
+        axs[0].text(0.05, 0.10, 'Solve intralayer_weight = {:.1f}'.format(getattr(self, '_last_pos_solve_intralayer_weight', self.intralayer_weight)), transform = axs[0].transAxes)
+        axs[0].text(0.05, 0.05, 'Solve interlayer_weight = {:.1f}'.format(getattr(self, '_last_pos_solve_interlayer_weight', self.interlayer_weight)), transform = axs[0].transAxes)
 
         axs[1].text(0.40, 0.92, 'All Tiles: Y-shift', transform=axs[1].transAxes, fontsize=12)
         axs[2].set_xlabel('Frame')
