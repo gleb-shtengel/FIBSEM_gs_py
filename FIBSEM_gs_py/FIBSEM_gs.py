@@ -1105,7 +1105,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     perform_contrast_analysis:
         If True, contrast analysis will be performed. Default is False.
     thresholds_contrast_analysis: list [thr_min_contrast_analysis, thr_max_contrast_analysis]
-        CDF thresholds for determining I low and Ihigh for Contrast Analysis (Step 9). Default is [np.nan, np.nan] - no contrast calculations.
+        CDF thresholds for determining I_low and I_high for Contrast Analysis (Step 9). Default is [np.nan, np.nan] - no contrast calculations.
     disp_res : boolean
         If True - plot/ display the results. Default is True.
     disp_res_SNR0 : boolean
@@ -1138,9 +1138,9 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         'SNR1f'        : float — <S^2>/<N^2> from DarkCount-fixed fit, filtered pixels only.
         'SNR1a'        : float — <S^2>/<S> from DarkCount-fixed fit, all pixels.
         'I_peak'       : float    — intensity at peak of smoothed histogram.
-        'contrast'     : float    — (Ihigh-Ilow)/((Ihigh+Ilow)/2 - I0); np.nan if not requested.
-        'Ilow'         : float    — low contrast threshold (np.nan if not requested).
-        'Ihigh'        : float    — high contrast threshold (np.nan if not requested).
+        'contrast'     : float    — (I_high-I_low)/((I_high+I_low)/2 - I0); np.nan if not requested.
+        'I_low'        : float    — low contrast threshold (np.nan if not requested).
+        'I_high'       : float    — high contrast threshold (np.nan if not requested).
         'result'       : 2D array — raw (mean, var) per histogram bin (includes NaN rows).
     '''
     st = 1.0/np.sqrt(2.0)
@@ -1155,7 +1155,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     thresholds_SNR_analysis = kwargs.get("thresholds_SNR_analysis", [1e-2, 1e-2])
     thresholds_contrast_analysis = kwargs.get("thresholds_contrast_analysis", [np.nan, np.nan])
     perform_contrast_analysis = kwargs.get('perform_contrast_analysis', False)
-    contrast = Ilow = Ihigh = np.nan
+    contrast = I_low = I_high = np.nan
     disp_res = kwargs.get("disp_res", True)
     disp_res_SNR0 = kwargs.get("disp_res_SNR0", True)
     disp_res_SNR1 = kwargs.get("disp_res_SNR1", True)
@@ -1196,7 +1196,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     range_disp = get_min_max_thresholds(img_smoothed, thr_min = thresholds_disp[0], thr_max = thresholds_disp[1], nbins = nbins_disp, disp_res = False)           
     range_SNR_analysis = get_min_max_thresholds(img_smoothed_filtered, thr_min = thresholds_SNR_analysis[0], thr_max = thresholds_SNR_analysis[1], nbins = nbins_analysis, disp_res = False)
     if perform_contrast_analysis:
-        Ilow, Ihigh = get_min_max_thresholds(img_smoothed_filtered, thr_min = thresholds_contrast_analysis[0], thr_max = thresholds_contrast_analysis[1], nbins = nbins_analysis, disp_res = False)
+        I_low, I_high = get_min_max_thresholds(img_smoothed_filtered, thr_min = thresholds_contrast_analysis[0], thr_max = thresholds_contrast_analysis[1], nbins = nbins_analysis, disp_res = False)
     
     if disp_res:
         #print('Length of original image is: ', np.prod(img_smoothed.shape))
@@ -1205,7 +1205,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   The EM data range for display:            {:.2f} to {:.2f}'.format(range_disp[0], range_disp[1]))
         print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   The EM data range for noise analysis:     {:.2f} to {:.2f}'.format(range_SNR_analysis[0], range_SNR_analysis[1]))
         if perform_contrast_analysis:
-            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   The EM data range for contrast analysis:     {:.2f} to {:.2f}'.format(Ilow, Ihigh))
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   The EM data range for contrast analysis:     {:.2f} to {:.2f}'.format(I_low, I_high))
     
     bins_analysis = np.linspace(range_SNR_analysis[0], range_SNR_analysis[1], nbins_analysis)
     ind_new = np.digitize(img_smoothed_filtered, bins_analysis).astype(np.int32)
@@ -1345,7 +1345,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     SNR0f = np.mean(img_smoothed_filtered_resc*img_smoothed_filtered_resc)/np.var(imdiff_filtered_resc)
     SNR0a = np.mean(img_smoothed_all_resc*img_smoothed_all_resc)/np.mean(img_smoothed_all_resc)
     if perform_contrast_analysis:
-        contrast  = (Ihigh - Ilow)/((Ilow + Ihigh)/2.0-I0)
+        contrast  = (I_high - I_low)/((I_low + I_high)/2.0-I0)
     
     img_smoothed_filtered_resc1 = (img_smoothed_filtered - DarkCount)/Slope_header
     img_smoothed_all_resc1 = (img_smoothed - DarkCount)/Slope_header
@@ -1413,8 +1413,8 @@ def Single_Image_Noise_Statistics(img, **kwargs):
             axs[4].legend(loc='upper right', fontsize=fs+1)
     else:
         if make_fig: 
-            axs[4].plot([range_SNR_analysis[0], range_SNR_analysis[0]],[ylim4[0]-1000, ylim4[1]], color='lime', linestyle='dashed', label='Ilow')
-            axs[4].plot([range_SNR_analysis[1], range_SNR_analysis[1]],[ylim4[0]-1000, ylim4[1]], color='red', linestyle='dashed', label='Ihigh')
+            axs[4].plot([range_SNR_analysis[0], range_SNR_analysis[0]],[ylim4[0]-1000, ylim4[1]], color='lime', linestyle='dashed', label='I_low')
+            axs[4].plot([range_SNR_analysis[1], range_SNR_analysis[1]],[ylim4[0]-1000, ylim4[1]], color='red', linestyle='dashed', label='I_high')
             axs[4].plot(bin_centers[hist_center_ind], hist_smooth[hist_center_ind], color='grey', linestyle='dashed', linewidth=2)
             txt1 = 'Smoothing Kernel'
             axs[4].text(0.69, 0.955, txt1, transform=axs[4].transAxes, backgroundcolor='white', fontsize=fs-1)
@@ -1441,7 +1441,7 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         print('Free Fit         : SNR0a <S²>/<S> (all pts.) = {:.2f}'.format(SNR0a))
         print('')
         if perform_contrast_analysis:
-            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Data range: I_contrast_low = {:.2f}, I_contrast_high = {:.2f}'.format(Ilow, Ihigh))
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Data range: I_contrast_low = {:.2f}, I_contrast_high = {:.2f}'.format(I_low, I_high))
             print('Dark Count = {:.2f}'.format(I0))
             print('Contrast = {:.3f}'.format(contrast))
     if make_fig:
@@ -1479,11 +1479,10 @@ def Single_Image_Noise_Statistics(img, **kwargs):
         'SNR1a':        SNR1a,
         'I_peak':       I_peak,
         'contrast':     contrast,
-        'Ilow':         Ilow,
-        'Ihigh':        Ihigh,
+        'I_low':        I_low,
+        'I_high':       I_high,
         'result':       result,
     }
-
 
 
 def Single_Image_Noise_Statistics_custom(img, **kwargs):
@@ -1500,7 +1499,7 @@ def Single_Image_Noise_Statistics_custom(img, **kwargs):
     6. Plot the dependence of the image variance vs. image intensity.
     7. Perform free linear fit of the variance vs. intensity. SNR0 is calculated as <S^2>/<N^2>.
     8. Perform linear fit with forced zero Intercept (DarkCount) of the variance vs. intensity. SNR1 is calculated <S^2>/<N^2>.
-    9. Analyze contrast as (Ihigh - Ilow) / ((Ihigh + Ilow)/2 - DarkCount).
+    9. Analyze contrast as (I_high - I_low) / ((I_high + I_low)/2 - DarkCount).
     10. SNR is reported in two variants for each fit (free fit -> SNR0, DarkCount fit -> SNR1):
     - "filtered" (SNR0f, SNR1f): computed over the same pixels that survived the (gradient)
       filter used to determine I0. These are the pixels where the noise estimate is clean
@@ -1525,8 +1524,8 @@ def Single_Image_Noise_Statistics_custom(img, **kwargs):
     evaluation_box : list of 4 int
         evaluation_box = [top, height, left, width] boundaries of the box used for evaluating the image noise statistics.
         if evaluation_box is not set or evaluation_box = [0, 0, 0, 0], the entire image is used.
-    I0 : float
-        The value of the Intensity Data at 0.
+    DarkCount : float
+        The value of the Intensity Data at 0.0.
     filter_array : 2d boolean array
         Array of the same dimensions as img. Only the pixel with corresponding filter_array values of True will be considered in the noise analysis.
     kernel : 2D np.float32 array
@@ -1542,7 +1541,7 @@ def Single_Image_Noise_Statistics_custom(img, **kwargs):
     perform_contrast_analysis:
         If True, contrast analysis will be performed. Default is False.
     thresholds_contrast_analysis: list [thr_min_contrast_analysis, thr_max_contrast_analysis]
-        CDF thresholds for determining I low and Ihigh for Contrast Analysis (Step 9). Default is [np.nan, np.nan] - no contrast calculations.
+        CDF thresholds for determining I_low and I_high for Contrast Analysis (Step 9). Default is [np.nan, np.nan] - no contrast calculations.
     disp_res : boolean
         If True - plot/ display the results. Default is True.
     disp_res_SNR0 : boolean
@@ -1575,7 +1574,7 @@ def Single_Image_Noise_Statistics_custom(img, **kwargs):
         'SNR1f'        : float — <S^2>/<N^2> from DarkCount-fixed fit, filtered pixels only.
         'SNR1a'        : float — <S^2>/<S> from DarkCount-fixed fit, all pixels.
         'I_peak'       : float    — intensity at peak of smoothed histogram.
-        'contrast'     : float    — (Ihigh-Ilow)/((Ihigh+Ilow)/2 - I0); np.nan if not requested.
+        'contrast'     : float    — (I_high-Ilow)/((I_high+Ilow)/2 - I0); np.nan if not requested.
         'I_low'         : float    — low contrast threshold (np.nan if not requested).
         'I_high'        : float    — high contrast threshold (np.nan if not requested).
         'result'       : 2D array — raw (mean, var) per histogram bin (includes NaN rows).
@@ -1585,14 +1584,13 @@ def Single_Image_Noise_Statistics_custom(img, **kwargs):
     evaluation_box = kwargs.get("evaluation_box", [0, 0, 0, 0])
     def_kernel = def_kernel/def_kernel.sum()
     kernel = kwargs.get("kernel", def_kernel)
-    DarkCount = kwargs.get("DarkCount", 0)
+    DarkCount = kwargs.get("DarkCount", 0.0)
     nbins_disp = kwargs.get("nbins_disp", 256)
     thresholds_disp = kwargs.get("thresholds_disp", [1e-3, 1e-3])
     nbins_analysis = kwargs.get("nbins_analysis", 100)
     thresholds_SNR_analysis = kwargs.get("thresholds_SNR_analysis", [1e-2, 1e-2])
     thresholds_contrast_analysis = kwargs.get("thresholds_contrast_analysis", [np.nan, np.nan])
     perform_contrast_analysis = kwargs.get('perform_contrast_analysis', False)
-    contrast = Ilow = Ihigh = np.nan
     contrast_range = kwargs.get('contrast_range', 8)
     disp_res = kwargs.get("disp_res", True)
     disp_res_SNR0 = kwargs.get("disp_res_SNR0", True)
@@ -1603,6 +1601,7 @@ def Single_Image_Noise_Statistics_custom(img, **kwargs):
     Notes = kwargs.get("Notes", '')
     dpi = kwargs.get("dpi", 300)
     filter_array = kwargs.get('filter_array', (img*0+1)>0)
+    contrast = I_low = I_high = np.nan
 
     xi = 0
     yi = 0
@@ -1632,8 +1631,6 @@ def Single_Image_Noise_Statistics_custom(img, **kwargs):
     
     range_disp = get_min_max_thresholds(img_smoothed, thr_min = thresholds_disp[0], thr_max = thresholds_disp[1], nbins = nbins_disp, disp_res = False)           
     range_SNR_analysis = get_min_max_thresholds(img_smoothed_filtered, thr_min = thresholds_SNR_analysis[0], thr_max = thresholds_SNR_analysis[1], nbins = nbins_analysis, disp_res = False)
-    if perform_contrast_analysis:
-        Ilow, Ihigh = get_min_max_thresholds(img_smoothed_filtered, thr_min = thresholds_contrast_analysis[0], thr_max = thresholds_contrast_analysis[1], nbins = nbins_analysis, disp_res = False)
     
     if disp_res:
         #print('Length of original image is: ', np.prod(img_smoothed.shape))
@@ -1641,11 +1638,8 @@ def Single_Image_Noise_Statistics_custom(img, **kwargs):
         print('')
         print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   The EM data range for display:            {:.2f} to {:.2f}'.format(range_disp[0], range_disp[1]))
         print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   The EM data range for noise analysis:     {:.2f} to {:.2f}'.format(range_SNR_analysis[0], range_SNR_analysis[1]))
-        if perform_contrast_analysis:
-            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   The EM data range for contrast analysis:     {:.2f} to {:.2f}'.format(Ilow, Ihigh))
-    
+
     bins_analysis = np.linspace(range_SNR_analysis[0], range_SNR_analysis[1], nbins_analysis)
-    range_imdiff = get_min_max_thresholds(imdiff, thr_min = thresholds_disp[0], thr_max = thresholds_disp[1], nbins = nbins_disp, disp_res = False)
     ind_new = np.digitize(img_smoothed_filtered, bins_analysis)
     
     result = np.array([(np.mean(img_smoothed_filtered[ind_new == j]), np.var(imdiff_filtered[ind_new == j]))  for j in range(1, nbins_analysis)])
@@ -1662,17 +1656,6 @@ def Single_Image_Noise_Statistics_custom(img, **kwargs):
     else:
         xfsz = 6.0
         yfsz = xfsz * 3 / xy_ratio
-    
-    low_mask = img*0.0+255.0
-    high_mask = low_mask.copy()
-    filter_mask = low_mask.copy()
-    low_mask[img_smoothed > range_SNR_analysis[0]] = np.nan
-    high_mask[img_smoothed < range_SNR_analysis[1]] = np.nan
-    filter_mask[filter_array==True] = np.nan
-    
-    # np.product is deprecated, use np.prod instead
-    #filter_nonzero = np.product(imdiff_filtered.shape)<np.product(imdiff.shape)
-    filter_nonzero = np.prod(imdiff_filtered.shape)<np.prod(imdiff.shape)
 
     if disp_res:
         fs=11
@@ -1687,7 +1670,7 @@ def Single_Image_Noise_Statistics_custom(img, **kwargs):
         #axs[0].text(0.05, -0.05, res_fname, transform=axs[0].transAxes, fontsize=fs-2)
         axs[0].imshow(img, cmap="Greys", vmin = range_disp[0], vmax = range_disp[1])
         axs[0].axis(False)
-        axs[0].set_title('Original Image' + img_label, fontsize=fs+1)
+        axs[0].set_title('Original Image ' + img_label, fontsize=fs+1)
         axs[1].imshow(img_smoothed, cmap="Greys", vmin = range_disp[0], vmax = range_disp[1])
         axs[1].axis(False)
         axs[1].set_title('Smoothed Image w. Intensity Masks')
@@ -1698,10 +1681,7 @@ def Single_Image_Noise_Statistics_custom(img, **kwargs):
     hist_center_ind = np.argwhere((bin_centers>range_SNR_analysis[0]) & (bin_centers<range_SNR_analysis[1]))
     hist_smooth = savgol_filter(np.array(hist), (nbins_disp//10)*2+1, 7)
     I_peak = bin_centers[hist_smooth.argmax()]
-    C_peak = hist_smooth.max()
-    Ipeak_lbl = '$I_{peak}$' +'={:.1f}'.format(I_peak)
-
-    hist1, bins1 = np.histogram(imdiff_filtered.ravel(), bins = nbins_disp)
+   
     try:
         popt = np.polyfit(mean_vals, var_vals, 1)
         I_array = np.array((range_SNR_analysis[0], range_SNR_analysis[1], I_peak))
@@ -1717,7 +1697,6 @@ def Single_Image_Noise_Statistics_custom(img, **kwargs):
     I0 = kwargs.get("DarkCount", -popt[1]/popt[0])
     Slope_header = np.mean(var_vals/(mean_vals-DarkCount))
           
-    var_fit_header = (mean_vals-DarkCount) * Slope_header
     if disp_res:
         if xy_ratio < 1.0:
             axs[2].set_box_aspect(0.9/xy_ratio)
@@ -1740,8 +1719,6 @@ def Single_Image_Noise_Statistics_custom(img, **kwargs):
     imdiff_filtered_resc = imdiff_filtered / popt[0]
     SNR0f = np.mean(img_smoothed_filtered_resc*img_smoothed_filtered_resc)/np.var(imdiff_filtered_resc)
     SNR0a = np.mean(img_smoothed_all_resc*img_smoothed_all_resc)/np.mean(img_smoothed_all_resc)
-    if perform_contrast_analysis:
-        contrast  = (Ihigh - Ilow)/((Ilow + Ihigh)/2.0-I0)
     
     img_smoothed_filtered_resc1 = (img_smoothed_filtered - DarkCount)/Slope_header
     img_smoothed_all_resc1 = (img_smoothed - DarkCount)/Slope_header
@@ -1804,13 +1781,14 @@ def Single_Image_Noise_Statistics_custom(img, **kwargs):
         contrast_high_mask = np.full(img.shape, 0.8333)
         contrast_high_mask[(img_smoothed > I_high + contrast_range/2.0) ] = np.nan
         contrast_high_mask[(img_smoothed < I_high - contrast_range/2.0) ] = np.nan
-        axs[1].imshow(contrast_low_mask, cmap="hsv", vmin=0.0, vmax=1.0)
-        axs[1].imshow(contrast_high_mask, cmap="hsv", vmin=0.0, vmax=1.0)
-        ax2_i0, ax2_i1 = axs[2].get_ylim()
-        patch_low = patches.Rectangle((I_low - contrast_range/2.0, ax2_i0), contrast_range, ax2_i1-ax2_i0, linewidth=2, edgecolor='cyan', facecolor='cyan', alpha=0.5)
-        axs[2].add_patch(patch_low)
-        patch_high = patches.Rectangle((I_high - contrast_range/2.0, ax2_i0), contrast_range, ax2_i1-ax2_i0, linewidth=2, edgecolor='magenta', facecolor='magenta', alpha=0.5)
-        axs[2].add_patch(patch_high)
+        if disp_res:
+            axs[1].imshow(contrast_low_mask, cmap="hsv", vmin=0.0, vmax=1.0)
+            axs[1].imshow(contrast_high_mask, cmap="hsv", vmin=0.0, vmax=1.0)
+            ax2_i0, ax2_i1 = axs[2].get_ylim()
+            patch_low = patches.Rectangle((I_low - contrast_range/2.0, ax2_i0), contrast_range, ax2_i1-ax2_i0, linewidth=2, edgecolor='cyan', facecolor='cyan', alpha=0.5)
+            axs[2].add_patch(patch_low)
+            patch_high = patches.Rectangle((I_high - contrast_range/2.0, ax2_i0), contrast_range, ax2_i1-ax2_i0, linewidth=2, edgecolor='magenta', facecolor='magenta', alpha=0.5)
+            axs[2].add_patch(patch_high)
     
     if disp_res:
         print('')
@@ -1859,8 +1837,8 @@ def Single_Image_Noise_Statistics_custom(img, **kwargs):
         'SNR1a':        SNR1a,
         'I_peak':       I_peak,
         'contrast':     contrast,
-        'I_low':         I_low,
-        'I_high':        I_high,
+        'I_low':        I_low,
+        'I_high':       I_high,
         'result':       result,
     }
 
