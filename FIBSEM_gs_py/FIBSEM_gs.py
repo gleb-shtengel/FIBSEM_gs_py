@@ -1485,6 +1485,386 @@ def Single_Image_Noise_Statistics(img, **kwargs):
     }
 
 
+
+def Single_Image_Noise_Statistics_custom(img, **kwargs):
+    '''
+    Analyses the noise statistics of the EM data image.
+    ©G.Shtengel 10/2024 gleb.shtengel@gmail.com
+    
+    Performs following:
+    1. Smooth the image by 2D convolution with a given kernel.
+    2. Determine "Noise Image" as difference between the original raw and smoothed data.
+    3. Select subsets of original, smoothed and noise images by selecting only elements where the filter_array (optional input 2D array) is True. Use calculate_gradient_map(img, ** kwargs) to define filter_array.
+    4. Build a histogram of Smoothed Image (subset if filter_array was set).
+    5. For all pixels withing each histogram bin of the Smoothed Image from Step 4, calculate the mean value (mean of intensities of the select pixels of the Smoothed Image from Step 4) and variance (variance of intensities of the select pixels of the Noise Image from the Step 2).
+    6. Plot the dependence of the image variance vs. image intensity.
+    7. Perform free linear fit of the variance vs. intensity. SNR0 is calculated as <S^2>/<N^2>.
+    8. Perform linear fit with forced zero Intercept (DarkCount) of the variance vs. intensity. SNR1 is calculated <S^2>/<N^2>.
+    9. Analyze contrast as (Ihigh - Ilow) / ((Ihigh + Ilow)/2 - DarkCount).
+    10. SNR is reported in two variants for each fit (free fit -> SNR0, DarkCount fit -> SNR1):
+    - "filtered" (SNR0f, SNR1f): computed over the same pixels that survived the (gradient)
+      filter used to determine I0. These are the pixels where the noise estimate is clean
+      (no gradient-driven variance), so they give a true <S^2>/<N^2>. The downside is that
+      filtering also removes high-intensity / high-gradient regions, so the reported SNR is
+      biased low relative to the real image.
+    - "all pixels" (SNR0a, SNR1a): computed over every pixel, including those excluded by
+      the filter. Since we cannot trust the measured noise variance at high-gradient pixels,
+      the noise term is estimated from the detector calibration we just derived: in the
+      rescaled coordinates (signal divided by the fit slope), Poisson statistics give
+      <N^2> = <S>, so <S^2>/<N^2> = <S^2>/<S>. This recovers an SNR estimate that includes
+      bright regions, at the cost of assuming Poisson noise.
+    Use SNR?f when you trust the filter mask and want a measurement-only number; use SNR?a
+    when you want a Poisson-corrected estimate over the whole image.
+
+    Parameters:
+    ----------
+    img : 2d array
+
+    kwargs:
+    ----------
+    evaluation_box : list of 4 int
+        evaluation_box = [top, height, left, width] boundaries of the box used for evaluating the image noise statistics.
+        if evaluation_box is not set or evaluation_box = [0, 0, 0, 0], the entire image is used.
+    I0 : float
+        The value of the Intensity Data at 0.
+    filter_array : 2d boolean array
+        Array of the same dimensions as img. Only the pixel with corresponding filter_array values of True will be considered in the noise analysis.
+    kernel : 2D np.float32 array
+        A kernel to perform 2D smoothing convolution. Default is normalized np.array([[st, 1.0, st],[1.0,1.0,1.0], [st, 1.0, st]]), where st = 1/np.sqrt(2).
+    nbins_disp : int
+        Number of histogram bins for building the PDF and CDF to determine the data range for data display. Default is 256.
+    thresholds_disp : list [thr_min_disp, thr_max_disp]
+        CDF thresholds for determining the min and max data values for display. Default is [1e-3, 1e-3].
+    nbins_analysis : int
+        Number of histogram bins for building the PDF and CDF to determine the data range for building the data histogram in Step 5. Default is 256.
+    thresholds_SNR_analysis: list [thr_min_SNR_analysis, thr_max_SNR_analysis]
+        CDF thresholds for building the data histogram in Step 5. Default is [2e-2, 2e-2].
+    perform_contrast_analysis:
+        If True, contrast analysis will be performed. Default is False.
+    thresholds_contrast_analysis: list [thr_min_contrast_analysis, thr_max_contrast_analysis]
+        CDF thresholds for determining I low and Ihigh for Contrast Analysis (Step 9). Default is [np.nan, np.nan] - no contrast calculations.
+    disp_res : boolean
+        If True - plot/ display the results. Default is True.
+    disp_res_SNR0 : boolean
+        Add SNR0 (free fit) results to Variance vs. Intensity plot. Default is True.
+    disp_res_SNR1 : boolean
+        Add SNR1 (use Dark Count from Scaling data) results to Variance vs. Intensity plot. Default is True.
+    save_res_png : boolean
+        Save the analysis output into a PNG file. Default is True.
+    res_fname : str
+        Filename - used for plotting the data. Default is'Noise_Analysis.png'
+    img_label : string
+        Optional image label.
+    Notes : string
+        Optional additional notes.
+    dpi : int
+        Resolution (DPI) of the PNG image.
+
+    Returns:
+    ----------
+    dict : Dictionary with the following keys:
+        'mean_vals'    : 1D array — per-bin mean of smoothed intensity (Step 5).
+        'var_vals'     : 1D array — per-bin variance of noise image (Step 5).
+        'I0'           : float    — intercept of free linear fit (Step 7); should be close to DarkCount.
+        'popt'         : 1D array — [slope, intercept] of free linear fit (Step 7).
+        'Slope_header' : float    — slope of forced-intercept fit using DarkCount (Step 8).
+        'SNR0f'        : float — <S^2>/<N^2> from free linear fit, filtered pixels only.
+                            True measured SNR over the filter-passing subset.
+        'SNR0a'        : float — <S^2>/<S> from free linear fit, all pixels.
+                            Poisson-corrected SNR including filter-excluded pixels.
+        'SNR1f'        : float — <S^2>/<N^2> from DarkCount-fixed fit, filtered pixels only.
+        'SNR1a'        : float — <S^2>/<S> from DarkCount-fixed fit, all pixels.
+        'I_peak'       : float    — intensity at peak of smoothed histogram.
+        'contrast'     : float    — (Ihigh-Ilow)/((Ihigh+Ilow)/2 - I0); np.nan if not requested.
+        'I_low'         : float    — low contrast threshold (np.nan if not requested).
+        'I_high'        : float    — high contrast threshold (np.nan if not requested).
+        'result'       : 2D array — raw (mean, var) per histogram bin (includes NaN rows).
+    '''
+    st = 1.0/np.sqrt(2.0)
+    def_kernel = np.array([[st, 1.0, st],[1.0,1.0,1.0], [st, 1.0, st]]).astype(np.float32)
+    evaluation_box = kwargs.get("evaluation_box", [0, 0, 0, 0])
+    def_kernel = def_kernel/def_kernel.sum()
+    kernel = kwargs.get("kernel", def_kernel)
+    DarkCount = kwargs.get("DarkCount", 0)
+    nbins_disp = kwargs.get("nbins_disp", 256)
+    thresholds_disp = kwargs.get("thresholds_disp", [1e-3, 1e-3])
+    nbins_analysis = kwargs.get("nbins_analysis", 100)
+    thresholds_SNR_analysis = kwargs.get("thresholds_SNR_analysis", [1e-2, 1e-2])
+    thresholds_contrast_analysis = kwargs.get("thresholds_contrast_analysis", [np.nan, np.nan])
+    perform_contrast_analysis = kwargs.get('perform_contrast_analysis', False)
+    contrast = Ilow = Ihigh = np.nan
+    contrast_range = kwargs.get('contrast_range', 8)
+    disp_res = kwargs.get("disp_res", True)
+    disp_res_SNR0 = kwargs.get("disp_res_SNR0", True)
+    disp_res_SNR1 = kwargs.get("disp_res_SNR1", True)
+    save_res_png = kwargs.get("save_res_png", True)
+    res_fname = kwargs.get("res_fname", 'Noise_Analysis.png')
+    img_label = kwargs.get("img_label", '')
+    Notes = kwargs.get("Notes", '')
+    dpi = kwargs.get("dpi", 300)
+    filter_array = kwargs.get('filter_array', (img*0+1)>0)
+
+    xi = 0
+    yi = 0
+    ysz, xsz = img.shape
+    xa = xi + xsz
+    ya = yi + ysz
+
+    xi_eval = xi + evaluation_box[2]
+    if evaluation_box[3] > 0:
+        xa_eval = xi_eval + evaluation_box[3]
+    else:
+        xa_eval = xa
+    yi_eval = yi + evaluation_box[0]
+    if evaluation_box[1] > 0:
+        ya_eval = yi_eval + evaluation_box[1]
+    else:
+        ya_eval = ya
+
+    img = img[yi_eval:ya_eval, xi_eval:xa_eval]
+    img_smoothed = convolve2d(img, kernel, mode='same')[1:-1, 1:-1]
+    img = img[1:-1, 1:-1]
+    filter_array = filter_array[yi_eval:ya_eval, xi_eval:xa_eval][1:-1, 1:-1]
+    
+    imdiff = (img-img_smoothed)
+    img_smoothed_filtered = img_smoothed[filter_array]
+    imdiff_filtered = imdiff[filter_array]
+    
+    range_disp = get_min_max_thresholds(img_smoothed, thr_min = thresholds_disp[0], thr_max = thresholds_disp[1], nbins = nbins_disp, disp_res = False)           
+    range_SNR_analysis = get_min_max_thresholds(img_smoothed_filtered, thr_min = thresholds_SNR_analysis[0], thr_max = thresholds_SNR_analysis[1], nbins = nbins_analysis, disp_res = False)
+    if perform_contrast_analysis:
+        Ilow, Ihigh = get_min_max_thresholds(img_smoothed_filtered, thr_min = thresholds_contrast_analysis[0], thr_max = thresholds_contrast_analysis[1], nbins = nbins_analysis, disp_res = False)
+    
+    if disp_res:
+        #print('Length of original image is: ', np.prod(img_smoothed.shape))
+        #print('Length of filtered image is: ', np.prod(img_smoothed_filtered.shape))
+        print('')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   The EM data range for display:            {:.2f} to {:.2f}'.format(range_disp[0], range_disp[1]))
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   The EM data range for noise analysis:     {:.2f} to {:.2f}'.format(range_SNR_analysis[0], range_SNR_analysis[1]))
+        if perform_contrast_analysis:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   The EM data range for contrast analysis:     {:.2f} to {:.2f}'.format(Ilow, Ihigh))
+    
+    bins_analysis = np.linspace(range_SNR_analysis[0], range_SNR_analysis[1], nbins_analysis)
+    range_imdiff = get_min_max_thresholds(imdiff, thr_min = thresholds_disp[0], thr_max = thresholds_disp[1], nbins = nbins_disp, disp_res = False)
+    ind_new = np.digitize(img_smoothed_filtered, bins_analysis)
+    
+    result = np.array([(np.mean(img_smoothed_filtered[ind_new == j]), np.var(imdiff_filtered[ind_new == j]))  for j in range(1, nbins_analysis)])
+    non_nan_ind = np.argwhere(np.invert(np.isnan(result[:, 0])))
+    mean_vals = np.squeeze(result[non_nan_ind, 0])
+    var_vals = np.squeeze(result[non_nan_ind, 1])
+
+    img_ysz, img_xsz = img.shape
+    xy_ratio = img_xsz/img_ysz
+
+    if xy_ratio < 1.0:
+        yfsz = 6.0
+        xfsz = yfsz * 3 * xy_ratio
+    else:
+        xfsz = 6.0
+        yfsz = xfsz * 3 / xy_ratio
+    
+    low_mask = img*0.0+255.0
+    high_mask = low_mask.copy()
+    filter_mask = low_mask.copy()
+    low_mask[img_smoothed > range_SNR_analysis[0]] = np.nan
+    high_mask[img_smoothed < range_SNR_analysis[1]] = np.nan
+    filter_mask[filter_array==True] = np.nan
+    
+    # np.product is deprecated, use np.prod instead
+    #filter_nonzero = np.product(imdiff_filtered.shape)<np.product(imdiff.shape)
+    filter_nonzero = np.prod(imdiff_filtered.shape)<np.prod(imdiff.shape)
+
+    if disp_res:
+        fs=11
+        if xy_ratio < 1.0:
+            fig, axss = plt.subplots(1,3, figsize=(xfsz,yfsz))
+            fig.subplots_adjust(left=0.01, bottom=0.01, right=0.99, top=0.97, wspace=0.15, hspace=0.15)
+        else:
+            fig, axss = plt.subplots(3,1, figsize=(xfsz,yfsz))
+            fig.subplots_adjust(left=0.01, bottom=0.05, right=0.99, top=0.97, wspace=0.15, hspace=0.15)
+        
+        axs = axss.ravel()
+        #axs[0].text(0.05, -0.05, res_fname, transform=axs[0].transAxes, fontsize=fs-2)
+        axs[0].imshow(img, cmap="Greys", vmin = range_disp[0], vmax = range_disp[1])
+        axs[0].axis(False)
+        axs[0].set_title('Original Image' + img_label, fontsize=fs+1)
+        axs[1].imshow(img_smoothed, cmap="Greys", vmin = range_disp[0], vmax = range_disp[1])
+        axs[1].axis(False)
+        axs[1].set_title('Smoothed Image w. Intensity Masks')
+        bbox=dict(facecolor='white', alpha=1.0, linewidth=0)
+ 
+    hist, bins = np.histogram(img_smoothed_filtered.ravel(), range=range_disp, bins = nbins_disp)
+    bin_centers = np.array(bins[1:] - (bins[1]-bins[0])/2.0)
+    hist_center_ind = np.argwhere((bin_centers>range_SNR_analysis[0]) & (bin_centers<range_SNR_analysis[1]))
+    hist_smooth = savgol_filter(np.array(hist), (nbins_disp//10)*2+1, 7)
+    I_peak = bin_centers[hist_smooth.argmax()]
+    C_peak = hist_smooth.max()
+    Ipeak_lbl = '$I_{peak}$' +'={:.1f}'.format(I_peak)
+
+    hist1, bins1 = np.histogram(imdiff_filtered.ravel(), bins = nbins_disp)
+    try:
+        popt = np.polyfit(mean_vals, var_vals, 1)
+        I_array = np.array((range_SNR_analysis[0], range_SNR_analysis[1], I_peak))
+        Var_array = np.polyval(popt, I_array)
+        Var_peak = Var_array[2]
+    except:
+        if disp_res:
+            print("np.polyfit could not converge")
+        popt = np.array([np.var(imdiff)/np.mean(img_smoothed-DarkCount), 0])
+        I_array = np.array((range_SNR_analysis[0], range_SNR_analysis[1], I_peak))
+        Var_peak = np.var(imdiff)
+    var_fit = np.polyval(popt, mean_vals)
+    I0 = kwargs.get("DarkCount", -popt[1]/popt[0])
+    Slope_header = np.mean(var_vals/(mean_vals-DarkCount))
+          
+    var_fit_header = (mean_vals-DarkCount) * Slope_header
+    if disp_res:
+        if xy_ratio < 1.0:
+            axs[2].set_box_aspect(0.9/xy_ratio)
+        else:
+            axs[2].set_box_aspect(1.2/xy_ratio)
+        axs[2].plot(mean_vals, var_vals, 'r.', label='data')
+        if disp_res_SNR0:
+            axs[2].plot(mean_vals, var_fit, 'b', label='fit: {:.2f}*x {:+.1f}'.format(popt[0], popt[1]))
+        ylim3=np.array(axs[2].get_ylim())
+        
+        axs[2].grid(True)
+        axs[2].set_title('Variance v. Intensity', fontsize=fs+1)
+        axs[2].set_xlabel('Image Intensity Mean', fontsize=fs+1)
+        axs[2].set_ylabel('Image Intensity Variance', fontsize=fs+1)
+        axs[2].legend(loc='upper left', fontsize=fs+1)
+        axs[2].set_ylim(ylim3)
+    
+    img_smoothed_filtered_resc = (img_smoothed_filtered - I0)/popt[0]
+    img_smoothed_all_resc = (img_smoothed - I0)/popt[0]
+    imdiff_filtered_resc = imdiff_filtered / popt[0]
+    SNR0f = np.mean(img_smoothed_filtered_resc*img_smoothed_filtered_resc)/np.var(imdiff_filtered_resc)
+    SNR0a = np.mean(img_smoothed_all_resc*img_smoothed_all_resc)/np.mean(img_smoothed_all_resc)
+    if perform_contrast_analysis:
+        contrast  = (Ihigh - Ilow)/((Ilow + Ihigh)/2.0-I0)
+    
+    img_smoothed_filtered_resc1 = (img_smoothed_filtered - DarkCount)/Slope_header
+    img_smoothed_all_resc1 = (img_smoothed - DarkCount)/Slope_header
+    imdiff_filtered_resc1 = imdiff_filtered / Slope_header
+    SNR1f = np.mean(img_smoothed_filtered_resc1*img_smoothed_filtered_resc1)/np.var(imdiff_filtered_resc1)
+    SNR1a = np.mean(img_smoothed_all_resc1*img_smoothed_all_resc1)/np.mean(img_smoothed_all_resc1)
+
+    if perform_contrast_analysis:
+        #Contrast Calculation
+        pdf = np.asarray(hist_smooth[hist_center_ind]).ravel()
+        x = np.asarray(bin_centers[hist_center_ind]).ravel()
+    
+        # Step1. Approximate major peak with Gaussian
+        xc0 = np.argmax(pdf)
+        amp_guess0 = np.max(pdf)-np.min(pdf)
+        center_guess0 = x[xc0]
+        sigma_guess0 = find_FWHM(x, pdf)[0] / 2.4
+        dx0 = int(sigma_guess0 / (x[1]-x[0]))
+        #xi0 = xc0-dx0
+        #xa0 = xc0+dx0
+        xi0 = np.max((xc0-dx0, 0))
+        xa0 = np.min((xc0+dx0, len(pdf)-1))
+        popt0, pcov0 = curve_fit(gauss_without_offset, x[xi0:xa0], pdf[xi0:xa0], p0=[amp_guess0, center_guess0, sigma_guess0])
+        gauss_fit0 = gauss_without_offset(x,*popt0)
+        pdf_res0 = pdf - gauss_fit0
+        
+        # Step2. Approximate the residue with Gaussian
+        xc1 = np.argmax(pdf_res0)
+        amp_guess1 = np.max(pdf_res0)-np.min(pdf_res0)
+        center_guess1 = x[xc1]
+        sigma_guess1 = find_FWHM(x, pdf_res0)[0] / 2.4
+        dx1 = int(sigma_guess1 / (x[1]-x[0]))
+        #xi1 = xc1-dx1
+        #xa1 = xc1+dx1
+        xi1 = np.max((xc1-dx1, 0))
+        xa1 = np.min((xc1+dx1, len(pdf)-1))
+        popt1, pcov1 = curve_fit(gauss_without_offset, x[xi1:xa1], pdf_res0[xi1:xa1], p0=[amp_guess1, center_guess1, sigma_guess1])
+        gauss_fit1 = gauss_without_offset(x,*popt1)
+        
+        # Step3. Perform new fit of double gaussian with initial guesses from the previous steps
+        popt2, pcov2 = curve_fit(double_gauss_without_offset, x, pdf, p0=[*popt0, *popt1])
+        gauss_fit2 = double_gauss_without_offset(x,*popt2)
+    
+        if popt2[1] > popt2[4]:
+            popt_high = popt2[0:3]
+            popt_low = popt2[3:]
+        else:
+            popt_high = popt2[3:]
+            popt_low = popt2[0:3]
+        gauss_fit_high = gauss_without_offset(x,*popt_high)
+        gauss_fit_low = gauss_without_offset(x,*popt_low)
+        I_high = kwargs.get('I_high', popt_high[1])
+        I_low = kwargs.get('I_low', popt_low[1])
+        Pmax = np.max((popt2[0], popt2[3]))
+        I_mean = (I_high + I_low) / 2.0
+        contrast = (I_high-I_low)/(I_mean-I0)
+        contrast_low_mask = np.full(img.shape, 0.50)
+        contrast_low_mask[(img_smoothed > I_low + contrast_range/2.0) ] = np.nan
+        contrast_low_mask[(img_smoothed < I_low - contrast_range/2.0) ] = np.nan      
+        contrast_high_mask = np.full(img.shape, 0.8333)
+        contrast_high_mask[(img_smoothed > I_high + contrast_range/2.0) ] = np.nan
+        contrast_high_mask[(img_smoothed < I_high - contrast_range/2.0) ] = np.nan
+        axs[1].imshow(contrast_low_mask, cmap="hsv", vmin=0.0, vmax=1.0)
+        axs[1].imshow(contrast_high_mask, cmap="hsv", vmin=0.0, vmax=1.0)
+        ax2_i0, ax2_i1 = axs[2].get_ylim()
+        patch_low = Rectangle((I_low - contrast_range/2.0, ax2_i0), contrast_range, ax2_i1-ax2_i0, linewidth=2, edgecolor='cyan', facecolor='cyan', alpha=0.5)
+        axs[2].add_patch(patch_low)
+        patch_high = Rectangle((I_high - contrast_range/2.0, ax2_i0), contrast_range, ax2_i1-ax2_i0, linewidth=2, edgecolor='magenta', facecolor='magenta', alpha=0.5)
+        axs[2].add_patch(patch_high)
+    
+    if disp_res:
+        print('')
+        print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Used Dark Count Offset: {:.2f}'.format(DarkCount))
+        print('Slope of linear fit with header offset: {:.2f}'.format(Slope_header))
+        print('Fit w DarkCount  : SNR1f <S²>/<N²> (filtered) = {:.2f}'.format(SNR1f))
+        print('Fit w DarkCount  : SNR1a <S²>/<S> (all pts.) = {:.2f}'.format(SNR1a))
+        print('')
+        print('Free Fit Offset: {:.2f}'.format(I0))
+        print('Slope of Free Fit: {:.2f}'.format(popt[0]))
+        print('Free Fit         : SNR0f <S²>/<N²> (filtered) = {:.2f}'.format(SNR0f))
+        print('Free Fit         : SNR0a <S²>/<S> (all pts.) = {:.2f}'.format(SNR0a))
+        print('')
+        if disp_res_SNR0:
+            txt1 = 'Dark Count:    ' +'$I_{0}$' +'={:.1f}'.format(I0)
+            axs[2].text(0.05, 0.72, txt1, transform=axs[2].transAxes, fontsize=fs+1)
+            txt2f = 'SNR <$S^2$>/<$N^2$> = '+'{:.2f}'.format(SNR0f)
+            axs[2].text(0.05, 0.65, txt2f, transform=axs[2].transAxes, fontsize=fs+1)
+        if perform_contrast_analysis:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Data range: I_contrast_low = {:.2f}, I_contrast_high = {:.2f}'.format(I_low, I_high))
+            print('Dark Count = {:.2f}'.format(I0))
+            print('Contrast = {:.3f}'.format(contrast))
+            txt3 = '$I_{contrast.low}$' + ' = {:.2f}'.format(I_low)
+            axs[2].text(0.05, 0.58, txt3, transform=axs[2].transAxes, fontsize=fs+1)
+            axs[1].text(0.03, 0.95, txt3, bbox=bbox, transform=axs[1].transAxes, color='cyan', fontsize=fs-1)
+            txt4 = '$I_{contrast.high}$' + ' = {:.2f}'.format(I_high)
+            axs[2].text(0.05, 0.51, txt4, transform=axs[2].transAxes, fontsize=fs+1)
+            axs[1].text(0.03, 0.88, txt4, bbox=bbox, transform=axs[1].transAxes, color='magenta', fontsize=fs-1)
+            txt5 = 'Contrast = {:.3f}'.format(contrast)
+            axs[2].text(0.05, 0.45, txt5, transform=axs[2].transAxes, color='black', fontsize=fs+1)
+        
+        if save_res_png:
+            fig.savefig(res_fname, dpi=dpi)
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')+'   results saved into the file: '+res_fname)
+        display(fig)
+        plt.close(fig)
+    return {
+        'mean_vals':    mean_vals,
+        'var_vals':     var_vals,
+        'I0':           I0,
+        'popt':         popt,
+        'Slope_header': Slope_header,
+        'SNR0f':        SNR0f,
+        'SNR0a':        SNR0a,
+        'SNR1f':        SNR1f,
+        'SNR1a':        SNR1a,
+        'I_peak':       I_peak,
+        'contrast':     contrast,
+        'I_low':         I_low,
+        'I_high':        I_high,
+        'result':       result,
+    }
+
+
 def Perform_2D_fit(img, estimator, **kwargs):
     '''
     Bin the image and then perform 2D polynomial fit on the binned image.
