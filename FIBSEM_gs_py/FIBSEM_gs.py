@@ -1807,9 +1807,9 @@ def Single_Image_Noise_Statistics_custom(img, **kwargs):
         axs[1].imshow(contrast_low_mask, cmap="hsv", vmin=0.0, vmax=1.0)
         axs[1].imshow(contrast_high_mask, cmap="hsv", vmin=0.0, vmax=1.0)
         ax2_i0, ax2_i1 = axs[2].get_ylim()
-        patch_low = Rectangle((I_low - contrast_range/2.0, ax2_i0), contrast_range, ax2_i1-ax2_i0, linewidth=2, edgecolor='cyan', facecolor='cyan', alpha=0.5)
+        patch_low = patches.Rectangle((I_low - contrast_range/2.0, ax2_i0), contrast_range, ax2_i1-ax2_i0, linewidth=2, edgecolor='cyan', facecolor='cyan', alpha=0.5)
         axs[2].add_patch(patch_low)
-        patch_high = Rectangle((I_high - contrast_range/2.0, ax2_i0), contrast_range, ax2_i1-ax2_i0, linewidth=2, edgecolor='magenta', facecolor='magenta', alpha=0.5)
+        patch_high = patches.Rectangle((I_high - contrast_range/2.0, ax2_i0), contrast_range, ax2_i1-ax2_i0, linewidth=2, edgecolor='magenta', facecolor='magenta', alpha=0.5)
         axs[2].add_patch(patch_high)
     
     if disp_res:
