@@ -102,6 +102,74 @@ except:
 #
 ############################################
 
+def _edge_transition(amp, xnm, baseline, amp_max, bounds, xc, direction):
+    '''
+    Locate one transition edge of a cross-section profile and measure its width.
+
+    Walks outward from the profile center toward the flanking minimum on this
+    side, finds where the profile crosses the low and high transition levels,
+    interpolates the crossing positions linearly, and fits a line through the
+    transition region to estimate the edge width.
+
+    Parameters:
+    amp, xnm : 1D np.ndarray
+        Profile amplitudes and matching positions (nm).
+    baseline : float
+        Flanking minimum on this side (ampa for falling, ampi for rising).
+    amp_max : float
+        Peak amplitude.
+    bounds : (float, float)
+        Low/high transition fractions, e.g. (0.37, 0.63).
+    xc : int
+        Center index of the profile.
+    direction : int
+        +1 to walk right (falling edge), -1 to walk left (rising edge).
+
+    Returns:
+    [x_low, x_high, y_low, y_high, width]
+    '''
+    npts = len(amp)
+    d = direction
+
+    y_low  = baseline + bounds[0] * (amp_max - baseline)
+    y_high = baseline + bounds[1] * (amp_max - baseline)
+    half   = baseline + 0.5 * (amp_max - baseline)
+
+    def interp_at(p, y):
+        # crossing bracketed by indices p and p+1; interpolate x at level y
+        denom = amp[p + 1] - amp[p]
+        if denom != 0:
+            return xnm[p] + (y - amp[p]) * (xnm[p + 1] - xnm[p]) / denom
+        return xnm[p]
+
+    # 1) walk from just off-center out to the half-maximum point
+    j = xc - d
+    while 0 < j < npts - 1 and amp[j] > half:
+        j += d
+    j = j - min(d, 0)                       # +1 correction when walking left
+
+    # 2) continue outward to the LOW level -> far crossing (x_low)
+    while 0 < j < npts - 1 and amp[j] > y_low:
+        j += d
+    x_low = interp_at(min(j, j - d), y_low)
+    j_far = j
+
+    # 3) walk back inward to the HIGH level -> near crossing (x_high)
+    while 0 < j < npts - 1 and amp[j] < y_high:
+        j -= d
+    x_high = interp_at(min(j, j + d), y_high)
+    j_near = j
+
+    # 4) linear fit through the transition region -> slope -> width
+    lo, hi = sorted((j_near, j_far))
+    try:
+        slope, _ = np.polyfit(xnm[lo:hi + 1], amp[lo:hi + 1], 1)
+    except (np.linalg.LinAlgError, ValueError, TypeError):
+        slope = 0.0
+    width = abs((y_low - y_high) / slope) if slope != 0.0 else np.nan
+
+    return [x_low, x_high, y_low, y_high, width]
+
 
 def analyze_blob_transitions(amp, ** kwargs):
     '''
@@ -112,7 +180,7 @@ def analyze_blob_transitions(amp, ** kwargs):
     
     kwargs:
     bounds : list
-        List of lists of transition levels for analysis. Default is [0.37, 0.63].
+        List of transition levels for analysis. Default is [0.37, 0.63].
     pixel_size : float
         pixel size. default is 4.0 nm
     bands : list of 3 ints
@@ -148,7 +216,6 @@ def analyze_blob_transitions(amp, ** kwargs):
     rise_points, fall_points, [ampi, ampa, amp_max]
 
     '''
-
     bounds = kwargs.get('bounds', [0.37, 0.63])
     pixel_size = kwargs.get('pixel_size', 4.0)
     bands = kwargs.get('bands', [5, 3, 5])
@@ -165,7 +232,7 @@ def analyze_blob_transitions(amp, ** kwargs):
     fs_labels = kwargs.get('fs_labels', 12)
     verbose = kwargs.get('verbose', False)
                         
-    amp=np.array(amp)
+    amp=np.asarray(amp)
     npts = len(amp)
     xc = npts//2   # define center
      
@@ -174,7 +241,7 @@ def analyze_blob_transitions(amp, ** kwargs):
     
     # find the minimum of the left side of the profile
     indmin_i = np.argmin(amp[0:xc-1])
-    indmin_i0 = np.max((0, indmin_i-dxi//2-1))
+    indmin_i0 = max((0, indmin_i-dxi//2-1))
     xmin_i = xnm[indmin_i0:indmin_i0+dxi]
     amp_i = amp[indmin_i0:indmin_i0+dxi]
     ampi = np.mean(amp_i)
@@ -186,7 +253,7 @@ def analyze_blob_transitions(amp, ** kwargs):
     
     # find the minimum of the right side of the profile
     indmin_a = np.argmin(amp[xc+1:])
-    indmin_a1 = np.min((npts, indmin_a+xc+2+dxa//2))
+    indmin_a1 = min((npts, indmin_a+xc+2+dxa//2))
     xmin_a = xnm[indmin_a1-dxa:indmin_a1]
     amp_a = amp[indmin_a1-dxa:indmin_a1]
     ampa = np.mean(amp_a)
@@ -226,63 +293,10 @@ def analyze_blob_transitions(amp, ** kwargs):
             print('xnm_mx', xnm_mx)
             print('amp_max: ', amp_max)
     
-    #first, find half point: falling edge
-    j=xc-1
-    while (j<npts-1) and amp[j]>ampa+(amp_max-ampa)*0.5:
-        j += 1
-    jhhf = j
-   
-    yi=ampa+bounds[0]*(amp_max-ampa)
-    ya=ampa+bounds[1]*(amp_max-ampa)
-    j = jhhf
-    while j<npts-1 and amp[j]>yi:
-        j += 1
-    if (amp[j]-amp[j-1]) != 0:
-        xi = xnm[j-1] + (yi-amp[j-1])*(xnm[j]-xnm[j-1])/(amp[j]-amp[j-1])
-    else:
-        xi = xnm[j-1]
-    ja = j
-    while j>0 and amp[j]<ya:
-        j -= 1
-    if (amp[j+1]-amp[j]) != 0:
-        xa = xnm[j] + (ya-amp[j])*(xnm[j+1]-xnm[j])/(amp[j+1]-amp[j])
-    else:
-        xa = xnm[j]
-    ji=j
-    try: 
-        [slope, offs] = np.polyfit(xnm[ji:ja+1], amp[ji:ja+1], 1)
-    except:
-        slope=0.0
-    fall_points = [xi, xa, yi, ya, abs((yi-ya)/slope)]
-            
-    #second, find half point: rising edge
-    j=xc+1
-    while (j>0) and amp[j]>ampi+(amp_max-ampi)*0.5:
-        j -= 1
-    jhhf = j+1
-   
-    yi=ampi+bounds[0]*(amp_max-ampi)
-    ya=ampi+bounds[1]*(amp_max-ampi)
-    j = jhhf
-    while j>0 and amp[j]>yi:
-        j -= 1
-    if (amp[j+1]-amp[j]) != 0:
-        xi = xnm[j] + (yi-amp[j])*(xnm[j+1]-xnm[j])/(amp[j+1]-amp[j])
-    else:
-        xi = xnm[j]
-    ji = j
-    while j<npts-1 and amp[j]<ya:
-        j += 1
-    if (amp[j]-amp[j-1]) != 0:
-        xa = xnm[j-1] + (xnm[j]-xnm[j-1])*(ya-amp[j-1])/(amp[j]-amp[j-1])
-    else:
-        xa = xnm[j-1]
-    ja=j
-    try:
-        [slope, offs] = np.polyfit(xnm[ji:ja+1], amp[ji:ja+1], 1)
-    except:
-        slope=0.0
-    rise_points = [xi, xa, yi, ya, abs((yi-ya)/slope)]
+    # falling edge (right side): walk out toward the right minimum (ampa)
+    fall_points = _edge_transition(amp, xnm, ampa, amp_max, bounds, xc, direction=+1)
+    # rising edge (left side): walk out toward the left minimum (ampi)
+    rise_points = _edge_transition(amp, xnm, ampi, amp_max, bounds, xc, direction=-1)
 
     if disp_res and ax:
         ax.plot(xnm,amp, color=col, label = pref+'cross-section')
