@@ -2477,6 +2477,8 @@ class FIBSEM_mosaic_dataset:
         sliding_minmax : boolean
             If True - data min and max will be taken from data_min_sliding and data_max_sliding arrays. Default is True.
             If False - same data_min_glob and data_max_glob will be used for all files.
+        percentile : int
+            Percentile value for data evaluation. Default is object attribute (50).
         fit_params : list
             Example: ['SG', 501, 3]  - perform the above adjustment using Savitzky-Golay (SG) filter with parameters - window size 501, polynomial order 3.
             Default is ['SG', len(fls)//100+1, 3].

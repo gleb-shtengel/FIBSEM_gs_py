@@ -8565,8 +8565,8 @@ class FIBSEM_frame:
             CDF threshold for determining the min and max data values for display. Default is [1e-3, 1e-3].
         nbins_analysis : int
             Number of histogram bins for building the PDF and CDF to determine the data range for building the data histogram in Step 5. Default is 256.
-        thresholds_analysis: list [thr_min_analysis, thr_max_analysis]
-            CDF threshold for building the data histogram in Step 5. Default is [2e-2, 2e-2].
+        thresholds_SNR_analysis: list [thr_min_analysis, thr_max_analysis]
+            CDF threshold for building the data histogram in Step 5. Default is [1e-2, 1e-2].
         disp_res : boolean
             If True - plot/ display the results. Default is True.
         disp_res_SNR0 : boolean
@@ -8625,7 +8625,7 @@ class FIBSEM_frame:
             nbins_disp = kwargs.get("nbins_disp", 256)
             thresholds_disp = kwargs.get("thresholds_disp", [1e-3, 1e-3])
             nbins_analysis = kwargs.get("nbins_analysis", 100)
-            thresholds_analysis = kwargs.get("thresholds_analysis", [2e-2, 1e-2])
+            thresholds_SNR_analysis = kwargs.get("thresholds_SNR_analysis", [1e-2, 1e-2])
             disp_res = kwargs.get("disp_res", True)
             disp_res_SNR0 = kwargs.get("disp_res_SNR0", True)
             disp_res_SNR1 = kwargs.get("disp_res_SNR1", True)
@@ -8651,7 +8651,7 @@ class FIBSEM_frame:
                             'nbins_disp' : nbins_disp,
                             'thresholds_disp' : thresholds_disp,
                             'nbins_analysis' : nbins_analysis,
-                            'thresholds_analysis' : thresholds_analysis,
+                            'thresholds_SNR_analysis' : thresholds_SNR_analysis,
                             'disp_res' : disp_res,
                             'disp_res_SNR0' : disp_res_SNR0,
                             'disp_res_SNR1' : disp_res_SNR1,
@@ -12874,6 +12874,8 @@ class FIBSEM_dataset:
             In the case of 'RANSAC' - Maximum distance for a data point to be classified as an inlier.
             In the case of 'LinReg' - outlier threshold for iterative regression.
             Default is 1.5.
+        percentile : int
+            Percentile value for data evaluation. Default is object attribute (50).
         max_iter : int
             Max number of iterations in the iterative procedure above (RANSAC or LinReg). Default is 1000.
         zbin_factor : int
@@ -12933,6 +12935,7 @@ class FIBSEM_dataset:
         self.XResolutions = kwargs.get('XResolutions', np.full(len(fls), test_frame.XResolution))
         self.YResolutions = kwargs.get('YResolutions', np.full(len(fls), test_frame.YResolution))
         self.Scaling = kwargs.get("Scaling", test_frame.Scaling)
+        self.percentile = kwargs.get('percentile', 50)
         if hasattr(test_frame, 'PixelSize'):
             self.PixelSize = kwargs.get("PixelSize", test_frame.PixelSize)
         else:
