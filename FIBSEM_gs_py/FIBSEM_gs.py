@@ -4625,7 +4625,7 @@ def mrc_stack_estimate_resolution_blobs_2D(mrc_filename, **kwargs):
 def select_blobs_LoG_analyze_transitions_2D_mrc_stack(params):
     '''
     DASK wrapper for select_blobs_LoG_analyze_transitions
-    Finds blobs in the given grayscale image using Laplasian of Gaussians (LoG). gleb.shtengel@gmail.com 02/2024
+    Finds blobs in the given grayscale image using Laplacian of Gaussians (LoG). gleb.shtengel@gmail.com 02/2024
     
     Parameters:
     ----------
@@ -12437,7 +12437,7 @@ def check_for_nomatch_frames_dataset(fls, fnms, fnms_matches,
 def select_blobs_LoG_analyze_transitions_2D_dataset(params):
     '''
     DASK wrapper for select_blobs_LoG_analyze_transitions
-    Finds blobs in the given grayscale image using Laplasian of Gaussians (LoG). gleb.shtengel@gmail.com 06/2023
+    Finds blobs in the given grayscale image using Laplacian of Gaussians (LoG). gleb.shtengel@gmail.com 06/2023
     
     Parameters:
     ----------
@@ -15497,12 +15497,12 @@ def plot_2D_blob_results(results_xlsx, **kwargs):
     verbose : boolean
         Print the outputs. Default is False.
     title : str
-        Title. Default is 'Blobs determined by Laplasian of Gaussians'.
+        Title. Default is 'Blobs determined by Laplacian of Gaussians'.
     '''
     save_png = kwargs.get('save_png', False)
     save_fname = kwargs.get('save_fname', results_xlsx.replace('.xlsx', '_2D_blob_analysis_results.png'))
     nbins = kwargs.get('nbins', 64)
-    title = kwargs.get('title', 'Blobs determined by Laplasian of Gaussians')
+    title = kwargs.get('title', 'Blobs determined by Laplacian of Gaussians')
 
     saved_kwargs = read_kwargs_xlsx(results_xlsx, 'kwargs Info')
     pixel_size = saved_kwargs.get("pixel_size", 0.0)
@@ -15981,7 +15981,7 @@ def plot_3D_blob_results(results_xlsx, **kwargs):
     verbose : boolean
         Print the outputs. Default is False.
     title : str
-        Title. Default is 'Blobs determined by Laplasian of Gaussians'.
+        Title. Default is 'Blobs determined by Laplacian of Gaussians'.
     verbose : boolean
         Display intermediate results. Default is False.
     '''
@@ -15990,7 +15990,7 @@ def plot_3D_blob_results(results_xlsx, **kwargs):
     save_png = kwargs.get('save_png', False)
     save_fname = kwargs.get('save_fname', results_xlsx.replace('.xlsx', '_3D_blob_analysis_results.png'))
     nbins = kwargs.get('nbins', 64)
-    title = kwargs.get('title', 'Blobs determined by Laplasian of Gaussians')
+    title = kwargs.get('title', 'Blobs determined by Laplacian of Gaussians')
     dpi = kwargs.get('dpi', 300)
     analysis = kwargs.get('analysis', 'points')
     verbose = kwargs.get ('verbose', False)
