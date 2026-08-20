@@ -6452,6 +6452,8 @@ class FIBSEM_mosaic_dataset:
             shows separate curves for intra-layer HORIZONTAL and intra-layer VERTICAL
             matches (dashed), in addition to the combined intra and inter curves.
             Does not affect outlier detection. Default False.
+        hist_clip_percentile : float
+            Percent to clip the residual histogram distribution Deafult is 99.99
         apply : bool - if True, set flagged pairs' SOURCE *_transformation_valid flag to
             False in place so a re-solve drops them. Default False (report only).
         sort_by : str - column to sort by. Default 'residual_mag_pix'.
