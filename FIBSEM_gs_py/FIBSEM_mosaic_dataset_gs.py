@@ -6485,6 +6485,7 @@ class FIBSEM_mosaic_dataset:
         sort_by           = kwargs.get('sort_by', 'residual_mag_pix')
         sort_ascending    = kwargs.get('sort_ascending', False)
         split_intra_hv    = kwargs.get('split_intra_hv', False)
+        hist_clip_pct     = kwargs.get('hist_clip_percentile', 99.99)
         disp_res          = kwargs.get('disp_res', True)
         save_res_png      = kwargs.get('save_res_png', True)
         figsize           = kwargs.get('figsize', (14, 10))
@@ -6618,7 +6619,7 @@ class FIBSEM_mosaic_dataset:
             # Common bin edges so the curves are directly comparable.
             m_all = valid & np.isfinite(mag)
             if m_all.any():
-                hi = np.percentile(mag[m_all], 99.5)
+                hi = np.percentile(mag[m_all], hist_clip_pct)
                 hi = hi if hi > 0 else mag[m_all].max()
                 bins = np.linspace(0.0, hi, 61)
             else:
@@ -6633,7 +6634,7 @@ class FIBSEM_mosaic_dataset:
             if resid_thr_pixels is not None:
                 ax.axvline(resid_thr_pixels, color='k', ls='--', lw=0.8, label='abs thr')
             ax.set_yscale('log'); ax.set_ylabel('Count')
-            ax.set_xlabel('Residual Magnitude (pix)' + (', clipped at 99.5%' if m_all.any() else ''))
+            ax.set_xlabel('Residual Magnitude (pix)' + (', clipped at {:.2f}%'.format(hist_clip_pct) if m_all.any() else ''))
             ax.set_title('Residual magnitude distribution'); ax.grid(True); ax.legend(fontsize=7)
             ax.text(0.3, 0.95, 'Solve Method: ' + self._last_pos_solve_method, transform=ax.transAxes)
             ax.text(0.3, 0.90, 'Solve intralayer_weight = {:.1f}'.format(getattr(self, '_last_pos_solve_intralayer_weight', self.intralayer_weight)), transform=ax.transAxes, color='tab:blue')
