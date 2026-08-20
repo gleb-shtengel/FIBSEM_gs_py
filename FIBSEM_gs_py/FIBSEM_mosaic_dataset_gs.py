@@ -6425,6 +6425,7 @@ class FIBSEM_mosaic_dataset:
         # tile_positions = -self.tr_matr[:, :, 0:2, 2]
         return -self.tr_matr[:, :, 0:2, 2]
 
+
     def analyze_solve_residuals(self, **kwargs):
         '''
         Analyze per-pair residual errors from the most recent stack solve, flag outlier
@@ -6447,6 +6448,10 @@ class FIBSEM_mosaic_dataset:
         resid_thr_pixels : float or None - if set, ALSO flag any pair whose residual
             magnitude exceeds this absolute value (pixels). Default None.
         separate_intra_inter : bool - robust stats per group if True (default), else pooled.
+        split_intra_hv : bool - if True, the magnitude histogram panel (top-left) also
+            shows separate curves for intra-layer HORIZONTAL and intra-layer VERTICAL
+            matches (dashed), in addition to the combined intra and inter curves.
+            Does not affect outlier detection. Default False.
         apply : bool - if True, set flagged pairs' SOURCE *_transformation_valid flag to
             False in place so a re-solve drops them. Default False (report only).
         sort_by : str - column to sort by. Default 'residual_mag_pix'.
@@ -6468,7 +6473,8 @@ class FIBSEM_mosaic_dataset:
                'residual_x_pix','residual_y_pix','residual_mag_pix','z_score','is_outlier',
                'File Path 0','File Path 1'], sorted by sort_by.
           'outliers'    : the is_outlier==True subset (same columns, sorted).
-          'stats'       : per-group {median, MAD, n, n_outliers} plus totals.
+          'stats'       : per-group {median, MAD, n, n_outliers} for 'intra', 'inter',
+                          'intra-h', 'intra-v', plus totals.
           'invalidated' : int, number of pairs whose valid flag was set False (0 if apply=False).
         '''
         method            = kwargs.get('method', getattr(self, '_last_pos_solve_method', 'ECC'))
@@ -6478,6 +6484,7 @@ class FIBSEM_mosaic_dataset:
         apply             = kwargs.get('apply', False)
         sort_by           = kwargs.get('sort_by', 'residual_mag_pix')
         sort_ascending    = kwargs.get('sort_ascending', False)
+        split_intra_hv    = kwargs.get('split_intra_hv', False)
         disp_res          = kwargs.get('disp_res', True)
         save_res_png      = kwargs.get('save_res_png', True)
         figsize           = kwargs.get('figsize', (14, 10))
@@ -6516,6 +6523,8 @@ class FIBSEM_mosaic_dataset:
         L0, T0 = i0 // ntl, i0 % ntl
         L1, T1 = i1 // ntl, i1 % ntl
         rows  = np.arange(self.C)
+        intra_h_rows = rows < self.nh
+        intra_v_rows = (rows >= self.nh) & (rows < self.nh + self.nv)
         ptype = np.empty(self.C, dtype=object)
         ptype[:self.nh]                     = 'intra-h'
         ptype[self.nh:self.nh + self.nv]    = 'intra-v'
@@ -6583,6 +6592,7 @@ class FIBSEM_mosaic_dataset:
                     'MAD': float(np.median(np.abs(mag[idx] - med))),
                     'n_outliers': int(is_outlier[idx].sum())}
         stats = {'method': method, 'intra': _grp_stats(intra_rows), 'inter': _grp_stats(~intra_rows),
+                 'intra-h': _grp_stats(intra_h_rows), 'intra-v': _grp_stats(intra_v_rows),
                  'n_valid': int(valid.sum()), 'n_outliers': int((is_outlier & valid).sum())}
 
         if verbose:
@@ -6601,15 +6611,31 @@ class FIBSEM_mosaic_dataset:
             m_in = intra_rows & valid & np.isfinite(mag)
             m_it = (~intra_rows) & valid & np.isfinite(mag)
 
-            # (0,0) magnitude histogram, intra vs inter.
+            # (0,0) magnitude histogram, intra vs inter (optionally intra-h / intra-v).
             ax = axs[0, 0]
-            if m_in.any(): ax.hist(mag[m_in], bins=60, histtype='step', color='tab:blue',  label='intra')
-            if m_it.any(): ax.hist(mag[m_it], bins=60, histtype='step', color='tab:red',   label='inter')
+            m_ih = intra_h_rows & valid & np.isfinite(mag)
+            m_iv = intra_v_rows & valid & np.isfinite(mag)
+            # Common bin edges so the curves are directly comparable.
+            m_all = valid & np.isfinite(mag)
+            if m_all.any():
+                hi = np.percentile(mag[m_all], 99.5)
+                hi = hi if hi > 0 else mag[m_all].max()
+                bins = np.linspace(0.0, hi, 61)
+            else:
+                bins = 60
+            if m_in.any(): ax.hist(mag[m_in], bins=bins, histtype='step', color='tab:blue', label='intra')
+            if split_intra_hv:
+                if m_ih.any(): ax.hist(mag[m_ih], bins=bins, histtype='step', color='tab:cyan',
+                                       ls='--', label='intra-horiz.')
+                if m_iv.any(): ax.hist(mag[m_iv], bins=bins, histtype='step', color='tab:green',
+                                       ls='--', label='intra-vert.')
+            if m_it.any(): ax.hist(mag[m_it], bins=bins, histtype='step', color='tab:red', label='inter')
             if resid_thr_pixels is not None:
                 ax.axvline(resid_thr_pixels, color='k', ls='--', lw=0.8, label='abs thr')
-            ax.set_yscale('log'); ax.set_xlabel('Residual Magnitude (pix)'); ax.set_ylabel('Count')
+            ax.set_yscale('log'); ax.set_ylabel('Count')
+            ax.set_xlabel('Residual Magnitude (pix)' + (', clipped at 99.5%' if m_all.any() else ''))
             ax.set_title('Residual magnitude distribution'); ax.grid(True); ax.legend(fontsize=7)
-            ax.text(0.3, 0.95, 'Solve Method: ' + self._last_pos_solve_method, transform = ax.transAxes)
+            ax.text(0.3, 0.95, 'Solve Method: ' + self._last_pos_solve_method, transform=ax.transAxes)
             ax.text(0.3, 0.90, 'Solve intralayer_weight = {:.1f}'.format(getattr(self, '_last_pos_solve_intralayer_weight', self.intralayer_weight)), transform=ax.transAxes, color='tab:blue')
             ax.text(0.3, 0.85, 'Solve interlayer_weight = {:.1f}'.format(getattr(self, '_last_pos_solve_interlayer_weight', self.interlayer_weight)), transform=ax.transAxes, color='tab:red')
 
@@ -7207,20 +7233,17 @@ class FIBSEM_mosaic_dataset:
           'save_fname'    : save_fname.
 
         '''
-        TPM = kwargs.get('TPM', self.TPM)
-        L   = self.nz_tiles
-        nt  = self.n_tiles_per_layer
-        if nt % TPM != 0:
-            print('n_tiles_per_layer ({:d}) is not divisible by {:d}; not an mFOV hexagonal layout.'.format(nt, TPM))
-            return None
-        n_mfov = nt // TPM
-        
         tile_id = kwargs.get('tile_id', 0)
         verbose = kwargs.get('verbose', False)
         sigma_thr      = kwargs.get('sigma_thr', 10.0)
         mark_outliers = kwargs.get('mark_outliers', True)
         sort_by        = kwargs.get('sort_by', 'Relative Abs. Shift')
         sort_ascending = kwargs.get('sort_ascending', False)
+        TPM = kwargs.get('TPM', self.TPM)
+        nt  = self.n_tiles_per_layer
+        if verbose and nt % TPM != 0:
+            print('n_tiles_per_layer ({:d}) is not divisible by TPM ({:d}); '
+                  "'mfov' and 'tile_mfov_id' columns are not meaningful.".format(nt, TPM))
 
         if verbose:
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Generating transformation report')
