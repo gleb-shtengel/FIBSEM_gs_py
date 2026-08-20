@@ -497,6 +497,48 @@ def convert_tr_matr_into_deformation_field(transformation_matrix, image_shape, *
     index_map : str
         'abs' (default) - absolute indices of the pixels.
         'diff' - displacements
+    dtype : np.dtype
+        Output dtype. Default np.float32 (all callers cast to float32 anyway).
+    '''
+    index_map = kwargs.get('index_map', 'abs')
+    dtype = kwargs.get('dtype', np.float32)
+    image_height, image_width = image_shape
+    M = np.asarray(transformation_matrix, dtype=np.float64)
+
+    # x' = Sxx*x + Sxy*y + Tx  and  y' = Syx*x + Syy*y + Ty are separable in x and y,
+    # so evaluate them from 1D coordinate vectors instead of full meshgrids.
+    x = np.arange(image_width,  dtype=dtype)
+    y = np.arange(image_height, dtype=dtype)
+    deformation_field = np.empty((image_height, image_width, 2), dtype=dtype)
+    deformation_field[..., 0] = (y * dtype(M[0, 1]) + dtype(M[0, 2]))[:, None] + (x * dtype(M[0, 0]))[None, :]
+    deformation_field[..., 1] = (y * dtype(M[1, 1]) + dtype(M[1, 2]))[:, None] + (x * dtype(M[1, 0]))[None, :]
+
+    if index_map != 'abs':
+        deformation_field[..., 0] -= x[None, :]
+        deformation_field[..., 1] -= y[:, None]
+
+    return deformation_field
+
+
+def convert_tr_matr_into_deformation_field_old(transformation_matrix, image_shape, **kwargs):
+    '''
+    Converts transformation_matrix into deformation field on a grid determined by the shape (height, width) parameter.
+
+    Parameters
+    ----------
+    transformation_matrix : 2D array
+        Transformation matrix in a form:
+            [[Sxx Sxy Tx]
+            [Syx  Syy Ty]
+            [0    0   1]]
+    image_shape : list of two ints
+        shape of the image (height, width)
+
+    kwargs
+    ---------
+    index_map : str
+        'abs' (default) - absolute indices of the pixels.
+        'diff' - displacements
     '''
     index_map = kwargs.get('index_map', 'abs')
     # create grid points

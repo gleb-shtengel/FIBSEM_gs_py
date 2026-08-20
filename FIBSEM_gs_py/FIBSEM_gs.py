@@ -2139,38 +2139,14 @@ def flatten_image_fast_old(img, intercept, coefs, degree, bins):
     return img * img_correction_array
 
 
-def flatten_image_fast(img, intercept, coefs, degree, bins):
+def polynomial_surface_fast(shape, intercept, coefs, degree, bins):
     '''
-    Flatten a single image using polynomial fit coefficients.
-    Evaluates the polynomial correction surface term-by-term, avoiding
-    construction of the full polynomial feature matrix.
-
-    The correction surface is reconstructed as:
-        predicted_surface(x, y) = intercept + sum(coefs[k] * x^px * y^py)
-        img_correction_array = mean(predicted_surface) / predicted_surface
-    where (px, py) are the polynomial exponent pairs from PolynomialFeatures(degree).
-
-    Parameters:
-    ----------
-    img : 2D array
-        Image to be flattened. For 'RawImageA'/'RawImageB' sources, this should be
-        the offset-subtracted image (e.g., RawImageA - Scaling[1,0]).
-        For 'ImageA'/'ImageB' sources, this should be the scaled image directly.
-    intercept : float
-        Intercept of the polynomial fit (from Perform_2D_fit).
-    coefs : 1D array
-        Coefficients of the polynomial fit (from Perform_2D_fit).
-    degree : int
-        Degree of the polynomial features used in fitting.
-    bins : int
-        Binning factor used during fitting (for coordinate scaling).
-
-    Returns:
-    ----------
-    flattened_image : 2D array
-        The flattened image (same shape as img).
+    Evaluate the polynomial correction surface for `shape` term-by-term.
+    Factored out of flatten_image_fast so callers that want to apply the
+    correction in place can do so without building intermediate full-size arrays.
+    Returns predicted_surface : 2D float32.
     '''
-    ysz, xsz = img.shape
+    ysz, xsz = shape
 
     # Get polynomial exponent pairs without building the full feature matrix.
     # powers_[k] = (px, py) means the k-th feature is x^px * y^py.
@@ -2211,8 +2187,43 @@ def flatten_image_fast(img, intercept, coefs, degree, bins):
         else:
             predicted_surface += coef_f32 * (ypows[py][:, np.newaxis] * xpows[px][np.newaxis, :])
 
-    img_correction_array = np.float32(np.mean(predicted_surface)) / predicted_surface
-    return img * img_correction_array
+    return predicted_surface
+
+
+def flatten_image_fast(img, intercept, coefs, degree, bins):
+    '''
+    Flatten a single image using polynomial fit coefficients.
+    Evaluates the polynomial correction surface term-by-term, avoiding
+    construction of the full polynomial feature matrix.
+
+    The correction surface is reconstructed as:
+        predicted_surface(x, y) = intercept + sum(coefs[k] * x^px * y^py)
+        img_correction_array = mean(predicted_surface) / predicted_surface
+    where (px, py) are the polynomial exponent pairs from PolynomialFeatures(degree).
+
+    Parameters:
+    ----------
+    img : 2D array
+        Image to be flattened. For 'RawImageA'/'RawImageB' sources, this should be
+        the offset-subtracted image (e.g., RawImageA - Scaling[1,0]).
+        For 'ImageA'/'ImageB' sources, this should be the scaled image directly.
+    intercept : float
+        Intercept of the polynomial fit (from Perform_2D_fit).
+    coefs : 1D array
+        Coefficients of the polynomial fit (from Perform_2D_fit).
+    degree : int
+        Degree of the polynomial features used in fitting.
+    bins : int
+        Binning factor used during fitting (for coordinate scaling).
+
+    Returns:
+    ----------
+    flattened_image : 2D array
+        The flattened image (same shape as img).
+    '''
+    predicted_surface = polynomial_surface_fast(img.shape, intercept, coefs, degree, bins)
+    return img * (np.float32(np.mean(predicted_surface)) / predicted_surface)
+
 
 ##############################################
 #      Two-Frame Image processing Functions

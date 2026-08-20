@@ -10,6 +10,7 @@ import platform
 import pickle
 import re
 from pathlib import Path
+from functools import lru_cache
 
 try:                   # Ensure Blosc uses only LSF-allocated cores, not machine total
     import numcodecs as _nc
@@ -70,6 +71,7 @@ from FIBSEM_gs_py.FIBSEM_gs import (FIBSEM_frame,
                         convert_tr_matr_into_deformation_field,
                         Perform_2D_fit,
                         flatten_image_fast,
+                        polynomial_surface_fast,
                         evaluate_FIBSEM_frames_dataset)
 
 from FIBSEM_gs_py.FIBSEM_help_functions_gs import (check_DASK,
@@ -85,6 +87,45 @@ from FIBSEM_gs_py.FIBSEM_help_functions_gs import (check_DASK,
 
 
 def build_weight_array(shape, **kwargs):
+    '''
+    Builds a 2D array of weights for image blending. gleb.shtengel@gmail.com 11.2025
+    Parameters:
+    -----------
+    shape : tuple (y, x)
+        Shape of the array to create the weights.
+    
+    kwargs:
+    ----------
+    weight_min : np.float32
+        weight_min for weight. Default is 1
+    weight_max : np.float32
+        weight_max for weight. Default is 512
+
+    Returns:
+    ----------
+    weights
+    '''
+    weight_min = kwargs.get('weight_min', 1.0)
+    weight_max = kwargs.get('weight_max', 512.0)
+    ny, nx = shape
+    ix = np.arange(nx, dtype=np.float32)
+    iy = np.arange(ny, dtype=np.float32)
+    # distance to nearest edge is min over x and y separately; clip is monotonic,
+    # so it can be applied to the 1D profiles before the outer minimum.
+    wx = np.clip(np.minimum(ix, ix[::-1]) + np.float32(weight_min), weight_min, weight_max)
+    wy = np.clip(np.minimum(iy, iy[::-1]) + np.float32(weight_min), weight_min, weight_max)
+    return np.minimum(wy[:, None], wx[None, :])
+
+
+@lru_cache(maxsize=4)
+def _weight_array_cached(shape, weight_min, weight_max):
+    '''Read-only cached build_weight_array — interior tiles all share one shape.'''
+    w = build_weight_array(shape, weight_min=weight_min, weight_max=weight_max)
+    w.flags.writeable = False      # callers must not mutate the cached array
+    return w
+
+
+def build_weight_array_old(shape, **kwargs):
     '''
     Builds a 2D array of weights for image blending. gleb.shtengel@gmail.com 11.2025
     Parameters:
@@ -197,13 +238,14 @@ def _add_warped_to_mosaic(tile, xi, yi, mosaic, mosaic_weight, **kwargs):
     tya = tyi + (cya - cyi)
 
     tile_out = tile[tyi:tya, txi:txa]
-    tile_weight = build_weight_array(tile_out.shape, weight_min = weight_min, weight_max = weight_max)
+    weights  = _weight_array_cached(tile_out.shape, weight_min, weight_max)
 
-    nan_mask = np.isnan(tile_out)
-    tile_weight[nan_mask] = 0
-    tile_out = np.nan_to_num(tile_out, copy=True, nan=0.0)
+    nan_mask    = np.isnan(tile_out)
+    tile_weight = np.where(nan_mask, np.float32(0.0), weights)
+    contrib     = np.where(nan_mask, np.float32(0.0), tile_out)
+    contrib    *= tile_weight
 
-    mosaic[cyi:cya, cxi:cxa] += tile_out*tile_weight
+    mosaic[cyi:cya, cxi:cxa]        += contrib
     mosaic_weight[cyi:cya, cxi:cxa] += tile_weight
 
 
@@ -996,6 +1038,7 @@ def assemble_layer(params, deformation_field, **kwargs):
         np.divide(layer_mosaic, layer_mosaic_weights, out=layer_mosaic)
         del layer_mosaic_weights
         np.nan_to_num(layer_mosaic, nan=fill_value, copy=False)
+        '''
         if flatten_mosaic and mosaic_correction_coeffs is not None:
             # Subtract offset, flatten, re-add offset
             layer_mosaic = flatten_image_fast(
@@ -1004,6 +1047,22 @@ def assemble_layer(params, deformation_field, **kwargs):
                 mosaic_correction_coeffs,
                 mosaic_correction_degree,
                 mosaic_correction_bins) + mosaic_Scaling_offset
+        '''
+        if flatten_mosaic and mosaic_correction_coeffs is not None:
+            # Subtract offset, flatten, re-add offset — entirely in place on
+            # layer_mosaic, which is float32 and already the only live copy.
+            surf = polynomial_surface_fast(layer_mosaic.shape,
+                                           mosaic_correction_intercept,
+                                           mosaic_correction_coeffs,
+                                           mosaic_correction_degree,
+                                           mosaic_correction_bins)
+            mean_surf = np.float32(surf.mean())
+            offset    = np.float32(mosaic_Scaling_offset)
+            np.subtract(layer_mosaic, offset,    out=layer_mosaic)
+            np.divide(  layer_mosaic, surf,      out=layer_mosaic)
+            np.multiply(layer_mosaic, mean_surf, out=layer_mosaic)
+            np.add(     layer_mosaic, offset,    out=layer_mosaic)
+            del surf
 
         # Optional output binning. Done in float32 BEFORE the dtype cast so we
         # don't lose precision in the mean. Trailing edge pixels that don't
@@ -1033,6 +1092,8 @@ def assemble_layer(params, deformation_field, **kwargs):
                     layer_out = layer_mosaic          # no copy
                 else:
                     layer_out = layer_mosaic.astype(dtp)
+                    if not return_layer_array:
+                        layer_mosaic = None           # drop the float32 buffer before writing
             tiff.imwrite(tif_fname, layer_out)
         if return_layer_array:
             return layer_mosaic, layer_id
