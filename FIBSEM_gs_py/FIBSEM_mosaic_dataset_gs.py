@@ -7527,7 +7527,7 @@ class FIBSEM_mosaic_dataset:
         overlay_tile_grid : boolean
             If True (Default), overlays tile grid.
         linewidth : float
-            Linewidth for overlay. Defaults is 0.25
+            Linewidth for overlay. Defaults is 0.25.
         linestyle : string
             Linestyle for overlay. Default is 'dashed'.
         add_tile_ids : bool
