@@ -6486,6 +6486,59 @@ class FIBSEM_mosaic_dataset:
         return -self.tr_matr[:, :, 0:2, 2]
 
 
+    def _flat_tile_mask(self, tiles, **kwargs):
+        '''
+        Build a boolean mask over all (nz_tiles * n_tiles_per_layer) tiles from a tile selection
+        reported by any detector. ©G.Shtengel 2026
+
+        Parameters:
+        ----------
+        tiles : one of
+            - pd.DataFrame with 'Layer' and 'Tile' columns ('Tile' = within-layer tile index),
+              e.g. the 'outliers' frame from check_mfov_hexagonal_pattern(), or 'no_valid' /
+              'one_valid' from histogram_valid_matches_per_tile().
+            - (N, 2) array-like of [layer, within-layer tile index].
+            - (N,) array-like of ABSOLUTE tile indices (layer * n_tiles_per_layer + tile).
+            - None or empty -> all-False mask.
+
+        kwargs:
+        ----------
+        verbose : bool - report entries dropped as out-of-range. Default True.
+
+        Returns:
+        ----------
+        mask : np.ndarray (nz_tiles * n_tiles_per_layer,) of bool, True for the selected tiles.
+        '''
+        verbose = kwargs.get('verbose', True)
+        ntl  = self.n_tiles_per_layer
+        ntot = self.nz_tiles * ntl
+        mask = np.zeros(ntot, dtype=bool)
+        if tiles is None:
+            return mask
+        if isinstance(tiles, pd.DataFrame):
+            if len(tiles) == 0:
+                return mask
+            lt = np.column_stack([tiles['Layer'].to_numpy(), tiles['Tile'].to_numpy()]).astype(np.int64)
+        else:
+            arr = np.asarray(tiles)
+            if arr.size == 0:
+                return mask
+            arr = arr.astype(np.int64)
+            if arr.ndim == 2 and arr.shape[1] == 2:
+                lt = arr
+            elif arr.ndim == 1:
+                lt = np.column_stack([arr // ntl, arr % ntl])
+            else:
+                raise ValueError('_flat_tile_mask: expected a DataFrame with Layer/Tile columns, an '
+                                 '(N,2) [layer, tile] array, or a 1D array of absolute tile indices '
+                                 '(got array of shape {}).'.format(arr.shape))
+        ok = (lt[:, 0] >= 0) & (lt[:, 0] < self.nz_tiles) & (lt[:, 1] >= 0) & (lt[:, 1] < ntl)
+        if verbose and not ok.all():
+            print('_flat_tile_mask: dropped {:d} out-of-range tile ID(s).'.format(int((~ok).sum())))
+        mask[lt[ok, 0] * ntl + lt[ok, 1]] = True
+        return mask
+
+
     def analyze_solve_residuals(self, **kwargs):
         '''
         Analyze per-pair residual errors from the most recent stack solve, flag outlier
@@ -6526,6 +6579,17 @@ class FIBSEM_mosaic_dataset:
         verbose : bool - Default True.
         mark_outliers : boolean
             If True (default), each outlier is marked with "x" and its frame and tile number are printed next to "x".
+        exclude_tiles : pd.DataFrame, array-like, or None
+            Tiles flagged as bad by an EXTERNAL detector. Every pair touching one of these tiles is
+            dropped from this analysis - it takes no part in the robust (median/MAD) statistics, the
+            outlier flagging, the returned 'residuals' table, or the figure. Accepts a DataFrame with
+            'Layer' and 'Tile' columns (e.g. the 'outliers' frame from check_mfov_hexagonal_pattern(),
+            or 'no_valid' / 'one_valid' from histogram_valid_matches_per_tile()), an (N,2) array of
+            [layer, tile], or a 1D array of absolute tile indices. Default None (no exclusion).
+            Excluded pairs are never flagged as outliers, so apply=True never invalidates them.
+        exclude_both_endpoints : bool
+            If False (default), a pair is excluded when EITHER of its two tiles is in exclude_tiles.
+            If True, only pairs whose BOTH tiles are in exclude_tiles are excluded.
 
         Returns:
         ----------
@@ -6536,7 +6600,10 @@ class FIBSEM_mosaic_dataset:
                'File Path 0','File Path 1'], sorted by sort_by.
           'outliers'    : the is_outlier==True subset (same columns, sorted).
           'stats'       : per-group {median, MAD, n, n_outliers} for 'intra', 'inter',
-                          'intra-h', 'intra-v', plus totals.
+                          'intra-h', 'intra-v', plus totals and 'n_excluded_tiles' /
+                          'n_excluded_pairs'.
+          'excluded'    : pd.DataFrame, the pairs removed by exclude_tiles (same columns as
+                          'residuals'); empty when exclude_tiles is None.
           'invalidated' : int, number of pairs whose valid flag was set False (0 if apply=False).
         '''
         method            = kwargs.get('method', getattr(self, '_last_pos_solve_method', 'ECC'))
@@ -6554,6 +6621,8 @@ class FIBSEM_mosaic_dataset:
         dpi               = kwargs.get('dpi', 300)
         verbose           = kwargs.get('verbose', True)
         mark_outliers = kwargs.get('mark_outliers', True)
+        exclude_tiles          = kwargs.get('exclude_tiles', None)
+        exclude_both_endpoints = kwargs.get('exclude_both_endpoints', False)
         png_name          = kwargs.get('png_name',
             os.path.join(getattr(self, 'data_dir', '.'), 'solve_residual_outliers.png'))
 
@@ -6593,6 +6662,20 @@ class FIBSEM_mosaic_dataset:
         ptype[self.nh:self.nh + self.nv]    = 'intra-v'
         ptype[self.nh + self.nv:]           = 'inter'
         intra_rows = rows < (self.nh + self.nv)
+        # Drop pairs touching tiles flagged by an EXTERNAL detector (check_mfov_hexagonal_pattern,
+        # histogram_valid_matches_per_tile, ...). Folding this into the local `valid` propagates it to
+        # the robust statistics, the flagging, the table, the apply branch and every figure panel.
+        pair_excluded    = np.zeros(self.C, dtype=bool)
+        n_excluded_tiles = 0
+        if exclude_tiles is not None:
+            tile_excluded    = self._flat_tile_mask(exclude_tiles, verbose=verbose)
+            n_excluded_tiles = int(tile_excluded.sum())
+            if exclude_both_endpoints:
+                pair_excluded = tile_excluded[i0] & tile_excluded[i1] & valid
+            else:
+                pair_excluded = (tile_excluded[i0] | tile_excluded[i1]) & valid
+            valid = valid & (~pair_excluded)   # plain "&": "valid &= ..." would flip self.<key>_transformation_valid in place
+        n_excluded_pairs = int(pair_excluded.sum())
 
         # Robust (MAD-based) one-sided outlier test; large residual == bad.
         z          = np.full(self.C, np.nan)
@@ -6629,7 +6712,8 @@ class FIBSEM_mosaic_dataset:
             data['source'] = np.asarray(self.SIFT_ECC_source)
         df       = pd.DataFrame(data)
         df_valid = df[valid].copy().sort_values(sort_by, ascending=sort_ascending)
-        outliers = df_valid[df_valid['is_outlier']].copy()
+        outliers    = df_valid[df_valid['is_outlier']].copy()
+        df_excluded = df[pair_excluded].copy().sort_values(sort_by, ascending=sort_ascending)
 
         # Optionally invalidate — target the SOURCE arrays so a re-solve honors it.
         invalidated = 0
@@ -6656,14 +6740,17 @@ class FIBSEM_mosaic_dataset:
                     'n_outliers': int(is_outlier[idx].sum())}
         stats = {'method': method, 'intra': _grp_stats(intra_rows), 'inter': _grp_stats(~intra_rows),
                  'intra-h': _grp_stats(intra_h_rows), 'intra-v': _grp_stats(intra_v_rows),
-                 'n_valid': int(valid.sum()), 'n_outliers': int((is_outlier & valid).sum())}
+                 'n_valid': int(valid.sum()), 'n_outliers': int((is_outlier & valid).sum()),
+                 'n_excluded_tiles': n_excluded_tiles, 'n_excluded_pairs': n_excluded_pairs}
 
         if verbose:
             print(time.strftime('%Y/%m/%d  %H:%M:%S')
                   + '   analyze_solve_residuals ({}): {} valid pairs, {} outliers '
-                    '(intra median {:.3f} px, inter median {:.3f} px){}'.format(
+                    '(intra median {:.3f} px, inter median {:.3f} px){}{}'.format(
                         method, stats['n_valid'], stats['n_outliers'],
                         stats['intra']['median'], stats['inter']['median'],
+                        '; {} pairs excluded ({} tiles)'.format(n_excluded_pairs, n_excluded_tiles)
+                            if n_excluded_pairs else '',
                         '; {} invalidated'.format(invalidated) if apply else ''))
 
         # ---- Diagnostic figure ----
@@ -6745,8 +6832,9 @@ class FIBSEM_mosaic_dataset:
             ax.set_title('Directional residuals'); ax.grid(True)
             fig.colorbar(sc, ax=ax, shrink=0.8, label='|residual| (pix)')
 
-            fig.suptitle('{}  solve residuals — {}: {} outliers / {} valid pairs'.format(
-                getattr(self, 'Sample_ID', ''), method, stats['n_outliers'], stats['n_valid']),
+            fig.suptitle('{}  solve residuals — {}: {} outliers / {} valid pairs{}'.format(
+                getattr(self, 'Sample_ID', ''), method, stats['n_outliers'], stats['n_valid'],
+                ', {} pairs excluded'.format(n_excluded_pairs) if n_excluded_pairs else ''),
                 fontsize=12)
             if save_res_png:
                 axs[1, 0].text(0.0, -0.15, png_name, transform=axs[1, 0].transAxes, fontsize=5)
@@ -6755,8 +6843,8 @@ class FIBSEM_mosaic_dataset:
                 display(fig)
             plt.close(fig)
 
-        return {'residuals': df_valid, 'outliers': outliers, 'stats': stats,
-                'invalidated': invalidated}
+        return {'residuals': df_valid, 'outliers': outliers, 'excluded': df_excluded,
+                'stats': stats, 'invalidated': invalidated}
 
     def _solve_affine_bundle(self, **kwargs):
         '''
