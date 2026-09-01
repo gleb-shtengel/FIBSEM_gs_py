@@ -1020,8 +1020,11 @@ def assemble_layer(params, deformation_field, **kwargs):
             shared_data_future = local_DASK_client.scatter(deformation_field, broadcast=True)
             futures = local_DASK_client.map(transform_tile, tile_params_mult, deformation_field = shared_data_future, retries = DASK_client_retries, **kwargs_tt)
             for future in tqdm(as_completed(futures), total=len(futures), desc='Assembling ' + image_name + ' mosaic layer'):
-                    tile_out, xi, yi = future.result()
-                    _add_warped_to_mosaic(tile_out, xi, yi, layer_mosaic, layer_mosaic_weights, **kwargs_awp)
+                tile_out, xi, yi = future.result()
+                _add_warped_to_mosaic(tile_out, xi, yi, layer_mosaic, layer_mosaic_weights, **kwargs_awp)
+                del tile_out
+                future.cancel()          # release the worker-side tile buffer as soon as it is composited
+            del futures, shared_data_future
         else:
             for tile_params in tqdm(tile_params_mult, desc = 'Building mosaic for layer_id={:d}'.format(layer_id), display = verbose):
                 if verbose:
@@ -7684,15 +7687,16 @@ class FIBSEM_mosaic_dataset:
             for j, ax in enumerate(axs):
                 ax.axis(False)
                 ax.set_title(ttls[j], fontsize=10)
-                if overlay_tile_grid:
-                        overlay_montage_grid(ax, self,
-                                tile_positions = -tr_matr_layer[:, 0:2, 2],
-                                bin_factor = bin_factor,
-                                linewidth = linewidth,
-                                linestyle = linestyle,
-                                color = color,
-                                add_tile_ids = add_tile_ids,
-                                tile_id_fontsize = tile_id_fontsize)
+                if overlay_tile_grid and j > 0:      # axs[0] carries the metadata table, not an image
+                    overlay_montage_grid(ax, self,
+                            tile_positions = -tr_matr_layer[:, 0:2, 2],
+                            bin_factor = bin_factor,
+                            left_crop = left_crop,
+                            linewidth = linewidth,
+                            linestyle = linestyle,
+                            color = color,
+                            add_tile_ids = add_tile_ids,
+                            tile_id_fontsize = tile_id_fontsize)
             fig.suptitle(snapshot_fname, fontsize = fontsize)
 
             if hasattr(self, 'EHT'):
@@ -7819,21 +7823,19 @@ class FIBSEM_mosaic_dataset:
                 fig, ax = plt.subplots(1,1, figsize=(10.0*six/s,10.0*siy/s))
                 fig.subplots_adjust(left=0.0, bottom=0.0, right=1.0, top=1.0, wspace=0.01, hspace=0.01)
                 if j == 0:
-                    if not save_snapshot:
-                        vmin, vmax = get_min_max_thresholds(layer_mosaic, thr_min=thr_min, thr_max=thr_max, nbins=nbins, disp_res=False)
+                    if save_snapshot:
+                        vmin, vmax = vminA, vmaxA
                     else:
-                        vmin = vminA
-                        vmax = vmaxA
+                        vmin, vmax = get_min_max_thresholds(layer_mosaic, thr_min=thr_min, thr_max=thr_max, nbins=nbins, disp_res=False)
                     try:
                         det_str = 'Detector A:  '+ self.DetA.strip('\x00')
                     except:
                         det_str = 'Detector:'
                 else:
-                    if not save_snapshot:
-                        vmin, vmax = get_min_max_thresholds(layer_mosaic, thr_min=thr_min, thr_max=thr_max, nbins=nbins, disp_res=False)
+                    if save_snapshot and ifDetB:
+                        vmin, vmax = vminB, vmaxB
                     else:
-                        vmin = vminB
-                        vmax = vmaxB
+                        vmin, vmax = get_min_max_thresholds(layer_mosaic, thr_min=thr_min, thr_max=thr_max, nbins=nbins, disp_res=False)
                     try:
                         det_str = 'Detector B:  '+ self.DetB.strip('\x00')
                     except:
