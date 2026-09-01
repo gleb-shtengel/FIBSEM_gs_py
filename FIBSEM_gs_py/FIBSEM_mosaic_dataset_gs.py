@@ -3476,10 +3476,12 @@ class FIBSEM_mosaic_dataset:
         TPM = kwargs.get('TPM', self.TPM)       # for MSEM TMP=91
         L, nt = self.nz_tiles, self.n_tiles_per_layer
         if nt % TPM != 0:
-            print('n_tiles_per_layer ({:d}) is not divisible by {:d}; not an mFOV hexagonal layout.'.format(nt, TPM))
+            if verbose:
+                print('n_tiles_per_layer ({:d}) is not divisible by {:d}; not an mFOV hexagonal layout.'.format(nt, TPM))
             return None
         if not hasattr(self, 'avg_disp'):
-            print('self.avg_disp not set. Run check_mfov_hexagonal_pattern(..., save_avg_disp=True) first.')
+            if verbose:
+                print('self.avg_disp not set. Run check_mfov_hexagonal_pattern(..., save_avg_disp=True) first.')
             return None
         n_mfov   = nt // TPM
         avg_disp = np.asarray(self.avg_disp)                       # (TPM, 2)
@@ -6519,6 +6521,7 @@ class FIBSEM_mosaic_dataset:
         # default_tr_matr translations, and the per-layer mean the drift fit is built from averages
         # over ALL tiles - so a handful of far-off tiles tilts the fit that is then subtracted from
         # every tile in every layer.
+        n_replaced_unconstrained = 0
         if replace_unconstrained_tiles:
             n_all         = self.nz_tiles * self.n_tiles_per_layer
             unconstrained = np.setdiff1d(np.arange(n_all, dtype=np.int64),
@@ -6526,9 +6529,10 @@ class FIBSEM_mosaic_dataset:
             if len(unconstrained):
                 lt_unc = np.column_stack([unconstrained // self.n_tiles_per_layer,
                                           unconstrained %  self.n_tiles_per_layer])
-                self.replace_tiles_with_canonical_mfov_positions(
+                replaced_unc = self.replace_tiles_with_canonical_mfov_positions(
                     lt_unc, only_invalid=False, include_unconstrained=False,
                     TPM=kwargs.get('TPM', self.TPM), verbose=verbose)
+                n_replaced_unconstrained = 0 if replaced_unc is None else len(replaced_unc)
 
         # ------------------------------------------------------------------
         # Post-processing shared by ALL methods: subtract linear drift from
@@ -6554,13 +6558,12 @@ class FIBSEM_mosaic_dataset:
             n_skipped = n_total - n_updated
             print(time.strftime('%Y/%m/%d  %H:%M:%S') + f':   solve_stack_stitching ({method}): '
                   f'updated {n_updated}/{n_total} tiles; '
-                  f'{n_skipped} tile(s) with no valid constraints '
-                  + ('replaced with canonical mFOV positions.' if replace_unconstrained_tiles
-                     else 'left unchanged.'))
-            if n_skipped and not replace_unconstrained_tiles:
+                  f'{n_skipped} tile(s) with no valid constraints, '
+                  f'{n_replaced_unconstrained} of them replaced with canonical mFOV positions.')
+            if n_skipped and not n_replaced_unconstrained:
                 print('   Those tiles keep their initialised default_tr_matr translations, which also '
-                      'bias subtract_linear_fit. Pass replace_unconstrained_tiles=True (needs '
-                      'check_mfov_hexagonal_pattern(save_avg_disp=True) first) to fix them in place.')
+                      'bias subtract_linear_fit. Run check_mfov_hexagonal_pattern(save_avg_disp=True) '
+                      'before solving so replace_unconstrained_tiles can fix them in place.')
 
         # Return tile positions derived on the fly from tr_matr.
         # tr_matr[:,:,i,2] stores the negative translation, so negate to get
