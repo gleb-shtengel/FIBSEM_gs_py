@@ -6339,6 +6339,13 @@ class FIBSEM_mosaic_dataset:
         subtract_FOVtrend_from_fit : [boolean, boolean]
             If True, FOV trends (image shifts performed during imaging) will be subtracted first, so they do not bias the linear trends in the line above.
             Default is [True, True].
+        replace_unconstrained_tiles : boolean
+            If True, tiles left with no valid constraint are given their canonical mFOV-hexagon
+            positions (via replace_tiles_with_canonical_mfov_positions) right after the solve and
+            BEFORE subtract_linear_fit, instead of keeping their initialised default_tr_matr
+            translations. Requires an mFOV-hexagonal layout and a stored self.avg_disp - run
+            check_mfov_hexagonal_pattern(save_avg_disp=True) first; the step prints a note and is
+            skipped if either is missing. Default is True.
         Returns:
         ----------
         tile_positions : ndarray, shape (nz_tiles, n_tiles_per_layer, 2)
@@ -6354,6 +6361,7 @@ class FIBSEM_mosaic_dataset:
         interlayer_weight = kwargs.get('interlayer_weight', self.interlayer_weight)
         subtract_linear_fit =  kwargs.get("subtract_linear_fit", [True, True])   # If True, the linear slope will be subtracted from the cumulative shifts.
         subtract_FOVtrend_from_fit = kwargs.get("subtract_FOVtrend_from_fit", [True, True])
+        replace_unconstrained_tiles = kwargs.get('replace_unconstrained_tiles', True)
 
         w_sqrt_intra = np.sqrt(intralayer_weight)
         w_sqrt_inter = np.sqrt(interlayer_weight)
@@ -6506,6 +6514,22 @@ class FIBSEM_mosaic_dataset:
             self.tr_matr[valid_z, valid_t, 0, 2] = positions_3d[valid_z, valid_t, 0] + dx
             self.tr_matr[valid_z, valid_t, 1, 2] = positions_3d[valid_z, valid_t, 1] + dy
 
+        # Give the tiles the solver could not constrain their canonical mFOV-hexagon positions.
+        # This MUST run before subtract_linear_fit: otherwise those tiles sit at their initialised
+        # default_tr_matr translations, and the per-layer mean the drift fit is built from averages
+        # over ALL tiles - so a handful of far-off tiles tilts the fit that is then subtracted from
+        # every tile in every layer.
+        if replace_unconstrained_tiles:
+            n_all         = self.nz_tiles * self.n_tiles_per_layer
+            unconstrained = np.setdiff1d(np.arange(n_all, dtype=np.int64),
+                                         np.asarray(valid_tile_flat, dtype=np.int64))
+            if len(unconstrained):
+                lt_unc = np.column_stack([unconstrained // self.n_tiles_per_layer,
+                                          unconstrained %  self.n_tiles_per_layer])
+                self.replace_tiles_with_canonical_mfov_positions(
+                    lt_unc, only_invalid=False, include_unconstrained=False,
+                    TPM=kwargs.get('TPM', self.TPM), verbose=verbose)
+
         # ------------------------------------------------------------------
         # Post-processing shared by ALL methods: subtract linear drift from
         # the translation columns, then print a summary if verbose.
@@ -6525,13 +6549,18 @@ class FIBSEM_mosaic_dataset:
             self.tr_matr[:, :, 1, 2] -= Yfit[:, np.newaxis]
 
         if verbose:
-            n_total = self.nz_tiles * self.n_tiles_per_layer
+            n_total   = self.nz_tiles * self.n_tiles_per_layer
             n_updated = len(valid_tile_flat)
             n_skipped = n_total - n_updated
-            if verbose:
-                print(time.strftime('%Y/%m/%d  %H:%M:%S') + f':   solve_stack_stitching ({method}): '
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + f':   solve_stack_stitching ({method}): '
                   f'updated {n_updated}/{n_total} tiles; '
-                  f'{n_skipped} tile(s) with no valid constraints left unchanged.')
+                  f'{n_skipped} tile(s) with no valid constraints '
+                  + ('replaced with canonical mFOV positions.' if replace_unconstrained_tiles
+                     else 'left unchanged.'))
+            if n_skipped and not replace_unconstrained_tiles:
+                print('   Those tiles keep their initialised default_tr_matr translations, which also '
+                      'bias subtract_linear_fit. Pass replace_unconstrained_tiles=True (needs '
+                      'check_mfov_hexagonal_pattern(save_avg_disp=True) first) to fix them in place.')
 
         # Return tile positions derived on the fly from tr_matr.
         # tr_matr[:,:,i,2] stores the negative translation, so negate to get
