@@ -3451,8 +3451,10 @@ class FIBSEM_mosaic_dataset:
             'SIFT', 'ECC' or 'SIFT-ECC'. Default self._last_pos_solve_method (falling back to
             'SIFT'); 'SIFT-Affine' is mapped to 'SIFT'.
         include_unconstrained : bool
-            If True, add every tile with no valid pair to the tiles listed in `outliers`. Implied
-            when outliers is None. Default is evaluated as (outliers is None).
+            If True, add every tile with no valid pair to the tiles listed in `outliers`.
+            Defaults to True when outliers is None (that is the point of calling with no
+            argument) and to False otherwise. Passing include_unconstrained=False together with
+            outliers=None selects nothing and the call does nothing.
         only_invalid : bool
             If True (default), skip tiles already present in >=1 valid pair, so only unconstrained
             tiles are moved. Set False to replace every targeted tile. Also accepted under its
@@ -3468,7 +3470,7 @@ class FIBSEM_mosaic_dataset:
             None if the layout is not mFOV-hexagonal or self.avg_disp is missing.
         '''
         only_invalid          = kwargs.get('only_invalid', kwargs.get('only_sift_invalid', True))
-                include_unconstrained = kwargs.get('include_unconstrained', outliers is None)
+        include_unconstrained = kwargs.get('include_unconstrained', outliers is None)
         verbose               = kwargs.get('verbose', True)
 
         TPM = kwargs.get('TPM', self.TPM)       # for MSEM TMP=91
@@ -3509,7 +3511,7 @@ class FIBSEM_mosaic_dataset:
             lt = np.column_stack([outliers['Layer'].to_numpy(), outliers['Tile'].to_numpy()]).astype(np.int64)
         else:
             lt = np.asarray(outliers, dtype=np.int64).reshape(-1, 2)
-        if outliers is None or include_unconstrained:
+        if include_unconstrained:
             lt = np.vstack([lt, np.argwhere(~tile_valid_flat.reshape(L, nt))])
         if len(lt):
             lt = np.unique(lt, axis=0)          # drop duplicates between the two selections
