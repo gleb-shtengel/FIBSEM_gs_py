@@ -2415,6 +2415,14 @@ class FIBSEM_mosaic_dataset:
         Analyze per-pair residual errors from the most recent stack solve, flag outlier
         pairs (robust MAD test), and optionally invalidate them for a re-solve.
 
+    invalidate_pairs_for_tiles(outliers, **kwargs)
+        Invalidate the SIFT and/or ECC pairwise constraints involving a given set of outlier
+        tiles (from any detector), so a subsequent solve_stack_stitching() drops them.
+
+    restore_transformation_valid(**kwargs)
+        Undo invalidate_pairs_for_tiles() by restoring the snapshot of the
+        *_transformation_valid arrays it saved.
+
     compute_solved_pair_overlap_bounds(**kwargs)
         Compute per-pair overlap rectangles (bounds) and overlap areas from solved positions.
 
@@ -3411,38 +3419,57 @@ class FIBSEM_mosaic_dataset:
                 'outliers': outliers}
 
 
-    def replace_tiles_with_canonical_mfov_positions(self, outliers, **kwargs):
+    def replace_tiles_with_canonical_mfov_positions(self, outliers=None, **kwargs):
         '''
-        Overwrite tr_matr translations of the given tiles with their canonical mFOV-hexagon
-        positions: (mFOV-center estimated from SIFT-valid tiles within each mFOV) + self.avg_disp. ©G.Shtengel 2026
+        Overwrite tr_matr translations of the selected tiles with their canonical mFOV-hexagon
+        positions: (mFOV-center estimated from the still-valid tiles of that mFOV) + self.avg_disp.
+        ©G.Shtengel 2026
 
-        Decoupled from detection: `outliers` may come from ANY detector that reports a pd.DataFrame with columns
-        'Layer', 'Tile' (within-layer tile index) — check_mfov_hexagonal_pattern,
-        histogram_valid_matches_per_tile, analyze_kpt_statistics, plot_matches_per_tile, etc.
-        Requires an mFOV-hexagonal layout (n_tiles_per_layer divisible by 91) and a previously
+        Two ways to choose the tiles, usable together:
+          - pass `outliers` from ANY detector that reports 'Layer' / 'Tile' columns -
+            check_mfov_hexagonal_pattern, generate_transformation_report,
+            histogram_valid_matches_per_tile, analyze_kpt_statistics, plot_matches_per_tile;
+          - leave `outliers` as None (or set include_unconstrained=True) to target every tile that
+            takes part in NO valid pair under `method`. Those are exactly the tiles that
+            solve_stack_stitching() cannot position - it leaves them at their initialised
+            default_tr_matr translations, which can be far off. This is the natural follow-up to
+            invalidate_pairs_for_tiles().
+        Requires an mFOV-hexagonal layout (n_tiles_per_layer divisible by TPM) and a previously
         stored canonical pattern self.avg_disp (run check_mfov_hexagonal_pattern with
         save_avg_disp=True first).
 
         Parameters:
         ----------
-        outliers : pd.DataFrame with 'Layer' and 'Tile' columns, OR an (N,2) array of [layer, tile].
-            'Tile' is the within-layer tile index (mfov*91 + tile_mfov_id).
+        outliers : pd.DataFrame with 'Layer' and 'Tile' columns, OR an (N,2) array of
+            [layer, within-layer tile index], OR None (default) to target the unconstrained tiles
+            only. 'Tile' is the within-layer tile index (mfov*TPM + tile_mfov_id).
 
         kwargs:
         ----------
-        only_sift_invalid : bool - if True (default), skip tiles already present in >=1 valid SIFT
-            pair (replace only unconstrained tiles). Set False to replace every listed tile.
+        method : str
+            Which pair-validity flags define a "valid" tile and feed the mFOV-center estimate:
+            'SIFT', 'ECC' or 'SIFT-ECC'. Default self._last_pos_solve_method (falling back to
+            'SIFT'); 'SIFT-Affine' is mapped to 'SIFT'.
+        include_unconstrained : bool
+            If True, add every tile with no valid pair to the tiles listed in `outliers`. Implied
+            when outliers is None. Default is evaluated as (outliers is None).
+        only_invalid : bool
+            If True (default), skip tiles already present in >=1 valid pair, so only unconstrained
+            tiles are moved. Set False to replace every targeted tile. Also accepted under its
+            former name only_sift_invalid.
         verbose : bool - print/display the replaced tiles. Default True.
         TPM : int
             Tiles per mFOV (hexagonal layout). Default self.TPM (set at __init__, default 91).
 
         Returns:
         ----------
-        replaced : pd.DataFrame ['Layer','Tile','mfov','tile_mfov_id','File Path'] of tiles overwritten.
+        replaced : pd.DataFrame ['Layer','Tile','mfov','tile_mfov_id','File Path'] of tiles
+            overwritten; empty if nothing needed replacing.
             None if the layout is not mFOV-hexagonal or self.avg_disp is missing.
         '''
-        only_sift_invalid = kwargs.get('only_sift_invalid', True)
-        verbose           = kwargs.get('verbose', True)
+        only_invalid          = kwargs.get('only_invalid', kwargs.get('only_sift_invalid', True))
+                include_unconstrained = kwargs.get('include_unconstrained', outliers is None)
+        verbose               = kwargs.get('verbose', True)
 
         TPM = kwargs.get('TPM', self.TPM)       # for MSEM TMP=91
         L, nt = self.nz_tiles, self.n_tiles_per_layer
@@ -3453,29 +3480,50 @@ class FIBSEM_mosaic_dataset:
             print('self.avg_disp not set. Run check_mfov_hexagonal_pattern(..., save_avg_disp=True) first.')
             return None
         n_mfov   = nt // TPM
-        avg_disp = np.asarray(self.avg_disp)                       # (91, 2)
+        avg_disp = np.asarray(self.avg_disp)                       # (TPM, 2)
 
-        # normalize input to an (N,2) int array of [layer, within-layer tile ID]
-        if isinstance(outliers, pd.DataFrame):
-            lt = np.column_stack([outliers['Layer'].to_numpy(), outliers['Tile'].to_numpy()]).astype(int)
+        # ---- which pair-validity flags define tile validity --------------------------------
+        method = kwargs.get('method', getattr(self, '_last_pos_solve_method', 'SIFT'))
+        if method == 'SIFT-Affine':
+            method = 'SIFT'                     # the affine bundle is fed by the SIFT pair flags
+        key = {'SIFT': 'SIFT', 'ECC': 'ECC', 'SIFT-ECC': 'SIFT_ECC'}.get(method)
+        if key is None:
+            raise ValueError("replace_tiles_with_canonical_mfov_positions: method must be 'SIFT', "
+                             "'ECC' or 'SIFT-ECC' (got {!r}).".format(method))
+        valid_attr = key + '_transformation_valid'
+        if not hasattr(self, valid_attr):
+            raise RuntimeError("replace_tiles_with_canonical_mfov_positions: self.{} not found - run "
+                               "the matching determine_transformations_*() or "
+                               "solve_stack_stitching(method='{}') first.".format(valid_attr, method))
+
+        # per-tile validity (tile present in >=1 valid pair of the chosen method)
+        tile_valid_flat = np.zeros(L * nt, dtype=bool)
+        tile_valid_flat[np.unique(self.index_pairs[np.asarray(getattr(self, valid_attr), dtype=bool)])] = True
+        tile_valid      = tile_valid_flat.reshape(L, n_mfov, TPM)
+        n_unconstrained = int((~tile_valid_flat).sum())
+
+        # ---- build the target list of [layer, within-layer tile] ---------------------------
+        if outliers is None:
+            lt = np.empty((0, 2), dtype=np.int64)
+        elif isinstance(outliers, pd.DataFrame):
+            lt = np.column_stack([outliers['Layer'].to_numpy(), outliers['Tile'].to_numpy()]).astype(np.int64)
         else:
-            lt = np.asarray(outliers, dtype=int).reshape(-1, 2)
+            lt = np.asarray(outliers, dtype=np.int64).reshape(-1, 2)
+        if outliers is None or include_unconstrained:
+            lt = np.vstack([lt, np.argwhere(~tile_valid_flat.reshape(L, nt))])
+        if len(lt):
+            lt = np.unique(lt, axis=0)          # drop duplicates between the two selections
 
         # current tile positions from tr_matr, split mFOV-major
         fp       = np.asarray(-self.tr_matr[:, :, 0:2, 2], dtype=np.float64).reshape(L, n_mfov, TPM, 2)
         flat_fls = np.asarray(self.fls).reshape(L, -1)
 
-        # per-tile SIFT validity (tile present in >=1 valid SIFT pair)
-        valid_tile_flat = np.unique(self.index_pairs[self.SIFT_transformation_valid])
-        tile_valid = np.zeros(L * nt, dtype=bool); tile_valid[valid_tile_flat] = True
-        tile_valid = tile_valid.reshape(L, n_mfov, TPM)
-
         # robust per-mFOV center: each tile implies a center = its position - its canonical displacement
         aligned    = fp - avg_disp[None, None, :, :]                     # (L, n_mfov, TPM, 2)
-        masked     = np.where(tile_valid[..., None], aligned, np.nan)    # (L, n_mfov, TPM, 2) SIFT-invalid tiles blanked out
-        center_est = np.median(aligned, axis=2)                          # (L, n_mfov, 2) fallback: median over ALL tiles within each MFOV, for mFOVs with no SIFT-valid tile
-        has_valid  = tile_valid.any(axis=2)                              # (L, n_mfov) mFOVs holding >=1 SIFT-valid tiles
-        center_est[has_valid] = np.nanmedian(masked[has_valid], axis=1)  # (n_sel, 2) median over the SIFT-valid tiles only
+        masked     = np.where(tile_valid[..., None], aligned, np.nan)    # (L, n_mfov, TPM, 2) invalid tiles blanked out
+        center_est = np.median(aligned, axis=2)                          # (L, n_mfov, 2) fallback: median over ALL tiles within each MFOV, for mFOVs with no valid tile
+        has_valid  = tile_valid.any(axis=2)                              # (L, n_mfov) mFOVs holding >=1 valid tile
+        center_est[has_valid] = np.nanmedian(masked[has_valid], axis=1)  # (n_sel, 2) median over the valid tiles only
 
         replaced_rows = []
         for l, abs_tile in lt:
@@ -3483,7 +3531,7 @@ class FIBSEM_mosaic_dataset:
             if not (0 <= abs_tile < nt and 0 <= l < L):
                 continue
             m, t = divmod(abs_tile, TPM)
-            if only_sift_invalid and tile_valid[l, m, t]:
+            if only_invalid and tile_valid[l, m, t]:
                 continue
             new_pos = center_est[l, m] + avg_disp[t]
             self.tr_matr[l, abs_tile, 0, 2] = -new_pos[0]
@@ -3491,8 +3539,9 @@ class FIBSEM_mosaic_dataset:
             replaced_rows.append([l, abs_tile, m, t, flat_fls[l, abs_tile]])
         replaced = pd.DataFrame(replaced_rows, columns=['Layer', 'Tile', 'mfov', 'tile_mfov_id', 'File Path'])
         if verbose:
-            print('Replaced {:d} of {:d} listed tiles in self.tr_matr with canonical positions.'.format(
-                len(replaced), len(lt)))
+            print('replace_tiles_with_canonical_mfov_positions: validity from self.{}; {:d} tiles '
+                  'targeted ({:d} unconstrained in the stack); replaced {:d}.'.format(
+                      valid_attr, len(lt), n_unconstrained, len(replaced)))
             display(replaced)
         return replaced
 
@@ -6540,6 +6589,176 @@ class FIBSEM_mosaic_dataset:
             print('_flat_tile_mask: dropped {:d} out-of-range tile ID(s).'.format(int((~ok).sum())))
         mask[lt[ok, 0] * ntl + lt[ok, 1]] = True
         return mask
+
+
+    def invalidate_pairs_for_tiles(self, outliers, **kwargs):
+        '''
+        Invalidate the pairwise constraints that involve a given set of outlier tiles, so that a
+        subsequent solve_stack_stitching() drops them. ©G.Shtengel 2026
+
+        Decoupled from detection: `outliers` may come from ANY detector in this class that reports
+        tiles - check_mfov_hexagonal_pattern, generate_transformation_report,
+        histogram_valid_matches_per_tile, analyze_kpt_statistics, plot_matches_per_tile. If the
+        frame instead carries a 'Pair Index' column (as analyze_solve_residuals returns), those
+        constraint rows are invalidated directly and both_endpoints is ignored.
+
+        Parameters:
+        ----------
+        outliers : one of
+            - pd.DataFrame with 'Layer' and 'Tile' columns ('Tile' = within-layer tile index).
+            - pd.DataFrame with a 'Pair Index' column - those constraint rows, taken as given.
+            - (N, 2) array-like of [layer, within-layer tile index].
+            - (N,) array-like of ABSOLUTE tile indices (layer * n_tiles_per_layer + tile).
+
+        kwargs:
+        ----------
+        methods : list of str
+            Which valid-flag arrays to modify; any subset of ['SIFT', 'ECC']. Default is each of
+            those that exists on the object.
+        both_endpoints : bool
+            If False (default), a pair is invalidated when EITHER of its two tiles is listed;
+            if True, only when BOTH are. Mirrors exclude_both_endpoints in analyze_solve_residuals.
+        dry_run : bool
+            If True, report what WOULD be invalidated and change nothing. Default False.
+        backup : bool
+            If True (default), snapshot the valid-flag arrays into self._transformation_valid_backup
+            before the first modification so restore_transformation_valid() can undo this. An
+            existing snapshot is never overwritten, so repeated calls all roll back to one state.
+        verbose : bool
+            Print a summary. Default True.
+
+        Returns:
+        ----------
+        dict with keys:
+          'n_tiles'     : int, number of tiles in the selection.
+          'invalidated' : dict {'SIFT': n, 'ECC': n, 'SIFT_ECC': n} - pairs newly flipped to False
+                          per array; pairs that were already invalid are not counted.
+          'pairs'       : pd.DataFrame ['Pair Index','Layer 0','Tile 0','Layer 1','Tile 1','type']
+                          listing every constraint row selected for invalidation.
+          'tile_mask'   : np.ndarray (nz_tiles * n_tiles_per_layer,) bool of the selected tiles.
+        '''
+        methods        = kwargs.get('methods', [m for m in ('SIFT', 'ECC')
+                                                if hasattr(self, m + '_transformation_valid')])
+        both_endpoints = kwargs.get('both_endpoints', False)
+        dry_run        = kwargs.get('dry_run', False)
+        backup         = kwargs.get('backup', True)
+        verbose        = kwargs.get('verbose', True)
+
+        if [m for m in methods if m not in ('SIFT', 'ECC')]:
+            raise ValueError("invalidate_pairs_for_tiles: methods must be a subset of "
+                             "['SIFT', 'ECC'] (got {!r}).".format(methods))
+
+        ntl    = self.n_tiles_per_layer
+        i0, i1 = self.index_pairs[:, 0], self.index_pairs[:, 1]
+
+        # ---- select the constraint rows ----------------------------------------------------
+        tile_mask = np.zeros(self.nz_tiles * ntl, dtype=bool)
+        if isinstance(outliers, pd.DataFrame) and 'Pair Index' in outliers.columns:
+            pair_sel = np.zeros(self.C, dtype=bool)
+            pidx = outliers['Pair Index'].to_numpy().astype(np.int64)
+            pidx = pidx[(pidx >= 0) & (pidx < self.C)]
+            pair_sel[pidx] = True
+            tile_mask[i0[pair_sel]] = True
+            tile_mask[i1[pair_sel]] = True
+        else:
+            tile_mask = self._flat_tile_mask(outliers, verbose=verbose)
+            if both_endpoints:
+                pair_sel = tile_mask[i0] & tile_mask[i1]
+            else:
+                pair_sel = tile_mask[i0] | tile_mask[i1]
+
+        # ---- report table (row layout: intra-h | intra-v | inter) --------------------------
+        ptype = np.empty(self.C, dtype=object)
+        ptype[:self.nh]                  = 'intra-h'
+        ptype[self.nh:self.nh + self.nv] = 'intra-v'
+        ptype[self.nh + self.nv:]        = 'inter'
+        sel   = np.where(pair_sel)[0]
+        pairs = pd.DataFrame({'Pair Index': sel,
+                              'Layer 0': i0[sel] // ntl, 'Tile 0': i0[sel] % ntl,
+                              'Layer 1': i1[sel] // ntl, 'Tile 1': i1[sel] % ntl,
+                              'type': ptype[sel]})
+
+        # ---- snapshot, then flip the flags -------------------------------------------------
+        if (not dry_run) and backup and not hasattr(self, '_transformation_valid_backup'):
+            snap = {}
+            for attr in ('SIFT_transformation_valid', 'ECC_transformation_valid',
+                         'SIFT_ECC_transformation_valid'):
+                if hasattr(self, attr):
+                    snap[attr] = np.asarray(getattr(self, attr), dtype=bool).copy()
+            self._transformation_valid_backup = snap
+
+        invalidated = {}
+        for m in methods:
+            attr = m + '_transformation_valid'
+            if not hasattr(self, attr):
+                invalidated[m] = 0
+                continue
+            flags         = getattr(self, attr)
+            invalidated[m] = int((pair_sel & np.asarray(flags, dtype=bool)).sum())
+            if not dry_run:
+                flags[pair_sel] = False
+
+        # A SIFT-ECC pair contributes if EITHER source is valid - keep the combined state honest.
+        if (not dry_run) and hasattr(self, 'SIFT_ECC_transformation_valid') \
+                and hasattr(self, 'SIFT_transformation_valid') \
+                and hasattr(self, 'ECC_transformation_valid'):
+            combined_before = np.asarray(self.SIFT_ECC_transformation_valid, dtype=bool).copy()
+            combined_now    = (np.asarray(self.SIFT_transformation_valid, dtype=bool)
+                               | np.asarray(self.ECC_transformation_valid, dtype=bool))
+            self.SIFT_ECC_transformation_valid = combined_now
+            invalidated['SIFT_ECC'] = int((combined_before & ~combined_now).sum())
+
+        if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                  + '   invalidate_pairs_for_tiles{}: {:d} tiles -> {:d} pairs selected; newly '
+                    'invalidated: {}'.format(' (DRY RUN)' if dry_run else '',
+                        int(tile_mask.sum()), int(pair_sel.sum()),
+                        ', '.join('{}={:d}'.format(k, v) for k, v in invalidated.items())))
+            print('   Re-run solve_stack_stitching() to apply. Tiles left with no valid pair keep '
+                  'their current tr_matr - check with histogram_valid_matches_per_tile(), and fix '
+                  'them with replace_tiles_with_canonical_mfov_positions() if needed.')
+
+        return {'n_tiles': int(tile_mask.sum()), 'invalidated': invalidated,
+                'pairs': pairs, 'tile_mask': tile_mask}
+
+
+    def restore_transformation_valid(self, **kwargs):
+        '''
+        Restore the *_transformation_valid arrays from the snapshot taken by
+        invalidate_pairs_for_tiles(backup=True). ©G.Shtengel 2026
+
+        kwargs:
+        ----------
+        clear : bool
+            If True (default), drop the snapshot after restoring, so the next
+            invalidate_pairs_for_tiles() call starts a fresh one.
+        verbose : bool
+            Print a summary. Default True.
+
+        Returns:
+        ----------
+        dict {attribute name: number of pairs restored to True}, or None if no snapshot exists.
+        '''
+        clear   = kwargs.get('clear', True)
+        verbose = kwargs.get('verbose', True)
+        snap    = getattr(self, '_transformation_valid_backup', None)
+        if not snap:
+            print('restore_transformation_valid: no snapshot found - nothing to restore.')
+            return None
+        restored = {}
+        for attr, arr in snap.items():
+            if hasattr(self, attr):
+                cur = np.asarray(getattr(self, attr), dtype=bool)
+                restored[attr] = int((arr & ~cur).sum())
+            else:
+                restored[attr] = int(arr.sum())
+            setattr(self, attr, arr.copy())
+        if clear:
+            del self._transformation_valid_backup
+        if verbose:
+            print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   restore_transformation_valid: '
+                  + ', '.join('{} +{:d}'.format(k, v) for k, v in restored.items()))
+        return restored
 
 
     def analyze_solve_residuals(self, **kwargs):
