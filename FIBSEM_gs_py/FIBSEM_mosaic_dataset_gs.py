@@ -2420,7 +2420,7 @@ class FIBSEM_mosaic_dataset:
 
     replace_tiles_with_canonical_mfov_positions(outliers, **kwargs)
         Overwrite tr_matr translations of the given tiles with their canonical mFOV-hexagon
-        positions: (mFOV-center estimated from SIFT-valid tiles) + self.avg_disp
+        positions: (mFOV-center estimated from SIFT-valid tiles within each mFOV) + self.avg_disp
 
     recalculate_FirstPixels_from_tr_matr(update=True, round_to_int=False)
         Recompute FirstPixels from the current tr_matr translations.
@@ -3411,10 +3411,10 @@ class FIBSEM_mosaic_dataset:
     def replace_tiles_with_canonical_mfov_positions(self, outliers, **kwargs):
         '''
         Overwrite tr_matr translations of the given tiles with their canonical mFOV-hexagon
-        positions: (mFOV-center estimated from SIFT-valid tiles) + self.avg_disp. ©G.Shtengel
+        positions: (mFOV-center estimated from SIFT-valid tiles within each mFOV) + self.avg_disp. ©G.Shtengel 2026
 
-        Decoupled from detection: `outliers` may come from ANY detector that reports
-        [Layer, Tile] (within-layer tile index) — check_mfov_hexagonal_pattern,
+        Decoupled from detection: `outliers` may come from ANY detector that reports a pd.DataFrame with columns
+        'Layer', 'Tile' (within-layer tile index) — check_mfov_hexagonal_pattern,
         histogram_valid_matches_per_tile, analyze_kpt_statistics, plot_matches_per_tile, etc.
         Requires an mFOV-hexagonal layout (n_tiles_per_layer divisible by 91) and a previously
         stored canonical pattern self.avg_disp (run check_mfov_hexagonal_pattern with
@@ -3441,7 +3441,7 @@ class FIBSEM_mosaic_dataset:
         only_sift_invalid = kwargs.get('only_sift_invalid', True)
         verbose           = kwargs.get('verbose', True)
 
-        TPM = kwargs.get('TPM', self.TPM)
+        TPM = kwargs.get('TPM', self.TPM)       # for MSEM TMP=91
         L, nt = self.nz_tiles, self.n_tiles_per_layer
         if nt % TPM != 0:
             print('n_tiles_per_layer ({:d}) is not divisible by {:d}; not an mFOV hexagonal layout.'.format(nt, TPM))
@@ -3452,7 +3452,7 @@ class FIBSEM_mosaic_dataset:
         n_mfov   = nt // TPM
         avg_disp = np.asarray(self.avg_disp)                       # (91, 2)
 
-        # normalize input to an (N,2) int array of [layer, within-layer tile]
+        # normalize input to an (N,2) int array of [layer, within-layer tile ID]
         if isinstance(outliers, pd.DataFrame):
             lt = np.column_stack([outliers['Layer'].to_numpy(), outliers['Tile'].to_numpy()]).astype(int)
         else:
@@ -3467,13 +3467,12 @@ class FIBSEM_mosaic_dataset:
         tile_valid = np.zeros(L * nt, dtype=bool); tile_valid[valid_tile_flat] = True
         tile_valid = tile_valid.reshape(L, n_mfov, TPM)
 
-        # robust per-mFOV center: align SIFT-valid tiles to the canonical template
-        aligned    = fp - avg_disp[None, None, :, :]               # (L, n_mfov, 91, 2)
-        vcount     = tile_valid.sum(axis=2)                        # (L, n_mfov)
-        num        = (aligned * tile_valid[..., None]).sum(axis=2) # (L, n_mfov, 2)
-        center_est = fp.mean(axis=2)                               # (L, n_mfov, 2) default: plain mean
-        has_valid  = vcount > 0
-        center_est[has_valid] = num[has_valid] / vcount[has_valid, None]
+        # robust per-mFOV center: each tile implies a center = its position - its canonical displacement
+        aligned    = fp - avg_disp[None, None, :, :]                     # (L, n_mfov, TPM, 2)
+        masked     = np.where(tile_valid[..., None], aligned, np.nan)    # (L, n_mfov, TPM, 2) SIFT-invalid tiles blanked out
+        center_est = np.median(aligned, axis=2)                          # (L, n_mfov, 2) fallback: median over ALL tiles within each MFOV, for mFOVs with no SIFT-valid tile
+        has_valid  = tile_valid.any(axis=2)                              # (L, n_mfov) mFOVs holding >=1 SIFT-valid tiles
+        center_est[has_valid] = np.nanmedian(masked[has_valid], axis=1)  # (n_sel, 2) median over the SIFT-valid tiles only
 
         replaced_rows = []
         for l, abs_tile in lt:
