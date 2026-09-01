@@ -7357,22 +7357,29 @@ class FIBSEM_mosaic_dataset:
         '''
         Generate Report Plot for transformation summary. ©G.Shtengel 06/2026 gleb.shtengel@gmail.com
 
-        The PLOTTED and the DETECTED quantities are deliberately different:
+        Outlier DETECTION is always performed on the common-mode-removed deviation. What is
+        PLOTTED is selected independently by the plot_traces kwarg:
           1. Tile positions are read from tr_matr:  position = -tr_matr[frame, tile, 0:2, 2].
-          2. PLOTTED (top two panels): each tile's trace with its OWN mean over frames removed,
-             i.e. position - mean_over_frames(position). Common-mode layer drift (a shift shared
-             by ALL tiles of a layer) is still present in these curves.
-          3. DETECTED: the per-frame MEDIAN over tiles is additionally subtracted from the traces
-             of step 2, which removes that common-mode drift, and the outlier metric is the
-             magnitude of what remains: dev = sqrt(dev_x^2 + dev_y^2). A (frame, tile) is flagged
-             if dev > sigma_thr * std(dev), with std taken over ALL frames and tiles at once
-             (a single global scale, not one scale per tile).
-        Consequence: a circled point was flagged on the common-mode-removed deviation, so the
-        height of its marker on the plotted curve (which still contains the drift) is NOT the
-        value that triggered the flag, and is NOT the 'Relative Abs. Shift' reported in the
-        outliers table. Removing the common mode makes the test insensitive to whole-layer drift,
-        and the global scale prevents a run of bad frames in one tile from inflating that tile's
-        own threshold and hiding itself.
+          2. Each tile's trace has its OWN mean over frames removed:
+             shifted = position - mean_over_frames(position).
+             Common-mode layer drift (a shift shared by ALL tiles of a layer) is still present.
+          3. The per-frame MEDIAN over tiles is additionally subtracted, removing that common mode:
+             deviation = shifted - median_over_tiles(shifted).
+          4. DETECTION (always, whatever plot_traces is set to): the metric is the magnitude
+             dev = sqrt(deviation_x^2 + deviation_y^2), and a (frame, tile) is flagged if
+             dev > median(dev) + sigma_thr * MAD(dev)/0.6745, with the median and the MAD taken
+             over ALL frames and tiles at once - a single global robust scale, not one per tile.
+          5. PLOTTED (both top panels, and the selected tile in the bottom panel):
+             plot_traces='shifted'   (default) - the step-2 traces, common-mode drift included.
+             plot_traces='deviation'           - the step-3 traces, common-mode drift removed.
+        With plot_traces='shifted' the circled points were flagged on a quantity the curve does not
+        show: the marker height still contains the common-mode drift, and it is NOT the
+        'Relative Abs. Shift' listed in the outliers table. With plot_traces='deviation' the curves
+        and the detection metric are the same quantity, so a circled point sits exactly at the
+        excursion that triggered it and 'Relative Abs. Shift' is the hypot of the two plotted
+        values. Removing the common mode makes the test insensitive to whole-layer drift, and the
+        global robust scale prevents a run of bad frames in one tile from inflating that tile's own
+        threshold and hiding itself.
 
         kwargs:
         ----------
@@ -7386,6 +7393,14 @@ class FIBSEM_mosaic_dataset:
             tile ID to show. Default is 0.
         save_png : boolean
             If True (default), the plot is saved into PNG file.
+        plot_traces : string
+            Which traces to draw in the top two panels (and for the selected tile in the bottom
+            panel). Does NOT affect outlier detection or the returned table.
+            'shifted'   : (default) per-tile mean over frames removed; common-mode layer drift
+                          still visible. This is the historical behaviour.
+            'deviation' : per-frame median over tiles additionally removed, i.e. exactly the
+                          quantity the outlier test uses, so circled points sit on visible
+                          excursions.
         xrange : tuple
             tuple of two values used to set x-axis range. Applied to the shared x-axis, so it
             affects all three panels. Default is False (auto range).
@@ -7396,10 +7411,10 @@ class FIBSEM_mosaic_dataset:
         verbose : boolean
             Display intermediate results. Default is False.
         sigma_thr : float
-            Outlier threshold in sigmas, applied to the common-mode-removed deviation of step 3
-            above, NOT to the plotted curves. That deviation is substantially tighter than the
-            plotted traces, so this threshold is larger than one calibrated on the raw curves
-            would be. Default 14.0.
+            Outlier threshold in robust sigmas, applied to the common-mode-removed deviation of
+            step 4 above and never to the plotted curves: dev > median(dev) + sigma_thr*MAD/0.6745.
+            That deviation is much tighter than the plotted traces, so this value is larger than a
+            threshold calibrated on the raw curves would be. Default 14.0.
         mark_outliers : boolean
             If True (default), each of 50 worst outliers is marked with "o" and its frame and tile number are printed next to "o".
         sort_by : string
@@ -7415,9 +7430,9 @@ class FIBSEM_mosaic_dataset:
         dict with keys:
           'outliers'   : pd.DataFrame ['Layer','Tile','mfov','tile_mfov_id','Relative Abs. Shift','File Path'].
                          'Relative Abs. Shift' is the common-mode-removed deviation (pixels) that
-                         triggered the flag - see step 3 above - not the plotted relative shift.
+                         triggered the flag - see step 4 above. It equals the hypot of the plotted
+                         X/Y values only when plot_traces='deviation'.
           'save_fname' : save_fname.
-
         '''
         tile_id = kwargs.get('tile_id', 0)
         verbose = kwargs.get('verbose', False)
@@ -7426,6 +7441,10 @@ class FIBSEM_mosaic_dataset:
         sort_by        = kwargs.get('sort_by', 'Relative Abs. Shift')
         sort_ascending = kwargs.get('sort_ascending', False)
         xrange         = kwargs.get('xrange', False)
+        plot_traces    = kwargs.get('plot_traces', 'shifted')
+        if plot_traces not in ('shifted', 'deviation'):
+            raise ValueError("generate_transformation_report: plot_traces must be 'shifted' or "
+                             "'deviation' (got {!r}).".format(plot_traces))
         TPM = kwargs.get('TPM', self.TPM)
         nt  = self.n_tiles_per_layer
         if verbose and nt % TPM != 0:
@@ -7459,6 +7478,15 @@ class FIBSEM_mosaic_dataset:
         _mad_dev = np.median(np.abs(tile_positions_deviation - _med_dev))
         _scale   = _mad_dev / 0.6745 if _mad_dev > 0 else np.std(tile_positions_deviation)
         outlier_mask_all = tile_positions_deviation > _med_dev + _scale * sigma_thr
+
+        # Detection above always uses the common-mode-removed deviation; only the drawn traces
+        # follow plot_traces.
+        if plot_traces == 'deviation':
+            tile_positions_x_plot = tile_positions_x_deviation
+            tile_positions_y_plot = tile_positions_y_deviation
+        else:
+            tile_positions_x_plot = tile_positions_x_shifted
+            tile_positions_y_plot = tile_positions_y_shifted
         
         if verbose:
             print('Generating Plot')
@@ -7468,8 +7496,8 @@ class FIBSEM_mosaic_dataset:
         rows = []
         for k in np.arange(nt):
             my_col = plt.get_cmap("gist_rainbow_r")((nt-k)/(nt-1))
-            tile_positions_xk = tile_positions_x_shifted[:, k]
-            tile_positions_yk = tile_positions_y_shifted[:, k]
+            tile_positions_xk = tile_positions_x_plot[:, k]
+            tile_positions_yk = tile_positions_y_plot[:, k]
             tp_abs = tile_positions_deviation[:, k]
             outlier_mask = outlier_mask_all[:, k]
             if outlier_mask.any():
@@ -7512,9 +7540,14 @@ class FIBSEM_mosaic_dataset:
 
         axs[1].text(0.40, 0.92, 'All Tiles: Y-shift', transform=axs[1].transAxes, fontsize=12)
         axs[2].set_xlabel('Frame')
-        axs[0].set_ylabel('Relative X-Shift (pix)')
-        axs[1].set_ylabel('Relative Y-Shift (pix)')
-        axs[2].set_ylabel('Relative Shift (pix)')
+        if plot_traces == 'deviation':
+            axs[0].set_ylabel('X-Shift Deviation (pix)')
+            axs[1].set_ylabel('Y-Shift Deviation (pix)')
+            axs[2].set_ylabel('Shift Deviation (pix)')
+        else:
+            axs[0].set_ylabel('Relative X-Shift (pix)')
+            axs[1].set_ylabel('Relative Y-Shift (pix)')
+            axs[2].set_ylabel('Relative Shift (pix)')
         if xrange is not False:
             axs[2].set_xlim(xrange)
         if save_png:
