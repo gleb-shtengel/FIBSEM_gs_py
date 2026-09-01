@@ -7526,6 +7526,10 @@ class FIBSEM_mosaic_dataset:
             Number of histogram bins for building the PDF and CDF.
         overlay_tile_grid : boolean
             If True (Default), overlays tile grid.
+        linewidth : float
+            Linewidth for overlay. Defaults is 0.25
+        linestyle : string
+            Linestyle for overlay. Default is 'dashed'.
         add_tile_ids : bool
             If True, tile IDs are added to the plot. Default is False.
         tile_id_fontsize : int
