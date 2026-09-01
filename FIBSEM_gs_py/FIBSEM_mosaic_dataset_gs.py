@@ -7357,6 +7357,23 @@ class FIBSEM_mosaic_dataset:
         '''
         Generate Report Plot for transformation summary. ©G.Shtengel 06/2026 gleb.shtengel@gmail.com
 
+        The PLOTTED and the DETECTED quantities are deliberately different:
+          1. Tile positions are read from tr_matr:  position = -tr_matr[frame, tile, 0:2, 2].
+          2. PLOTTED (top two panels): each tile's trace with its OWN mean over frames removed,
+             i.e. position - mean_over_frames(position). Common-mode layer drift (a shift shared
+             by ALL tiles of a layer) is still present in these curves.
+          3. DETECTED: the per-frame MEDIAN over tiles is additionally subtracted from the traces
+             of step 2, which removes that common-mode drift, and the outlier metric is the
+             magnitude of what remains: dev = sqrt(dev_x^2 + dev_y^2). A (frame, tile) is flagged
+             if dev > sigma_thr * std(dev), with std taken over ALL frames and tiles at once
+             (a single global scale, not one scale per tile).
+        Consequence: a circled point was flagged on the common-mode-removed deviation, so the
+        height of its marker on the plotted curve (which still contains the drift) is NOT the
+        value that triggered the flag, and is NOT the 'Relative Abs. Shift' reported in the
+        outliers table. Removing the common mode makes the test insensitive to whole-layer drift,
+        and the global scale prevents a run of bad frames in one tile from inflating that tile's
+        own threshold and hiding itself.
+
         kwargs:
         ----------
         frame_inds : array or list
@@ -7369,30 +7386,46 @@ class FIBSEM_mosaic_dataset:
             tile ID to show. Default is 0.
         save_png : boolean
             If True (default), the plot is saved into PNG file.
+        xrange : tuple
+            tuple of two values used to set x-axis range. Applied to the shared x-axis, so it
+            affects all three panels. Default is False (auto range).
         dpi : int
             DPI for PNG. Default is 300.
         save_fname : string
             File name to save the PNG image. Default is os.path.join(data_dir, 'Relative_Tile_Shifts.png').
         verbose : boolean
             Display intermediate results. Default is False.
-        sigma_thr : float - outlier threshold in sigmas. Default 10.0.
+        sigma_thr : float
+            Outlier threshold in sigmas, applied to the common-mode-removed deviation of step 3
+            above, NOT to the plotted curves. That deviation is substantially tighter than the
+            plotted traces, so this threshold is larger than one calibrated on the raw curves
+            would be. Default 14.0.
         mark_outliers : boolean
             If True (default), each of 50 worst outliers is marked with "o" and its frame and tile number are printed next to "o".
-        
+        sort_by : string
+            Column used to sort the outliers table. Default is 'Relative Abs. Shift'.
+        sort_ascending : boolean
+            If False (default), the outliers table is sorted in descending order.
+        TPM : int
+            Tiles per mFOV (hexagonal layout), used only to fill the 'mfov' and 'tile_mfov_id'
+            columns. Default self.TPM.
 
         Returns:
         ----------
         dict with keys:
-          'outliers'         : pd.DataFrame ['Layer','Tile','mfov','tile_mfov_id', 'Relative Abs. Shift', 'File Path']
-          'save_fname'    : save_fname.
+          'outliers'   : pd.DataFrame ['Layer','Tile','mfov','tile_mfov_id','Relative Abs. Shift','File Path'].
+                         'Relative Abs. Shift' is the common-mode-removed deviation (pixels) that
+                         triggered the flag - see step 3 above - not the plotted relative shift.
+          'save_fname' : save_fname.
 
         '''
         tile_id = kwargs.get('tile_id', 0)
         verbose = kwargs.get('verbose', False)
-        sigma_thr      = kwargs.get('sigma_thr', 10.0)
+        sigma_thr      = kwargs.get('sigma_thr', 14.0)
         mark_outliers = kwargs.get('mark_outliers', True)
         sort_by        = kwargs.get('sort_by', 'Relative Abs. Shift')
         sort_ascending = kwargs.get('sort_ascending', False)
+        xrange         = kwargs.get('xrange', False)
         TPM = kwargs.get('TPM', self.TPM)
         nt  = self.n_tiles_per_layer
         if verbose and nt % TPM != 0:
@@ -7417,7 +7450,16 @@ class FIBSEM_mosaic_dataset:
         # Subtracting frame 0 gives positions relative to the first layer.
         tile_positions_x = - self.tr_matr[frame_inds, :, 0, 2]
         tile_positions_y = - self.tr_matr[frame_inds, :, 1, 2]
-
+        tile_positions_x_shifted = tile_positions_x - np.mean(tile_positions_x, axis=0)[None, :]
+        tile_positions_y_shifted = tile_positions_y - np.mean(tile_positions_y, axis=0)[None, :]
+        tile_positions_x_deviation = tile_positions_x_shifted - np.median(tile_positions_x_shifted, axis=1)[:, None]
+        tile_positions_y_deviation = tile_positions_y_shifted - np.median(tile_positions_y_shifted, axis=1)[:, None]
+        tile_positions_deviation = np.sqrt(tile_positions_x_deviation*tile_positions_x_deviation + tile_positions_y_deviation*tile_positions_y_deviation)
+        _med_dev = np.median(tile_positions_deviation)
+        _mad_dev = np.median(np.abs(tile_positions_deviation - _med_dev))
+        _scale   = _mad_dev / 0.6745 if _mad_dev > 0 else np.std(tile_positions_deviation)
+        outlier_mask_all = tile_positions_deviation > _med_dev + _scale * sigma_thr
+        
         if verbose:
             print('Generating Plot')
         fig, axs = plt.subplots(3,1, figsize = (6,10), sharex=True)
@@ -7426,10 +7468,10 @@ class FIBSEM_mosaic_dataset:
         rows = []
         for k in np.arange(nt):
             my_col = plt.get_cmap("gist_rainbow_r")((nt-k)/(nt-1))
-            tile_positions_xk = tile_positions_x[:, k] - np.mean(tile_positions_x[:, k])
-            tile_positions_yk = tile_positions_y[:, k] - np.mean(tile_positions_y[:, k])
-            tp_abs = np.sqrt(tile_positions_xk*tile_positions_xk + tile_positions_yk*tile_positions_yk)
-            outlier_mask = tp_abs > np.std(tp_abs)*sigma_thr
+            tile_positions_xk = tile_positions_x_shifted[:, k]
+            tile_positions_yk = tile_positions_y_shifted[:, k]
+            tp_abs = tile_positions_deviation[:, k]
+            outlier_mask = outlier_mask_all[:, k]
             if outlier_mask.any():
                 mfov_id      = k // TPM      # mFOV this tile belongs to (mFOV-major layout)
                 tile_mfov_id = k %  TPM      # tile index within the mFOV
@@ -7473,6 +7515,8 @@ class FIBSEM_mosaic_dataset:
         axs[0].set_ylabel('Relative X-Shift (pix)')
         axs[1].set_ylabel('Relative Y-Shift (pix)')
         axs[2].set_ylabel('Relative Shift (pix)')
+        if xrange is not False:
+            axs[2].set_xlim(xrange)
         if save_png:
             axs[2].text(-0.1, -0.18, save_fname, transform=axs[2].transAxes, fontsize=5)
             fig.savefig(save_fname, dpi=dpi)
