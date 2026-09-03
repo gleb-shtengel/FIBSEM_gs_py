@@ -6,6 +6,7 @@ The main features of this workflow:
 -   Allows for evaluation of the registration quality using various metrics (Normalized Sum of Absolute Differences, Normalized Cross-Correlation, Normalized Mutual Information, Fourier Shell Correlation).
 -   The resulting registered stack can be saved as a single MRC or HDF5 file or as a sharded OME-ZARR (v2 or v3) store viewable in Neuroglancer.
 -   Can be performed on a single workstation (with decent number of cores and memory). A month-long FIB-SEM acquisition takes about 2-3 days to process.
+-   Supports multi-tile, multi-layer mosaic (montage) acquisitions, including MSEM hexagonal mFOV layouts: global bundle-adjustment stitching with separate intra-layer and inter-layer constraint weights, per-tile multiplicative intensity normalization, and robust detection / invalidation / replacement of outlier tiles.
 
 ## "Register_FIB-SEM_stack_DASK_v4_example1.ipynb" - Example Python Notebook for perfroming FIB-SEM stack registration of cultured cell sample.
 
@@ -15,6 +16,10 @@ The main features of this workflow:
 1. J. Hennies et al, "AMST: Alignment to Median Smoothed Template for Focused Ion Beam Scanning Electron Microscopy Image Stacks", Sci. Rep. 10, 2004 (2020).
 
 ## "Evaluate_FIB-SEM_MRC_stack_registrations.ipynb" - Python Notebook for evaluating FIB-SEM stack registration (works with stacks saved into MRC files, uses DASK)
+
+## "FIBSEM_montage_sample68_subset_7MFOV_v3_distortion_corrected_ZARR3.ipynb" - Python Notebook for stitching a multi-tile, multi-layer MSEM montage (7 mFOVs) with distortion correction, and saving the result as a sharded OME-ZARR v3 store with a Neuroglancer link.
+
+## "FIB-SEM_destreaking_and_smoothing_MRC_example.ipynb" - Python Notebook demonstrating FFT-based de-streaking and smoothing of an MRC stack.
 
 In order to run the Python Notebook code, first, install basic Anaconda:
 https://www.anaconda.com/products/individual
@@ -73,10 +78,18 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
         Analyses the noise statistics in the selected ROI's of the EM data
     Single_Image_Noise_Statistics(img, **kwargs)
         Analyses the noise statistics of the EM data image.
+    Single_Image_Noise_Statistics_custom(img, **kwargs)
+        Same noise-vs-intensity analysis as above, with an optional gradient filter_array and
+        improved contrast visualization. Reports SNR0f/SNR1f (filtered pixels only) and
+        SNR0a/SNR1a (all pixels, Poisson-corrected).
     Perform_2D_fit(img, estimator, **kwargs)
         Bin the image and then perform 2D polynomial fit on the binned image.
     calculate_gradient_map(img, ** kwargs)
         Computes 2D Gradient of the image.
+    polynomial_surface_fast(shape, intercept, coefs, degree, bins)
+        Evaluate the polynomial field-flattening correction surface term-by-term.
+    flatten_image_fast(img, intercept, coefs, degree, bins)
+        Flatten a single image using polynomial fit coefficients, without full-size intermediates.
 
 ## Two-Frame Image Processing Functions  (FIBSEM_gs.py)
     check_registration(img0, img1, **kwargs)
@@ -105,6 +118,8 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
         Read MRC stack, destreak the data by performing FFT, multiplying it by kernel, and performing inverse FFT, and save it.
     smooth_mrc_stack_with_kernel(mrc_filename, smooth_kernel, data_min, data_max, **kwargs)
         Read MRC stack, smooth the data by performing 2D-convolution with smooth_kernel, and save the data.
+    destreak_smooth_mrc_stack_with_kernels(mrc_filename, destreak_kernel, smooth_kernel, data_min, data_max, **kwargs)
+        Read MRC stack, apply FFT de-streaking and 2D-convolution smoothing in a single pass, and save it.
     merge_tiff_files_mrc_stack(fls_tiff, **kwargs)
         Bins and crops a stack tiff files (frames) along X-, Y-, or Z-directions and saves them into MRC or HDF5 file.
     mrc_stack_estimate_resolution_blobs_2D(mrc_filename, **kwargs)
@@ -204,35 +219,49 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
 ## Mosaic Reporting Functions  (FIBSEM_mosaic_dataset_gs.py)
     generate_report_mill_rate_montage_xlsx(Mill_Rate_Data_xlsx, **kwargs)
         Generate a report plot of mill-rate evaluation from a montage XLSX summary file.
+    generate_report_mill_rate_montage_parquet(Mill_Rate_Data_parquet, **kwargs)
+        Same report, reading the montage summary from a Parquet file.
     generate_report_SEM_param_mosaic_stack_xlsx(FIBSEM_Data_xlsx, **kwargs)
         Generate a report plot of SEM parameters (working distance, EHT, scan rate, etc.) vs
         frame, across the whole mosaic stack.
+    generate_report_SEM_param_mosaic_stack_parquet(FIBSEM_Data_parquet, **kwargs)
+        Same report, reading from a Parquet file.
     generate_report_SEM_param_mosaic_layer_xlsx(FIBSEM_Data_xlsx, **kwargs)
         Generate a report plot of SEM parameters per mosaic layer.
-    generate_report_data_minmax_montage_xlsx(minmax_xlsx_file, **kwargs)
-        Generate a report plot of per-frame data Min/Max values from a montage XLSX summary file.
-    analyze_minmax_outliers_montage_xlsx(minmax_xlsx_file, **kwargs)
-        Detect outlier frames (anomalous Min/Max) from a montage XLSX summary file and emit a
-        report.
-    generate_outliers_report(outliers, fls, **kwargs)
-        Generate a quick summary figure of potential outlier frames flagged by upstream analysis
-        (e.g. analyze_minmax_outliers_montage_xlsx).
-    reformat_outliers_data(outliers)
-        Utility that reshapes a flat outlier list into a 2D (ny_tiles × nx_tiles) layout.
+    generate_report_SEM_param_mosaic_layer_parquet(FIBSEM_Data_parquet, **kwargs)
+        Same report, reading from a Parquet file.
+    generate_report_data_minmax_montage_parquet(minmax_parquet_file, **kwargs)
+        Generate a report plot of per-frame data Min/Max values from a montage Parquet file.
+    analyze_minmax_outliers_montage_parquet(minmax_parquet_file, **kwargs)
+        Detect outlier frames (anomalous Min/Max) from a montage Parquet file and emit a report.
+    generate_outliers_report(outliers, **kwargs)
+        Generate a quick summary figure (and optional thumbnails) of outlier tiles flagged by any
+        upstream detector.
 
 ## Helper Functions for Results Presentation  (FIBSEM_gs.py)
     read_kwargs_xlsx(file_xlsx, kwargs_sheet_name, **kwargs)  [in FIBSEM_help_functions_gs.py]
         Reads (SIFT processing) kwargs from XLSX file and returns them as dictionary.
     generate_report_mill_rate_xlsx(Mill_Rate_Data_xlsx, **kwargs)
         Generate Report Plot for mill rate evaluation from XLSX spreadsheet file.
+    generate_report_mill_rate_parquet(Mill_Rate_Data_parquet, **kwargs)
+        Generate Report Plot for mill rate evaluation from Parquet file.
     generate_report_ScanRate_EHT_xlsx(ScanRate_EHT_Data_xlsx, **kwargs)
         Generate Report Plot for Scan Rate and EHT from XLSX spreadsheet file.
+    generate_report_ScanRate_EHT_parquet(ScanRate_EHT_Data_parquet, **kwargs)
+        Generate Report Plot for Scan Rate and EHT from Parquet file.
     generate_report_FOV_center_shift_xlsx(FOV_center_shift_xlsx, **kwargs)
         Generate Report Plot for FOV center shift from XLSX spreadsheet file.
+    generate_report_FOV_center_shift_parquet(FOV_center_shift_parquet, **kwargs)
+        Generate Report Plot for FOV center shift from Parquet file.
     generate_report_data_minmax_xlsx(minmax_xlsx_file, **kwargs)
         Generate Report Plot for data Min-Max from XLSX spreadsheet file.
+    generate_report_data_minmax_parquet(minmax_parquet_file, **kwargs)
+        Generate Report Plot for data Min-Max from Parquet file.
     generate_report_transf_matrix_from_xlsx(transf_matrix_xlsx_file, **kwargs)
         Generate Report Plot for Transformation Matrix from XLSX spreadsheet file.
+    generate_report_transf_matrix_details(transf_matrix_bin_file, *kwarrgs)
+        Generate a detailed breakdown plot of the transformation matrix components from the
+        saved binary transformation-matrix file.
     generate_report_from_xls_registration_summary(file_xlsx, **kwargs)
         Generate Report Plot for FIB-SEM data set registration from XLSX spreadsheet file.
     plot_registrtion_quality_xlsx(data_files, labels, **kwargs)
@@ -300,9 +329,11 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
         Perfrom 2D polynomial fit (calls Perform_2D_fit(Img, estimator, **kwargs)) and determine the field-flattening parameters.
     flatten_image(**kwargs)
         Flatten the image(s). Image flattening parameters must be pre-determined (determine_field_fattening_parameters).
+    flatten_image_fast(**kwargs)
+        Flatten the image(s) from the stored polynomial coefficients, without building
+        full-resolution correction arrays. Faster and lower-memory than flatten_image.
     pad_and_save(**kwargs)
         Pad FIBSEM frame and re-save.
-
 
 
 ## class FIBSEM_dataset  (FIBSEM_gs.py)
@@ -473,6 +504,14 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
         Weight for pairwise constraints for tiles between adjacent Z-layers.(100–10000 typical).
     add_reverse_edges : bool, default False
         If True, adds both (i->j) and (j->i) with same weight (increases robustness).
+    TPM : int
+        Tiles per mFOV for hexagonal MSEM layouts. Default 91.
+    avg_disp : (TPM, 2) float array
+        Canonical hexagonal mFOV displacement pattern, stored by check_mfov_hexagonal_pattern.
+    tile_I0s : 2D float array (nz_tiles, n_tiles_per_layer)
+        Per-tile dark-count offset.
+    tile_scales : 2D float array (nz_tiles, n_tiles_per_layer)
+        Per-tile multiplicative intensity scale factor from solve_intensity_normalization.
 
     Methods:
     ----------
@@ -521,17 +560,29 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
         Required for method='overlap_mean'/'overlap_percentile'.
     compute_detector_target_intensity_ratios(**kwargs)
         Required for intensity normalization when using target_damp > 0.
+        Optionally plots per-Z-layer detector intensity trends, which reveal when the single global ratio is a poor target.
     solve_stack_stitching(**kwargs)
-        Solve mosaic stack stitching (perform bundle optimization).
+        Solve mosaic stack stitching (perform bundle optimization). Methods: 'ECC', 'SIFT',
+        'SIFT-ECC', 'SIFT-Affine' (full per-tile affine from all inlier keypoint matches).
+        replace_unconstrained_tiles (default True) gives tiles with no valid constraint their
+        canonical mFOV-hexagon positions instead of their initialised defaults.
     analyze_solve_residuals(**kwargs)
         Analyze per-pair residual errors from the most recent stack solve, flag outlier pairs
-        (robust MAD test), and optionally invalidate them for a re-solve.
+        (robust MAD test), and optionally invalidate them in place for a re-solve. Can split
+        intra-layer residuals into horizontal and vertical, and exclude tiles flagged elsewhere.
     check_mfov_hexagonal_pattern(**kwargs)
         Validate the hexagonal mFOV tile layout (MSEM) from FirstPixels or tr_matr; report
         tiles deviating from the canonical hex pattern.
-    replace_tiles_with_canonical_mfov_positions(outliers, **kwargs)
-        Overwrite tr_matr translations of the listed (outlier) tiles with their canonical
-        mFOV-hexagon positions.
+    replace_tiles_with_canonical_mfov_positions(outliers=None, **kwargs)
+        Overwrite tr_matr translations of the selected tiles with their canonical mFOV-hexagon
+        positions. With outliers=None, targets every tile that takes part in no valid pair.
+    invalidate_pairs_for_tiles(outliers, **kwargs)
+        Invalidate the pairwise constraints involving a set of outlier tiles, so a subsequent
+        solve_stack_stitching() drops them. Accepts outliers from any detector in this class.
+    restore_transformation_valid(**kwargs)
+        Undo invalidate_pairs_for_tiles from its snapshot.
+    get_interlayer_pairs_mask(tile_indices)
+        Boolean mask over constraint rows selecting the inter-layer pairs involving given tiles.
     recalculate_FirstPixels_from_tr_matr(update=True, round_to_int=False)
         Recompute FirstPixels from the current tr_matr translations.
     solve_intensity_normalization(**kwargs)
@@ -540,14 +591,17 @@ pip install git+https://github.com/gleb-shtengel/FIB-SEM.git#egg=FIBSEM_gs_py
         pre-computed intensity ratios:
             'SIFT'                - matched-keypoint intensities (requires determine_transformations_SIFT)
             'mean' / 'percentile' - whole-frame stats (requires compute_frame_intensity_ratios)
-            'overlap_mean' / 'overlap_percentile' - per-pair overlap-ROI stats
-                                    (requires compute_overlap_intensity_ratios)
-        Optional regularization: tikhonov_damp (per-tile L2 toward 1.0) and target_damp
-        (per-pair L2 toward detector-prior ratios from compute_detector_target_intensity_ratios).
+            'overlap_mean' / 'overlap_percentile' - per-pair overlap-ROI stats (requires compute_overlap_intensity_ratios)
+        Optional regularization: 
+            - tikhonov_damp (per-tile L2 toward 1.0)
+            - target_damp (per-pair L2 toward detector-prior ratios from compute_detector_target_intensity_ratios)
+            - anchor_damp (per-tile L2 toward each tile's own measured whole-frame log-intensity — Z-local and detector-aware).
     generate_transformation_report(**kwargs)
-        Generate Report Plot for transformation summary.
+        Generate Report Plot for transformation summary. 
+        plot_traces selects whether the drawn traces include common-mode layer drift ('shifted', default) or match the detection metric ('deviation').
     assemble_layer_mosaic(layer_id, **kwargs)
-        Assemble layer mosaic based on transformation matrices for each tile. Options to save snapshot, save mosaic as FIBSEM_frame (dat file) or save images as JPG or PNG.
+        Assemble layer mosaic based on transformation matrices for each tile.
+        Options to save snapshot, save mosaic as FIBSEM_frame (dat file) or save images as JPG or PNG.
     determine_mosaic_flattening_parameters(**kwargs)
         Perform a 2D polynomial fit to characterise per-tile detector non-uniformity.
         (analogous to FIBSEM_frame.determine_field_fattening_parameters but at the mosaic level).
