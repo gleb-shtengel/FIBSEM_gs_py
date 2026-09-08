@@ -8654,7 +8654,7 @@ class FIBSEM_frame:
                 pass
             dpi = kwargs.get("dpi", 300)
 
-            noise_kwargs = {'image_name' : image_name,
+            noise_kwargs = {'image_name' : img_label,
                             'evaluation_box' : evaluation_box,
                             'kernel' : kernel,
                             'filter_array' : filter_array,
