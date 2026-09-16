@@ -72,6 +72,7 @@ from FIBSEM_gs_py.FIBSEM_gs import (FIBSEM_frame,
                         Perform_2D_fit,
                         flatten_image_fast,
                         polynomial_surface_fast,
+                        polynomial_surface_mean,
                         evaluate_FIBSEM_frames_dataset)
 
 from FIBSEM_gs_py.FIBSEM_help_functions_gs import (check_DASK,
@@ -365,6 +366,8 @@ def _write_zarr3_shard_s0_from_tiles(params, **kwargs):
                 flatten_kwargs['mosaic_correction_coeffs'],
                 flatten_kwargs['mosaic_correction_degree'],
                 flatten_kwargs['mosaic_correction_bins'],
+                x0=x0, y0=y0,
+                mean_surface=flatten_kwargs.get('mosaic_correction_mean_surface'),
             ) + offset
 
         # Cast to dtp.
@@ -8925,14 +8928,22 @@ class FIBSEM_mosaic_dataset:
         if flatten_mosaic and hasattr(self, 'mosaic_correction_coeffs'):
             try:
                 corr_idx = self.mosaic_correction_sources.index(image_name)
+                mean_surface = polynomial_surface_mean(
+                    (ny, nx),
+                    self.mosaic_correction_intercepts[corr_idx],
+                    self.mosaic_correction_coeffs[corr_idx],
+                    self.mosaic_correction_degrees[corr_idx],
+                    self.mosaic_correction_bins,
+                )
                 flatten_kwargs_global = {
-                    'mosaic_correction_intercept': self.mosaic_correction_intercepts[corr_idx],
-                    'mosaic_correction_coeffs':    self.mosaic_correction_coeffs[corr_idx],
-                    'mosaic_correction_degree':    self.mosaic_correction_degrees[corr_idx],
-                    'mosaic_correction_bins':      self.mosaic_correction_bins,
-                    'mosaic_Scaling_offset':       (self.Scaling[1, 0] if image_name == 'RawImageA'
-                                                    else self.Scaling[1, 1] if image_name == 'RawImageB'
-                                                    else 0.0),
+                    'mosaic_correction_intercept':    self.mosaic_correction_intercepts[corr_idx],
+                    'mosaic_correction_coeffs':       self.mosaic_correction_coeffs[corr_idx],
+                    'mosaic_correction_degree':       self.mosaic_correction_degrees[corr_idx],
+                    'mosaic_correction_bins':         self.mosaic_correction_bins,
+                    'mosaic_correction_mean_surface': mean_surface,
+                    'mosaic_Scaling_offset':          (self.Scaling[1, 0] if image_name == 'RawImageA'
+                                                       else self.Scaling[1, 1] if image_name == 'RawImageB'
+                                                       else 0.0),
                 }
             except (ValueError, AttributeError):
                 flatten_kwargs_global = None

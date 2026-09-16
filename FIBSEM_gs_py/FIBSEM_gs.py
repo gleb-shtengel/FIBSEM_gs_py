@@ -2139,28 +2139,29 @@ def flatten_image_fast_old(img, intercept, coefs, degree, bins):
     return img * img_correction_array
 
 
-def polynomial_surface_fast(shape, intercept, coefs, degree, bins):
+def polynomial_surface_fast(shape, intercept, coefs, degree, bins, x0=0, y0=0):
     '''
     Evaluate the polynomial correction surface for `shape` term-by-term.
+    x0, y0 : int
+        Absolute pixel offset of this array's (0, 0) corner within the full
+        mosaic the polynomial was fit against - e.g. a shard's origin when
+        `shape` is only a piece of the full mosaic. Default is 0 (shape IS
+        the full mosaic, e.g. inside assemble_layer()).
     Factored out of flatten_image_fast so callers that want to apply the
     correction in place can do so without building intermediate full-size arrays.
     Returns predicted_surface : 2D float32.
     '''
     ysz, xsz = shape
 
-    # Get polynomial exponent pairs without building the full feature matrix.
-    # powers_[k] = (px, py) means the k-th feature is x^px * y^py.
     poly = PolynomialFeatures(degree)
-    poly.fit(np.zeros((1, 2)))           # fit on dummy data to populate powers_
-    powers = poly.powers_                # shape (n_features, 2)
+    poly.fit(np.zeros((1, 2)))
+    powers = poly.powers_
 
-    # Build 1D coordinate vectors (not full 2D grids)
-    xv = np.arange(xsz, dtype=np.float32) / bins    # shape (xsz,)
-    yv = np.arange(ysz, dtype=np.float32) / bins    # shape (ysz,)
+    xv = (np.arange(xsz, dtype=np.float32) + x0) / bins
+    yv = (np.arange(ysz, dtype=np.float32) + y0) / bins
 
-    # Precompute needed powers of x and y: x^0, x^1, ..., x^degree (same for y)
-    xpows = [None] * (degree + 1)     # xpows[p] is shape (xsz,)  or scalar 1
-    ypows = [None] * (degree + 1)     # ypows[p] is shape (ysz,)  or scalar 1
+    xpows = [None] * (degree + 1)
+    ypows = [None] * (degree + 1)
     xpows[0] = np.float32(1.0)
     ypows[0] = np.float32(1.0)
     if degree >= 1:
@@ -2170,14 +2171,11 @@ def polynomial_surface_fast(shape, intercept, coefs, degree, bins):
         xpows[p] = xpows[p-1] * xv
         ypows[p] = ypows[p-1] * yv
 
-    # Evaluate polynomial: predicted_surface[i, j] = intercept + sum_k coefs[k] * x[j]^px * y[i]^py
-    # Using outer product: (y^py)[:,None] * (x^px)[None,:] broadcasts to (ysz, xsz)
     predicted_surface = np.full((ysz, xsz), intercept, dtype=np.float32)
     for coef, (px, py) in zip(coefs, powers):
         if coef == 0.0:
             continue
         coef_f32 = np.float32(coef)
-        # outer product: ypows[py] is (ysz,) or scalar, xpows[px] is (xsz,) or scalar
         if py == 0 and px == 0:
             predicted_surface += coef_f32
         elif py == 0:
@@ -2190,7 +2188,42 @@ def polynomial_surface_fast(shape, intercept, coefs, degree, bins):
     return predicted_surface
 
 
-def flatten_image_fast(img, intercept, coefs, degree, bins):
+def polynomial_surface_mean(shape, intercept, coefs, degree, bins):
+    '''
+    Exact mean of the polynomial correction surface over the FULL `shape`,
+    without materializing a 2D array. Exploits separability: on a full
+    rectangular pixel grid, mean(x^px * y^py) == mean(x^px) * mean(y^py).
+    Use this to get one global normalization constant to pass to every
+    flatten_image_fast() call when flattening is done piecewise (e.g. per
+    zarr shard), so all pieces are normalized against the same constant.
+    '''
+    ysz, xsz = shape
+    poly = PolynomialFeatures(degree)
+    poly.fit(np.zeros((1, 2)))
+    powers = poly.powers_
+
+    xv = np.arange(xsz, dtype=np.float64) / bins
+    yv = np.arange(ysz, dtype=np.float64) / bins
+
+    xpows_mean = [1.0] * (degree + 1)
+    ypows_mean = [1.0] * (degree + 1)
+    xp = np.ones_like(xv)
+    yp = np.ones_like(yv)
+    for p in range(1, degree + 1):
+        xp = xp * xv
+        yp = yp * yv
+        xpows_mean[p] = float(xp.mean())
+        ypows_mean[p] = float(yp.mean())
+
+    mean_surface = float(intercept)
+    for coef, (px, py) in zip(coefs, powers):
+        if coef == 0.0:
+            continue
+        mean_surface += float(coef) * xpows_mean[px] * ypows_mean[py]
+    return np.float32(mean_surface)
+
+
+def flatten_image_fast(img, intercept, coefs, degree, bins, x0=0, y0=0, mean_surface=None):
     '''
     Flatten a single image using polynomial fit coefficients.
     Evaluates the polynomial correction surface term-by-term, avoiding
@@ -2215,14 +2248,28 @@ def flatten_image_fast(img, intercept, coefs, degree, bins):
         Degree of the polynomial features used in fitting.
     bins : int
         Binning factor used during fitting (for coordinate scaling).
+    x0, y0 : int
+        Absolute pixel offset of img's (0, 0) corner within the full mosaic
+        the polynomial was fit against. Required whenever img is only a piece
+        of that mosaic (e.g. one zarr shard) - otherwise the correction surface
+        is evaluated with the wrong coordinate origin and the result is
+        discontinuous at piece boundaries. Default is 0 (img IS the full mosaic).
+    mean_surface : float, optional
+        Precomputed mean of the correction surface over the FULL mosaic (from
+        polynomial_surface_mean()). Pass this whenever img is only a piece of
+        the mosaic, so every piece is normalized against the same global mean
+        instead of each piece's own (different) local mean. Default is None
+        (compute the mean from img's own predicted_surface - correct only
+        when img IS the full mosaic).
 
     Returns:
     ----------
     flattened_image : 2D array
         The flattened image (same shape as img).
     '''
-    predicted_surface = polynomial_surface_fast(img.shape, intercept, coefs, degree, bins)
-    return img * (np.float32(np.mean(predicted_surface)) / predicted_surface)
+    predicted_surface = polynomial_surface_fast(img.shape, intercept, coefs, degree, bins, x0=x0, y0=y0)
+    surface_mean = np.float32(mean_surface) if mean_surface is not None else np.float32(np.mean(predicted_surface))
+    return img * (surface_mean / predicted_surface)
 
 
 ##############################################
