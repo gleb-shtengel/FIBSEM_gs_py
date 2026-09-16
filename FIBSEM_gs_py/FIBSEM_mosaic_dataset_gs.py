@@ -8385,6 +8385,14 @@ class FIBSEM_mosaic_dataset:
         mosaic_correction_coeffs : list of 1D arrays
         mosaic_correction_degrees : list of int
         mosaic_correction_bins : int
+            Stored (or overridden) binning size, in full-resolution (bin_factor=1)
+            pixel units - see determine_mosaic_flattening_parameters().
+        bin_factor : int
+            Binning factor used to produce layer_mosaics (i.e. each layer_mosaics
+            pixel corresponds to bin_factor full-resolution pixels). Default is 1
+            (layer_mosaics assumed full-resolution). mosaic_correction_bins is
+            rescaled internally by this factor so the polynomial correction surface
+            lines up with layer_mosaics' own pixel grid.
 
         Returns:
         ----------
@@ -8400,6 +8408,15 @@ class FIBSEM_mosaic_dataset:
             getattr(self, 'mosaic_correction_degrees', [2]))
         bins = kwargs.get("mosaic_correction_bins",
             getattr(self, 'mosaic_correction_bins', 10))
+        bin_factor = kwargs.get("bin_factor", 1)
+        if not isinstance(bin_factor, int) or bin_factor < 1:
+            raise ValueError(
+                f"flatten_layer_mosaic: bin_factor must be a positive int (got {bin_factor!r})."
+            )
+        # mosaic_correction_bins is stored in full-resolution pixel units; convert it
+        # down to layer_mosaics' own (possibly bin_factor-binned) pixel grid so the
+        # correction surface's coordinate scale matches what was used at fit time.
+        bins_for_apply = max(1, bins // bin_factor)
 
         flattened_mosaics = []
         for mosaic, source, intercept, coeffs, degree in zip(
@@ -8412,12 +8429,12 @@ class FIBSEM_mosaic_dataset:
             if (source is not False) and (coeffs is not False):
                 if source == 'RawImageA':
                     img = mosaic - self.Scaling[1, 0]
-                    flattened_mosaic = flatten_image_fast(img, intercept, coeffs, degree, bins) + self.Scaling[1, 0]
+                    flattened_mosaic = flatten_image_fast(img, intercept, coeffs, degree, bins_for_apply) + self.Scaling[1, 0]
                 elif source == 'RawImageB':
                     img = mosaic - self.Scaling[1, 1]
-                    flattened_mosaic = flatten_image_fast(img, intercept, coeffs, degree, bins) + self.Scaling[1, 1]
+                    flattened_mosaic = flatten_image_fast(img, intercept, coeffs, degree, bins_for_apply) + self.Scaling[1, 1]
                 else:
-                    flattened_mosaic = flatten_image_fast(mosaic, intercept, coeffs, degree, bins)
+                    flattened_mosaic = flatten_image_fast(mosaic, intercept, coeffs, degree, bins_for_apply)
             else:
                 flattened_mosaic = mosaic
 
