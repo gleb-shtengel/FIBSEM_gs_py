@@ -8222,7 +8222,17 @@ class FIBSEM_mosaic_dataset:
         estimator : sklearn estimator
             Default is LinearRegression().
         bins : int
-            Binning size (in pixel units) for image binning. Default is 10.
+            Binning size for image binning, given in full-resolution (bin_factor=1)
+            pixel units - independent of bin_factor. Default is 10.
+        bin_factor : int
+            Binning factor that was (or, if layer_mosaics is not provided, will be) used
+            by assemble_layer_mosaic() to produce layer_mosaics - i.e. each layer_mosaics
+            pixel corresponds to bin_factor full-resolution pixels. Default is 1
+            (layer_mosaics assumed full-resolution). Analysis_ROIs, Xsect and Ysect below
+            must be given in full-resolution (bin_factor=1) pixel coordinates; they are
+            rescaled internally to match layer_mosaics. This is required because
+            assemble_layer() always applies flattening BEFORE its own output binning,
+            so the stored correction must stay expressed in full-resolution pixel units.
         degrees : int or list of int
             Polynomial degree(s). Default is 2.
         Analysis_ROIs : list of lists: [[left, right, top, bottom]]
@@ -8245,6 +8255,15 @@ class FIBSEM_mosaic_dataset:
         # --- fitting parameters ---
         estimator = kwargs.get("estimator", LinearRegression())
         bins = kwargs.get("bins", 10)
+        bin_factor = kwargs.get("bin_factor", 1)
+        if not isinstance(bin_factor, int) or bin_factor < 1:
+            raise ValueError(
+                f"determine_mosaic_flattening_parameters: bin_factor must be a positive int (got {bin_factor!r})."
+            )
+        # bins is specified in full-resolution pixel units; convert it to the
+        # (possibly bin_factor-binned) layer_mosaics pixel grid before fitting,
+        # so the averaging cell size stays independent of bin_factor.
+        bins_for_fit = max(1, bins // bin_factor)
         degrees = kwargs.get("degrees", 2)
         ignore_Y = kwargs.get("ignore_Y", False)
         linear_Y = kwargs.get("linear_Y", False)
@@ -8255,6 +8274,15 @@ class FIBSEM_mosaic_dataset:
         save_res_png = kwargs.get("save_res_png", False)
         res_fname = kwargs.get("res_fname", '_Mosaic_Image_Flattening.png')
         dpi = kwargs.get("dpi", 300)
+
+        # Analysis_ROIs / Xsect / Ysect are given in full-resolution (bin_factor=1)
+        # pixel coordinates; rescale to the layer_mosaics pixel grid before fitting.
+        Analysis_ROIs_local = [[ROI[0] // bin_factor,
+                                 (ROI[1] + bin_factor - 1) // bin_factor,
+                                 ROI[2] // bin_factor,
+                                 (ROI[3] + bin_factor - 1) // bin_factor] for ROI in Analysis_ROIs]
+        Xsect_kwarg = kwargs['Xsect'] // bin_factor if 'Xsect' in kwargs else None
+        Ysect_kwarg = kwargs['Ysect'] // bin_factor if 'Ysect' in kwargs else None
 
         # --- resolve image_names (same pattern as assemble_layer_mosaic) ---
         if hasattr(self, 'DetB'):
@@ -8294,8 +8322,8 @@ class FIBSEM_mosaic_dataset:
                 img = mosaic
 
             ysz, xsz = img.shape
-            Xsect = kwargs.get("Xsect", xsz // 2)
-            Ysect = kwargs.get("Ysect", ysz // 2)
+            Xsect = Xsect_kwarg if Xsect_kwarg is not None else xsz // 2
+            Ysect = Ysect_kwarg if Ysect_kwarg is not None else ysz // 2
 
             Fit_kwargs = {'image_name': image_name,
                           'calc_corr': save_correction_binary,
@@ -8304,8 +8332,8 @@ class FIBSEM_mosaic_dataset:
                           'Xsect': Xsect,
                           'Ysect': Ysect,
                           'disp_res': disp_res,
-                          'bins': bins,
-                          'Analysis_ROIs': Analysis_ROIs,
+                          'bins': bins_for_fit,
+                          'Analysis_ROIs': Analysis_ROIs_local,
                           'save_res_png': save_res_png,
                           'res_fname': res_fname.replace('.png', '_' + image_name + '.png'),
                           'dpi': dpi}
@@ -8324,7 +8352,11 @@ class FIBSEM_mosaic_dataset:
         self.mosaic_correction_coeffs = mosaic_correction_coeffs
         self.mosaic_correction_intercepts = mosaic_correction_intercepts
         self.mosaic_correction_degrees = mosaic_correction_degrees
-        self.mosaic_correction_bins = bins
+        # Must stay expressed in full-resolution pixel units: assemble_layer() applies
+        # flatten_mosaic BEFORE its own output bin_factor binning, always against the
+        # full-resolution mosaic shape. Scale by the bin_factor used to build the
+        # mosaic(s) this fit was run on so the two stay consistent.
+        self.mosaic_correction_bins = bins_for_fit * bin_factor
 
         if save_correction_binary:
             bin_fname = res_fname.replace('png', 'bin')
