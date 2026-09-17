@@ -299,6 +299,7 @@ def _write_zarr3_shard_s0_from_tiles(params, **kwargs):
      dtp,
      U8_range,
      verbose) = params
+    cache_dir = kwargs.get('tile_warp_cache_dir', None)
 
     # Load shared data from kwargs (non-DASK direct call) or from sidecar pickle (DASK path).
     if 'fls_flat_by_layer' in kwargs:
@@ -344,7 +345,8 @@ def _write_zarr3_shard_s0_from_tiles(params, **kwargs):
             tile_params = [j, fl, image_name, tr_matr_single,
                            sy, sx,                # NOT used by transform_tile for output sizing
                            left_crop, tile_I0, tile_scale]
-            tile_warped, xi, yi = transform_tile(tile_params, deformation_field, **kwargs_tt)
+            tile_warped, xi, yi = _load_or_build_warped_tile(
+                cache_dir, layer_id, j, tile_params, deformation_field, **kwargs_tt)
             _add_warped_to_mosaic(
                 tile_warped, xi - x0, yi - y0,
                 layer_mosaic, layer_weights,
@@ -540,7 +542,62 @@ def transform_tile(tile_params, deformation_field, **kwargs):
         print('Transformed tile will be placed with offsets dx={:d},  dy={:d}'.format(dx, dy))
 
     return tile_transformed, dx, dy
-    
+
+
+def _load_or_build_warped_tile(cache_dir, layer_id, j, tile_params, deformation_field, **kwargs_tt):
+    '''
+    Cache wrapper around transform_tile(), keyed by (layer_id, j).
+
+    transform_tile() is a pure function of its inputs, and within one
+    save_stack_zarr3() call every input EXCEPT (fl, tr_matr_single, I0, scale)
+    - all of which are themselves determined by (layer_id, j) - is constant
+    across shards (image_name, left_crop, deformation_field, uniform_I0,
+    interpolation, border_value, border_mode). A single raw tile's warped
+    footprint typically spans many output shards (its width/height is usually
+    much larger than one shard's XY extent), so every shard-task that needs
+    the same tile was redundantly re-running cv2.remap() on it from scratch.
+    The first shard-task that needs a given (layer_id, j) computes it once
+    and caches the result on shared scratch storage; every other shard-task
+    that needs the same tile just reads the cache.
+
+    cache_dir must be unique to this save_stack_zarr3() call (and image_name) -
+    a stale cache from a different run/config would silently return wrong
+    results, since the cache key does not include tr_matr/I0/scale/etc.
+    Pass cache_dir=None to disable caching and always compute directly.
+
+    Returns:
+    ----------
+    tile_transformed, dx, dy   (same as transform_tile())
+    '''
+    if cache_dir is None:
+        return transform_tile(tile_params, deformation_field, **kwargs_tt)
+
+    cache_path = os.path.join(cache_dir, 'z{:06d}_t{:05d}.pkl'.format(layer_id, j))
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, 'rb') as f:
+                tile_out, dx, dy = pickle.load(f)
+            return tile_out, dx, dy
+        except (OSError, pickle.UnpicklingError, EOFError):
+            pass   # fall through and recompute - e.g. a partially-written file from a crashed worker
+
+    tile_out, dx, dy = transform_tile(tile_params, deformation_field, **kwargs_tt)
+
+    tmp_path = cache_path + '.tmp{:d}'.format(os.getpid())
+    try:
+        with open(tmp_path, 'wb') as f:
+            pickle.dump((tile_out, dx, dy), f, protocol=pickle.HIGHEST_PROTOCOL)
+        os.replace(tmp_path, cache_path)   # atomic; a losing racer's write is simply discarded
+    except OSError:
+        # Cache write failed (disk pressure, cache_dir cleaned up mid-run, etc.) - not
+        # fatal, this tile just won't be shared. Clean up any partial temp file.
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+
+    return tile_out, dx, dy  
+
 
 def overlay_montage_grid(ax, montage_object, **kwargs):
     '''
@@ -8743,6 +8800,7 @@ class FIBSEM_mosaic_dataset:
         uniform_I0      = float(np.mean(self.tile_I0s)) if perform_norm else 0.0
         use_default_coords = kwargs.get('use_default_coordinates', False)
         flatten_mosaic = kwargs.get('flatten_mosaic', False)
+        use_tile_warp_cache = kwargs.get('use_tile_warp_cache', True)
         dtp = kwargs.get('dtp', np.int16)
         U8_range = kwargs.get('U8_range', None)
         if dtp == np.uint8:
@@ -9003,9 +9061,20 @@ class FIBSEM_mosaic_dataset:
                   + f"   Writing s0:  up to {n_total_origins} shards "
                   + f"(empties skipped), output shape={dst_shape}, dtype={dtp}")
 
+        tile_warp_cache_dir = None
+        if use_tile_warp_cache:
+            tile_warp_cache_dir = os.path.join(os.path.dirname(output_zarr_path),
+                                               '.save_stack_zarr3_tile_cache_{}'.format(image_name))
+            shutil.rmtree(tile_warp_cache_dir, ignore_errors=True)   # clear any stale leftover from a crashed prior run
+            os.makedirs(tile_warp_cache_dir, exist_ok=True)
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S')
+                      + '   Caching warped tiles to: ' + tile_warp_cache_dir)
+
         kwargs_tt = {'interpolation': interpolation,
                      'border_value':  border_value,
-                     'border_mode':   border_mode}
+                     'border_mode':   border_mode,
+                     'tile_warp_cache_dir': tile_warp_cache_dir}
 
         # Write shared data to a sidecar pickle on shared storage. Workers read it
         # directly per task — no DASK scatter, no caching. Robust to any cluster.
@@ -9063,6 +9132,11 @@ class FIBSEM_mosaic_dataset:
                     uniform_I0        = uniform_I0,
                     **kwargs_tt,
                 )
+
+        if tile_warp_cache_dir is not None:
+            shutil.rmtree(tile_warp_cache_dir, ignore_errors=True)
+            if verbose:
+                print(time.strftime('%Y/%m/%d  %H:%M:%S') + '   Removed tile warp cache')
 
         # ---- 6. Build pyramid (s1, s2, ...) ------------------------------
         for lvl in range(1, n_pyramid_levels):
