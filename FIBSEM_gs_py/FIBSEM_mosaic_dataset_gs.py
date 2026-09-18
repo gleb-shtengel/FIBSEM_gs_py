@@ -8744,7 +8744,11 @@ class FIBSEM_mosaic_dataset:
         perform_intensity_normalization : bool.  Default False.
         use_default_coordinates : bool.  Default False.
         flatten_mosaic         : bool.  Default False.
-        use_tile_warp_cache    : if True, uses cahe saving for warped tiles. Useful if the tile size is much larger than sard size. Default is False.
+        use_tile_warp_cache    : bool.  If True, each warped tile is cached on shared scratch storage
+                                 (keyed by layer and tile) and reused by every shard that needs it,
+                                 instead of being re-read and re-warped once per shard. Useful when
+                                 tiles are much larger than the shard XY footprint. The cache is
+                                 deleted after s0 writing finishes. Default True.
         dtp                    : numpy dtype.  Default int16.
         U8_range               : [umin, umax] for uint8 output.  Default None.
         verbose                : bool.  Default False.
