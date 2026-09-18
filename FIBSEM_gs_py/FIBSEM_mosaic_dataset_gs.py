@@ -8744,6 +8744,7 @@ class FIBSEM_mosaic_dataset:
         perform_intensity_normalization : bool.  Default False.
         use_default_coordinates : bool.  Default False.
         flatten_mosaic         : bool.  Default False.
+        use_tile_warp_cache    : if True, uses cahe saving for warped tiles. Useful if the tile size is much larger than sard size. Default is False.
         dtp                    : numpy dtype.  Default int16.
         U8_range               : [umin, umax] for uint8 output.  Default None.
         verbose                : bool.  Default False.
