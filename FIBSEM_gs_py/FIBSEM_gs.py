@@ -7841,7 +7841,7 @@ class FIBSEM_frame:
                             self.RawImageB = Raw[:,:,0]
                             #self.ImageB = (self.RawImageB - self.Scaling[1,1])*self.Scaling[2,1]
                             
-                    elif  self.FileVersion == 8 or self.FileVersion == 9:
+                    elif  self.FileVersion >= 8:
                         self.ElectronFactor1 = 0.1;             # 16-bit intensity is 10x electron counts
                         self.Scaling[3,0] = self.ElectronFactor1
                         self.ElectronFactor2 = 0.1;             # 16-bit intensity is 10x electron counts
